@@ -1,2 +1,3 @@
 syntax: glob
 *.pyc
+lda/lda.html
