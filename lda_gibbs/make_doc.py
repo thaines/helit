@@ -18,10 +18,10 @@ doc = pydoc.HTMLDoc()
 
 
 # Open the document...
-out = open('lda.html','w')
+out = open('lda_gibbs.html','w')
 out.write('<html>\n')
 out.write('<head>\n')
-out.write('<title>pylda</title>\n')
+out.write('<title>lda (gibbs)</title>\n')
 out.write('</head>\n')
 out.write('<body>\n')
 
