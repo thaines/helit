@@ -3,3 +3,4 @@ syntax: glob
 lda_gibbs/lda_gibbs.html
 lda_var/lda_var.html
 rlda/rlda.html
+gcp/gcp.html
