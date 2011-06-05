@@ -36,6 +36,7 @@ class VLDA:
     self.z = dict() # This provides the multinomials for each z value by word - the dictionary is indexed by document ident, and goes to a 2D numpy array, [entry,topics], where each row matches up with the self.doc row, and contains the parameters of the multinomial from which z for that particular word is drawn.
 
     self.epsilon = 1e-5 # Amount of change below which it stops iterating.
+    self.delta = None # Best of above acheived, for if there is an iteration cap.
 
     # Temporary stuff, to reduce memory churn...
     self.wordMN = numpy.empty(self.wordCount, dtype=numpy.float32)
@@ -150,8 +151,8 @@ class VLDA:
     """Locks, or unlocks, the beta parameter from being updated during a solve - can be useful for repeated calls to solve, to effectivly lock the model and analyse new documents"""
     self.betaLock = lock
   
-  def solve(self):
-    """Solves the model, such that you can query all the model details. Returns how many passes it took to acheive convergance."""
+  def solve(self, maxIter = None):
+    """Solves the model, such that you can query all the model details. Returns how many passes it took to acheive convergance. You can optionally set maxIter, to avoid it running forever. Due to its incrimental nature repeated calls with maxIter whilst keeping an eye on the delta can be used to present progress."""
 
     # Check for new documents and extend the model accordingly...
     for ident in self.docs.iterkeys():
@@ -179,9 +180,9 @@ class VLDA:
     prevCache = numpy.empty((maxWordCount,self.topicCount), dtype=numpy.float32)
 
     passes = 0
-    while True:
+    while passes!=maxIter:
       passes += 1
-      done = True
+      self.delta = 0.0
       
       # Reset beta to the prior, without touching the cached log expectation...
       if not self.betaLock:
@@ -208,9 +209,9 @@ class VLDA:
         z[:,:] = numpy.exp(z)
         z /= z.sum(axis=1).reshape((z.shape[0],1))
 
-        # Check for no change...
-        mmd = numpy.abs(prevCache[:z.shape[0],:]-z).sum(axis=1).max()
-        if mmd>self.epsilon: done = False
+        # Measure the amount of change...
+        delta = numpy.abs(prevCache[:z.shape[0],:]-z).sum(axis=1).max()
+        self.delta = max(self.delta, delta)
 
         # Contribute to the beta estimation from this document...
         if not self.betaLock:
@@ -223,9 +224,61 @@ class VLDA:
         self.betaLogExp -= scipy.special.psi(betaSum).reshape((self.topicCount,1))
 
       # Break if converged...
-      if done: break
+      if self.delta<self.epsilon: break
 
     return passes
+
+  def solveHuman(self, step=32):
+    """Does the exact same thing as solve except it prints out status reports and allows you to hit 'd' to cause it to exit - essentially an interactive version that reports progress so a human can decide to break early if need be. Uses curses."""
+    import time
+    import curses
+
+    screen = curses.initscr()
+    curses.noecho()
+    screen.nodelay(1)
+    screen.clear()
+    screen.addstr(1,2,'Press d for early termination')
+    screen.refresh()
+    totalIters = 0
+    start = time.clock()
+
+    timeSeq = []
+    iterSeq = []
+    deltaSeq = []
+    count = 5
+
+    try:
+      while True:
+        totalIters += self.solve(step)
+        timeSeq.append(time.clock()-start)
+        iterSeq.append(totalIters)
+        deltaSeq.append(self.delta)
+
+        timeSeq = timeSeq[-count:]
+        iterSeq = iterSeq[-count:]
+        deltaSeq = deltaSeq[-count:]
+        
+        screen.clear()
+        screen.addstr(1,2,'Press d for early termination')
+
+        offset = 3
+        for ti, it, de in zip(timeSeq, iterSeq, deltaSeq):
+          screen.addstr(offset,2,'total iters = %i; time = %.1fs'%(it, ti))
+          screen.addstr(offset+1,2,'delta = %.6f; target = %.6f'%(de, self.epsilon))
+          offset += 3
+        
+        screen.refresh()
+        key = screen.getch()
+        if key==ord('d'): break
+        if self.delta<self.epsilon: break
+        
+    finally:
+      curses.endwin()
+    return totalIters
+
+  def getDelta(self):
+    """Returns the maximum change seen for any z multinomial in the most recent iteration. Useful if using maxIter to see if it has got close enough."""
+    return self.delta
 
 
   def getBeta(self, topic):

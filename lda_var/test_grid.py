@@ -106,9 +106,10 @@ cv.SaveImage('test_grid_docs.png',img)
 
 # Train...
 print 'Trainning...'
-p = ProgBar()
-passes = vlda.solve()
-del p
+#p = ProgBar()
+#passes = vlda.solve()
+#del p
+passes = vlda.solveHuman()
 print 'Took %i passes'%passes
 
 
