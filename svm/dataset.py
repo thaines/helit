@@ -26,7 +26,7 @@ class Dataset:
     self.blocks = []
 
 
-  def add(self,featVect,label):
+  def add(self, featVect, label):
     """Adds a single feature vector and label."""
     if label in self.labelToNum:
       l = self.labelToNum[label]
@@ -37,7 +37,7 @@ class Dataset:
     
     self.blocks.append((featVect.reshape((1,featVect.shape[0])).astype(numpy.double),[l]))
 
-  def addMatrix(self,dataMatrix,labels):
+  def addMatrix(self, dataMatrix, labels):
     """This adds a data matrix alongside a list of labels for it. The number of rows in the matrix should match the number of labels in the list."""
     assert(dataMatrix.shape[0]==len(labels))
 
@@ -56,7 +56,7 @@ class Dataset:
 
 
   def getLabels(self):
-    """returns a list of all the labels in the data set."""
+    """Returns a list of all the labels in the data set."""
     return self.numToLabel
 
   def getCounts(self):
@@ -67,7 +67,28 @@ class Dataset:
     return ret
 
 
-  def getTrainData(self,lNeg,lPos):
+  def subsampleData(self, count):
+    """Returns a new dataset object which contains count instances of the data, sampled from the data contained within without repetition. Returned Dataset could miss some of the classes."""
+    size = 0
+    for block in self.blocks: size += len(block[1])
+    subset = numpy.random.permutation(size)[:count]
+    subset.sort()
+
+    pos = 0
+    index = 0
+    ret = Dataset()
+    for block in self.blocks:
+      while subset[index]<(pos+len(block[1])):
+        loc = subset[index] - pos
+        ret.add(block[0][loc,:], block[1][loc])
+        index += 1
+        if index==subset.shape[0]: return ret
+      pos += len(block[1])
+    
+    return ret
+
+
+  def getTrainData(self, lNeg, lPos):
     """Given two labels this returns a pair of a data matrix and a y vector, where lPos features have +1 and lNeg features have -1. Features that do not have one of these two labels will not be included."""
     # Convert the given labels to label numbers...
     if lNeg in self.labelToNum:
