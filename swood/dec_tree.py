@@ -16,22 +16,27 @@ import scipy.stats.distributions
 
 
 class DecTree:
-  """A decision tree, uses id3 with the c4.5 extension for continuous attributes. Fairly basic - always grows fully and stores a distribution of children at every node so it can fallback for previously unseen attribute categories. Allows the trainning vectors to be weighted and can be pickled."""
-  def __init__(self, int_dm, real_dm, cat, weight = None, index = None, rand = None):
-    """Input consists of upto 5 arrays and one parameter. The first two parameters are data matrices, where each row contains the attributes for an example. Two are provided, one of numpy.int32 for the discrete features, another of numpy.float32 for the continuous features - one can be set to None to indicate none of that type, but obviously at least one has to be provided. The cat vector is then aligned with the data matrices and gives the category for each exemplar, as a numpy.int32. weight optionally provides a numpy.float32 vector that also aligns with the data matrices, and effectivly provides a continuous repeat count for each example, so some can be weighted as being more important. By default all items in the data matrices are used, however, instead an index vector can be provided that indexes the examples to be used by the tree - this not only allows a subset to be used but allows samples to be repeated if desired (This feature is actually used for building the tree recursivly, such that each DecTree object is in fact a node; also helps for creating a collection of trees with random trainning sets.). Finally, by default it considers all features at each level of the tree, however, if an integer rather than None is provided to the rand parameter it instead randomly selects a subset of attributes, of size rand, and then selects the best of this subset, with a new draw for each node in the tree."""
+  """A decision tree, uses id3 with the c4.5 extension for continuous attributes. Fairly basic - always grows fully and stores a distribution of children at every node so it can fallback for previously unseen attribute categories. Allows the trainning vectors to be weighted and can be pickled. An effort has been made to keep this small, due to the fact that its not unusual to have millions in memory."""
+  __slots__ = ['dist_cat', 'dist_weight', 'leaf', 'discrete', 'index', 'children', 'threshold', 'low', 'high'] # One tends to make a lot of these - best to keep 'em small.
+   
+  def __init__(self, int_dm, real_dm, cat, weight = None, index = None, rand = None, minimum_size = 1):
+    """Input consists of upto 5 arrays and one parameter. The first two parameters are data matrices, where each row contains the attributes for an example. Two are provided, one of numpy.int32 for the discrete features, another of numpy.float32 for the continuous features - one can be set to None to indicate none of that type, but obviously at least one has to be provided. The cat vector is then aligned with the data matrices and gives the category for each exemplar, as a numpy.int32. weight optionally provides a numpy.float32 vector that also aligns with the data matrices, and effectivly provides a continuous repeat count for each example, so some can be weighted as being more important. By default all items in the data matrices are used, however, instead an index vector can be provided that indexes the examples to be used by the tree - this not only allows a subset to be used but allows samples to be repeated if desired (This feature is actually used for building the tree recursivly, such that each DecTree object is in fact a node; also helps for creating a collection of trees with random trainning sets.). Finally, by default it considers all features at each level of the tree, however, if an integer rather than None is provided to the rand parameter it instead randomly selects a subset of attributes, of size rand, and then selects the best of this subset, with a new draw for each node in the tree. minimum_size gives a minimum number of samples in a node for it to be split - it needs more samples than this otherwise it will become a leaf. A simple tree prunning method; defaults to 1 which is in effect it disabled."""
 
     # If weight and/or index have not been provided create them - makes the code neater...
     if weight==None: weight = numpy.ones(cat.shape[0], dtype=numpy.float32)
     if index==None: index = numpy.arange(cat.shape[0], dtype=numpy.int32)
 
     # Collect the category statistics for this node - incase its a leaf or splits on discrete values and encounters a new value, or just for general curiosity...
-    self.dist = dict()
     cats = numpy.unique(cat[index])
-    for c in cats:
-      self.dist[c] = weight[index[numpy.where(cat[index]==c)]].sum()
+    self.dist_cat = numpy.empty(cats.shape[0], dtype=numpy.int32)
+    self.dist_weight = numpy.empty(cats.shape[0], dtype=numpy.float32)
+    
+    for i,c in enumerate(cats):
+      self.dist_cat[i] = c
+      self.dist_weight[i] = weight[index[numpy.where(cat[index]==c)]].sum()
 
     # Decide if its worth subdividing this node or not (Might change our mind later)...
-    if len(self.dist)<=1: self.leaf = True
+    if self.dist_cat.shape[0]<=1 or index.shape[0]<=minimum_size: self.leaf = True
     else:
       # Its subdivision time!..
       self.leaf = False
@@ -57,20 +62,21 @@ class DecTree:
         if choice[0]<int_size:
           self.discrete = True
           self.index = choice[0]
-          self.children = dict()
+          self.children = []
           for category, c_index in choice[1][1].iteritems():
-            self.children[category] = DecTree(int_dm, real_dm, cat, weight, c_index, rand)
+            self.children.append((category, DecTree(int_dm, real_dm, cat, weight, c_index, rand, minimum_size)))
+          self.children = tuple(self.children)
         else:
           self.discrete = False
           self.index = choice[0] - int_size
           self.threshold = choice[1][1]
-          self.low = DecTree(int_dm, real_dm, cat, weight, choice[1][2], rand)
-          self.high = DecTree(int_dm, real_dm, cat, weight, choice[1][3], rand)
+          self.low = DecTree(int_dm, real_dm, cat, weight, choice[1][2], rand, minimum_size)
+          self.high = DecTree(int_dm, real_dm, cat, weight, choice[1][3], rand, minimum_size)
 
 
   def entropy(self):
     """Returns the entropy of the data that was used to train this node. Really an internal method, exposed in case of rampant curiosity. Note that it is in nats, not bits."""
-    return scipy.stats.distributions.entropy(self.dist.values())
+    return scipy.stats.distributions.entropy(self.dist_weight)
 
   def __entropy_discrete(self, int_dm, column, cat, weight, index):
     """Internal method - works out the entropy after a discrete division. Also returns the indices for the children nodes as values in a dictionary indexed by the class they have for the relevant column. Returns a tuple (entropy, index dict.)"""
@@ -122,11 +128,13 @@ class DecTree:
 
   def classify(self, int_vec, real_vec):
     """Given a pair of vectors, one for discrete attributes and another for continuous atributes this returns the trees estimated distribution for the exampler. This distribution will take the form of a dictionary, which you must not modify, that is indexed by categories and goes to a count of how many examples with that category were in that leaf node. 99% of the time only one category should exist, though various scenarios can result in there being more than 1."""
-    if self.leaf: return self.dist
+    if self.leaf: return self.prob()
     elif self.discrete:
       key = int_vec[self.index]
-      if key in self.children: return self.children[key].classify(int_vec, real_vec)
-      else: return self.dist # Previously unseen attribute - fallback and return this nodes distribution.
+      for value, child in self.children:
+        if value==key:
+          return child.classify(int_vec, real_vec)
+      return self.prob() # Previously unseen attribute - fallback and return this nodes distribution.
     else: # Its continuous.
       itsLow = real_vec[self.index]<self.threshold
       if itsLow: return self.low.classify(int_vec, real_vec)
@@ -134,13 +142,15 @@ class DecTree:
 
 
   def prob(self):
-    """Returns the distribution over the categories of the trainning examples that went through this node - if this is a leaf its likelly to be non-zero for just one category. Represented as a dictionary category -> weight that only includes entrys if they are not 0. weights are the sum of the weights for the input, and are not normalised. Do not edit the return value."""
-    return self.dist
+    """Returns the distribution over the categories of the trainning examples that went through this node - if this is a leaf its likelly to be non-zero for just one category. Represented as a dictionary category -> weight that only includes entrys if they are not 0. weights are the sum of the weights for the input, and are not normalised."""
+    ret = dict()
+    for i in xrange(self.dist_cat.shape[0]): ret[self.dist_cat[i]] = self.dist_weight[i]
+    return ret
 
   def size(self):
     """Returns how many nodes make up the tree."""
     if self.leaf: return 1
-    elif self.discrete: return 1 + sum(map(lambda c: c.size(), self.children.itervalues()))
+    elif self.discrete: return 1 + sum(map(lambda c: c[1].size(), self.children))
     else: return 1 + self.low.size() + self.high.size()
 
   def isLeaf(self):
@@ -164,7 +174,10 @@ class DecTree:
 
   def getChildren(self):
     """Returns a dictionary of children nodes indexed by the attribute the decision is being made on if it makes a discrete decision, otherwise None. Note that any unseen attribute value will not be included."""
-    if not self.leaf and self.discrete: return self.children
+    if not self.leaf and self.discrete:
+      ret = dict()
+      for value, child in self.children: ret[value] = child
+      return ret
     else: return None
 
   def getThreshold(self):

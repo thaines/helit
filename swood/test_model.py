@@ -124,9 +124,28 @@ def test(get_dist):
     cat_ind = categories.index(cat)
     print 'Testing %s:'%cat
     correct = 0
-    for _ in range(test_count[cat]):
+    for _ in xrange(test_count[cat]):
       int_vec, real_vec = generate(cat)
       dist = get_dist(int_vec,real_vec)
       max_prob = max(dist.itervalues())
       if cat_ind in dist and dist[cat_ind]==max_prob: correct += 1
+    print 'Got %i out of %i correct (%.1f%%)'%(correct, test_count[cat], 100.0*correct/float(test_count[cat]))
+
+# Same as test, except it blocks the requests using a function that takes data matrics and returns lists of distributions instead...
+def test_multi(get_dist_multi):
+  for cat in categories:
+    cat_ind = categories.index(cat)
+    print 'Testing %s:'%cat
+    
+    int_dm = numpy.empty((test_count[cat],int_length), dtype=numpy.int32)
+    real_dm = numpy.empty((test_count[cat],real_length), dtype=numpy.float32)
+    for i in xrange(test_count[cat]):
+      int_dm[i,:], real_dm[i,:] = generate(cat)
+
+    dists = get_dist_multi(int_dm,real_dm)
+
+    correct = 0
+    for i in xrange(test_count[cat]):
+      max_prob = max(dists[i].itervalues())
+      if cat_ind in dists[i] and dists[i][cat_ind]==max_prob: correct += 1
     print 'Got %i out of %i correct (%.1f%%)'%(correct, test_count[cat], 100.0*correct/float(test_count[cat]))
