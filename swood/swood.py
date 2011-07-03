@@ -85,7 +85,7 @@ class SWood:
 
     return ret
 
-  def multi_classify(self, int_dm, real_dm):
+  def multi_classify(self, int_dm, real_dm, callback = None):
     """Identical to classify, except you give it a data matrix and it classifies each entry in turn, returning a list of distributions. Note that in the cass of using the compressed version of this class using this is essential to be computationally reasonable."""
 
     # Create the output...
@@ -94,7 +94,9 @@ class SWood:
     ret = map(lambda _: defaultdict(float), xrange(size))
 
     # Iterate and sum in the effect of each tree in turn, for all samples...
-    for dt in self.trees:
+    for i,dt in enumerate(self.trees):
+      if callback: callback(i, len(self.trees))
+      
       if isinstance(dt,str): dt = pickle.loads(bz2.decompress(dt))
       
       for ii, prob in enumerate(ret):
