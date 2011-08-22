@@ -10,6 +10,7 @@ Its a non-parametric Bayesian density estimator, using Gaussian kernels - its th
 
 Implementation is incredibly neat, given how complex the maths behind it is, and also 100% python, for maximum portability (Algorithm makes good use of vectorisation, so no significant speed advantage would be gained from using scipy.weave.). It also only requires a single 300 line file, though does make use of the gcp module.
 
+
 dpgmm.py - Contains the DPGMM class - pure awesome.
 
 test_1d_1mode.py - Tests it for 1D data with a single mode.
@@ -20,6 +21,4 @@ test_stick_inc.py - Like the above, but does things another way.
 
 readme.txt - This file, which gets copied into the documentation.
 make_doc.py - Creates the html documentation.
-
-
 
