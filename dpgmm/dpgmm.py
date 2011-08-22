@@ -89,7 +89,7 @@ class DPGMM:
 
 
   def setPrior(self, mean = None, covar = None, weight = None, scale = 1.0):
-    """Sets a prior for the mixture components - basically a pass through for the addPrior method of the GaussianPrior class. If None (The default) is provided for the mean or the covar then it calculates these values for the currently contained sample set and uses them. Note that the prior defaults to nothing - this must be called before fitting the model, and if mean/covar are not provided then there must be enough data points to avoid problems. weight defaults to the number of dimensions if not specified (i.e. the minimum number to get a valid distribution out.). If covar is not given then scale is a multiplier for the covariance matrix - setting it high will soften the prior up and make it consider softer solutions when given less data."""
+    """Sets a prior for the mixture components - basically a pass through for the addPrior method of the GaussianPrior class. If None (The default) is provided for the mean or the covar then it calculates these values for the currently contained sample set and uses them. Note that the prior defaults to nothing - this must be called before fitting the model, and if mean/covar are not provided then there must be enough data points to avoid problems. weight defaults to the number of dimensions if not specified. If covar is not given then scale is a multiplier for the covariance matrix - setting it high will soften the prior up and make it consider softer solutions when given less data. Returns True on success, False on failure - failure can happen if there is not enough data contained for automatic calculation (Think singular covariance matrix)."""
     # Handle mean/covar being None...
     if mean==None or covar==None:
       inc = gcp.GaussianInc(self.dims)
@@ -99,10 +99,15 @@ class DPGMM:
       if mean==None: mean = ggd.getMean()
       if covar==None: covar = ggd.getCovariance() * scale
 
+    if numpy.linalg.det(covar)<1e-12: return False
+
     # Update the prior...
     self.prior.reset()
     self.prior.addPrior(mean, covar, weight)
     self.priorT = self.prior.intProb()
+
+    return True
+
 
   def setConcGamma(self, alpha, beta):
     """Sets the parameters for the Gamma prior over the concentration. Note that whilst alpha and beta are used for the parameter names, in accordance with standard terminology for Gamma distributions, they are not related to the model variable names."""
