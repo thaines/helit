@@ -10,6 +10,7 @@ import numpy as np
 
 
 def cv2array(im):
+  """Converts a cv array to a numpy array."""
   depth2dtype = {
         cv.IPL_DEPTH_8U: 'uint8',
         cv.IPL_DEPTH_8S: 'int8',
@@ -31,6 +32,7 @@ def cv2array(im):
 
 
 def array2cv(a):
+  """Converts a numpy array to a cv array, if possible."""
   dtype2depth = {
         'uint8':   cv.IPL_DEPTH_8U,
         'int8':    cv.IPL_DEPTH_8S,
