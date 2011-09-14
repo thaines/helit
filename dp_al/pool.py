@@ -33,7 +33,7 @@ Entity = collections.namedtuple('Entity', ['sample', 'prob', 'ident'])
 class Pool:
   """Represents a pool of entities that can be used for trainning with active learning. Simply contains the entities, their category probabilities and some arbitary identifier (For testing the identifier is often set to be the true category.). Provides active learning methods to extract the entities via various techneques based on the category probabilites. The category probabilites are a dictionary, indexed by category names, and includes 'None' as the probability of it being draw from the prior. Each term consists of P(data|category,model). The many select methods remove an item from the pool based on an active learning approach - the user is then responsible for querying the oracle for its category and updating the model accordingly. Before calling a select method you need to call update to update the probabilities associated with each entity, providing it with the current model, though you can batch things by calling update once before several select calls. The select methods return the named tuple Entity, which is (sample, prob, ident)."""
   def __init__(self):
-    self.entities = [] # Each entity is a 3-list, where the first entry is the thing being stored, the second the associated category probabilities dictionary, and the third the identifier of the thing, which for testing is often the true category. These are basically Entity objects, but left editable as lists.
+    self.entities = [] # Each entity is a 4-list, where the first entry is the thing being stored, the second the associated category probabilities dictionary, and the third the identifier of the thing, which for testing is often the true category. These are basically Entity objects, but left editable as lists. The 4th item is then the state, used to optimise repeated calls to update.
     
     self.prior = collections.defaultdict(lambda: 1.0)
     self.count = None
@@ -43,13 +43,13 @@ class Pool:
     
 
   def store(self, sample, ident=None):
-    """Stores the provided sample into the pool, for later extraction. An arbitary identifier can optionally be provided for testing purposes. The probability distribution is left empty at this time - a call to update will fix that for all objects currently in thn pool."""
-    self.entities.append([sample, None, ident])
+    """Stores the provided sample into the pool, for later extraction. An arbitary identifier can optionally be provided for testing purposes. The probability distribution is left empty at this time - a call to update will fix that for all objects currently in the pool."""
+    self.entities.append([sample, None, ident, dict()])
 
 
   def update(self, classifier, dp_ready = True):
     """This is given an object that impliments the ProbCat interface from the p_cat module - it then uses that object to update the probabilities for all entities in the pool. Assumes the sample provided to store can be passed into the getProb method of the classifier. dp_ready should be left True if one of the select methods that involves dp's is going to be called, so it can update the concentration."""
-    for entity in self.entities: entity[1] = classifier.getDataProb(entity[0])
+    for entity in self.entities: entity[1] = classifier.getDataProb(entity[0], entity[3])
 
     self.count = dict(classifier.getCatCounts())
 
@@ -68,7 +68,7 @@ class Pool:
 
   def data(self):
     """Returns the Entity objects representing the current pool, as a list. Safe to edit."""
-    return map(Entity._make, self.entities)
+    return map(lambda r: Entity._make(r[:3]), self.entities)
 
   def getConcentration(self):
     """Pass through to get the DP concentration."""
@@ -86,12 +86,12 @@ class Pool:
     
 
   def selectRandom(self):
-    """Returns an Entity randomly - effectivly the dumbest possible algorithm, even though it has a nasty habbit of doing quite well."""
+    """Returns an Entity randomly - effectivly the dumbest possible algorithm, though it has a nasty habit of doing quite well."""
     pos = random.randrange(len(self.entities))
 
     ret = self.entities[pos]
     self.entities = self.entities[:pos] + self.entities[pos+1:]
-    return Entity._make(ret)
+    return Entity._make(ret[:3])
 
   def selectRandomIdent(self, ident):
     """Selects randomly from all entities in the pool with the given identifier. It is typically used when the identifiers are the true categories, to compare with algorithms that are not capable of making a first choice, where the authors of the test have fixed the first item to be drawn. Obviously this is cheating, but it is sometimes required to do a fair comparison."""
@@ -105,7 +105,7 @@ class Pool:
 
     ret = self.entities[pos]
     self.entities = self.entities[:pos] + self.entities[pos+1:]
-    return Entity._make(ret)
+    return Entity._make(ret[:3])
 
 
   def selectOutlier(self, beta = None):
@@ -133,7 +133,7 @@ class Pool:
 
     ret = self.entities[pos]
     self.entities = self.entities[:pos] + self.entities[pos+1:]
-    return Entity._make(ret)
+    return Entity._make(ret[:3])
 
   def selectEntropy(self, beta = None):
     """Selects the sample with the greatest entropy - the most common uncertainty-based sampling method. If beta is provided instead of selecting the maximum it makes a random selection by weighting each sample by exp(-beta * entropy)."""
@@ -164,7 +164,7 @@ class Pool:
 
     ret = self.entities[pos]
     self.entities = self.entities[:pos] + self.entities[pos+1:]
-    return Entity._make(ret)
+    return Entity._make(ret[:3])
 
 
   def selectDP(self, hardChoice = False):
@@ -192,7 +192,7 @@ class Pool:
     # Remove it from the pool, package it up and return it...
     ret = self.entities[pos]
     self.entities = self.entities[:pos] + self.entities[pos+1:]
-    return Entity._make(ret)
+    return Entity._make(ret[:3])
 
 
   def selectWrong(self, softSelect = False, hardChoice = False, dp = True):
@@ -244,7 +244,7 @@ class Pool:
 
     ret = self.entities[pos]
     self.entities = self.entities[:pos] + self.entities[pos+1:]
-    return Entity._make(ret)
+    return Entity._make(ret[:3])
 
 
   @staticmethod

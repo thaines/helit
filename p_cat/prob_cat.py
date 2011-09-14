@@ -38,15 +38,15 @@ class ProbCat:
     raise NotImplementedError('getCatCounts has not been implimented.')
 
 
-  def getDataProb(self, sample):
-    """Returns a dictionary indexed by the various categories, with the probabilities of the sample being drawn from the respective categories. Must also include an entry indexed by 'None' that represents the probability of the sample comming from the prior. Note that this is P(data|category,model) - you probably want it reversed, which requires Bayes rule be applied."""
+  def getDataProb(self, sample, state = None):
+    """Returns a dictionary indexed by the various categories, with the probabilities of the sample being drawn from the respective categories. Must also include an entry indexed by 'None' that represents the probability of the sample comming from the prior. Note that this is P(data|category,model) - you probably want it reversed, which requires Bayes rule be applied. state is an optional dictionary - if you are calling this repeatedly on the same sample, e.g. during incrimental learning, then state allows an algorithm to stoere data to accelerate future calls. There should be a dictionary for each sample, and it should be empty on the first call. The implimentation will presume that the sample is identical for each call but that the model will not be, though as it would typically be used for incrimental learning the speed up can be done under the assumption that the model has only changed a little bit."""
     raise NotImplementedError('getDataProb has not been implimented.')
 
 
-  def getProb(self, sample, weight = False, conc = None):
-    """This calls through to getDataProb and then applies Bayes rule to return a dictionary of values representing P(data,category|model) = P(data|category,model)*P(category). Note that whilst the two terms going into the return value will be normalised the actual return value will not - you will typically normalise to get P(category|data,model). The weight parameter indicates the source of P(class) - False (The default) indicates to use a uniform prior, True to weight by the number of instances of each category that have been provided to the classifier. Alternativly a dictionary indexed by the categories can be provided of weights, which will be normalised and used. By default the prior probability is ignored, but if a concentration (conc) value is provided it assumes a Dirichlet process, and you will have an entry in the return value, indexed by None, indicating the probability that it belongs to a previously unhandled category. For normalisation purposes conc is always assumed to be in ratio to the number of samples that have been provided to the classifier, regardless of weight."""
+  def getProb(self, sample, weight = False, conc = None, state = None):
+    """This calls through to getDataProb and then applies Bayes rule to return a dictionary of values representing P(data,category|model) = P(data|category,model)*P(category). Note that whilst the two terms going into the return value will be normalised the actual return value will not - you will typically normalise to get P(category|data,model). The weight parameter indicates the source of P(class) - False (The default) indicates to use a uniform prior, True to weight by the number of instances of each category that have been provided to the classifier. Alternativly a dictionary indexed by the categories can be provided of weights, which will be normalised and used. By default the prior probability is ignored, but if a concentration (conc) value is provided it assumes a Dirichlet process, and you will have an entry in the return value, indexed by None, indicating the probability that it belongs to a previously unhandled category. For normalisation purposes conc is always assumed to be in ratio to the number of samples that have been provided to the classifier, regardless of weight. state is passed through to the getDataProb call."""
     # Get the data probabilities...
-    dprob = self.getDataProb(sample)
+    dprob = self.getDataProb(sample, state)
 
     # Calculate the class probabilities, including normalisation and the inclusion of conc if need be...
     if weight==False: cprob = dict(map(lambda c: (c,1.0), self.getCatList()))
@@ -69,9 +69,9 @@ class ProbCat:
     return ret
 
 
-  def getCat(self, sample, weight = False, conc = None):
-    """Simply calls through to getProb and returns the category with the highest probability. If conc is provided it can be None, to indicate a new category is more likelly than any of the existing ones. A simple conveniance method."""
-    prob = self.getProb(sample, weight, conc)
+  def getCat(self, sample, weight = False, conc = None, state = None):
+    """Simply calls through to getProb and returns the category with the highest probability. If conc is provided it can be None, to indicate a new category is more likelly than any of the existing ones. A simple conveniance method. state is passed through to the getDataProb call."""
+    prob = self.getProb(sample, weight, conc, state)
     
     best = None
     ret = None

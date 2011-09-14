@@ -75,7 +75,7 @@ class ClassifyDPGMM(ProbCat):
     return self.counts
 
 
-  def getDataProb(self, sample):
+  def getDataProb(self, sample, state = None):
     ret = dict()
     for cat, mm in self.cats.iteritems(): ret[cat] = mm.prob(sample)
     return ret

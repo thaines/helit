@@ -78,7 +78,7 @@ class ClassifyGaussian(ProbCat):
     return self.cst
 
 
-  def getDataProb(self, sample):
+  def getDataProb(self, sample, state = None):
     ret = dict()
     for cat, st in self.getStudentT().iteritems(): ret[cat] = st.prob(sample)
     return ret
