@@ -201,7 +201,6 @@ class Pool:
     
     wrong = numpy.ones(len(self.entities))
     for i, entity in enumerate(self.entities):
-      
       # Calculate the probability of selecting each of the known classes...
       probSel = dict()
       div = 0.0
@@ -210,6 +209,12 @@ class Pool:
           pp = p * self.prior[cat]
           probSel[cat] = pp
           div += pp
+
+      if div<1e-5:
+        for cat in probSel.iterkeys():
+          probSel[cat] = self.prior[cat]
+          div += probSel[cat]
+      
       for cat in probSel.iterkeys(): probSel[cat] /= div
 
       # Calculate the probability of it being each of the options...
