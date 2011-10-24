@@ -110,7 +110,7 @@ class DPGMM:
 
 
   def setConcGamma(self, alpha, beta):
-    """Sets the parameters for the Gamma prior over the concentration. Note that whilst alpha and beta are used for the parameter names, in accordance with standard terminology for Gamma distributions, they are not related to the model variable names."""
+    """Sets the parameters for the Gamma prior over the concentration. Note that whilst alpha and beta are used for the parameter names, in accordance with standard terminology for Gamma distributions, they are not related to the model variable names. Default values are (1,1)."""
     self.beta[0] = alpha
     self.beta[1] = beta
 
@@ -205,15 +205,16 @@ class DPGMM:
       # Update the z values...
       prev[self.skip:,:] = self.z[self.skip:,:]
       
+      vExpNegLogCum = self.vExpNegLog.cumsum()
       base = self.vExpLog.copy()
-      for k in xrange(1,self.stickCap): base[k] += self.vExpNegLog[:k].sum()
+      base[1:] += vExpNegLogCum[:-1]
       self.z[self.skip:,:] = numpy.exp(base).reshape((1,self.stickCap))
 
       for k in xrange(self.stickCap):
         self.z[self.skip:,k] *= self.nT[k].batchProb(dm[self.skip:,:])
 
       norm = self.priorT.batchProb(dm[self.skip:,:])
-      norm *= math.exp(expLogStick + self.vExpNegLog.sum()) / (1.0 - math.exp(expNegLogStick))
+      norm *= math.exp(expLogStick + vExpNegLogCum[-1]) / (1.0 - math.exp(expNegLogStick))
 
       self.z[self.skip:,:] /= (self.z[self.skip:,:].sum(axis=1) + norm).reshape((self.z.shape[0]-self.skip,1))
 
