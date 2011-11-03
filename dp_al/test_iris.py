@@ -50,6 +50,13 @@ height = 200
 
 
 
+# Fetch the task...
+if len(sys.argv)<2: task = 'p_wrong_soft'
+else:
+  task = sys.argv[1]
+  assert(task in Pool.methods())
+  
+  
 # Load the dataset...
 data = Iris1D()
 print 'Loaded %i examples'%data.getVectors().shape[0]
@@ -223,25 +230,25 @@ print 'Doing active learning...'
 p = ProgBar()
 p.callback(0,limit)
 conc_graph = []
-conc_graph.append(visualise('%s/query_%02i'%(out_dir,0)))
+conc_graph.append(visualise('%s/query_%s_%02i'%(out_dir, task, 0)))
 
 for ii in xrange(1,limit+1):
   p.callback(ii,limit)
 
   # Select a sample and update the model...
   pool.update(classifier)
-  sample, prob_dict, cat = pool.select('p_wrong_hard')
+  sample, prob_dict, cat = pool.select(task)
   classifier.add(sample, cat)
 
   # Visualise the model after this many querys...
-  conc_graph.append(visualise('%s/query_%02i'%(out_dir,ii)))
+  conc_graph.append(visualise('%s/query_%s_%02i'%(out_dir, task, ii)))
 
 del p
 
 
 
 # Save out the concentration graph, to indicate interest levels...
-f = open('%s/conc.csv'%out_dir, 'w')
+f = open('%s/conc_%s.csv'%(out_dir,task), 'w')
 f.write('queries, new_interest\n')
 for i,c in enumerate(conc_graph):
   f.write('%i, %f\n'%(i,c))
