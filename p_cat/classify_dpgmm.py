@@ -43,7 +43,7 @@ class ClassifyDPGMM(ProbCat):
     self.counts = None
 
 
-  def inc(self, state):
+  def setInc(self, state):
     """With a state of False it disables incrimental learning until further notice, with a state of True it reenables it, and makes sure that it is fully up to date by updating everything. Note that when reenabled it assumes that enough data is avaliable, and will crash if not, unlike the incrimental approach that just twiddles its thumbs - in a sense this is safer if you want to avoid bad results."""
     self.inc = state
 

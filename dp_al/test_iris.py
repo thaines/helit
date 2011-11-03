@@ -51,7 +51,7 @@ height = 200
 
 
 # Fetch the task...
-if len(sys.argv)<2: task = 'p_wrong_soft'
+if len(sys.argv)<2: task = 'p_wrong_hard'
 else:
   task = sys.argv[1]
   assert(task in Pool.methods())
