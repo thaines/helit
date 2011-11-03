@@ -2,11 +2,18 @@
 
 # Copyright 2011 Tom SF Haines
 
-# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 
-#   http://www.apache.org/licenses/LICENSE-2.0
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
 
-# Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 
@@ -19,8 +26,8 @@ import numpy
 import numpy.random
 import cv
 
-import dhdp
-print 'Algorithm =', dhdp.getAlgorithm()
+import ddhdp
+print 'Algorithm =', ddhdp.getAlgorithm()
 
 
 from utils.prog_bar import ProgBar
@@ -85,17 +92,17 @@ def docDicToArray(docDic):
 
 
 # Create a corpus...
-c = dhdp.Corpus()
+c = ddhdp.Corpus()
 c.setWordCount(5*5)
 
 
 
-# Fill in documents...
+# Fill in the documents...
 docs = []
 for _ in xrange(documentsToTrain):
   docDic = sampleDocument()
   docs.append(docDicToArray(docDic))
-  doc = dhdp.Document(docDic)
+  doc = ddhdp.Document(docDic)
   c.add(doc)
 
 
@@ -132,7 +139,7 @@ cv.SaveImage('test_lines/docs.png',img)
 
 
 # Train...
-params = dhdp.Params()
+params = ddhdp.Params()
 params.runs = 1
 params.samples = 1
 #params.burnIn = 10000
@@ -148,15 +155,14 @@ del p
 #model.bestSampleOnly()
 
 
-print 'Discovered topics:', model.getSample(0).getTopicCount()
-print 'Discovered clusters:', model.getSample(0).getClusterCount()
-if c.getCalcBeta(): print 'Beta:', model.getSample(0).getBeta()
+sam = model.getSample(0)
+print 'Discovered topics:', sam.getTopicCount()
+print 'Discovered clusters:', sam.getClusterCount()
+if c.getCalcBeta(): print 'Beta:', sam.getBeta()
 
 
 
 # Visualise the topics...
-sam = model.getSample(0)
-
 for t in xrange(sam.getTopicCount()):
   multi = sam.getTopicMultinomial(t)
   dicForm = dict()

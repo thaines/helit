@@ -31,7 +31,7 @@ readme = readme.replace('\n','<br/>')
 out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
 
 
-# lda functions...
+# Functions...
 funcs = doc.docroutine(dhdp.getAlgorithm)
 funcs = funcs.replace('&nbsp;',' ')
 out.write(doc.bigsection('Functions','#ffffff','#eeaa77',funcs))
