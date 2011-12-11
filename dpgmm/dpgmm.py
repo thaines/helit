@@ -185,7 +185,9 @@ class DPGMM:
 
       sums = self.z.sum(axis=0)
       self.v[:,0] += sums
-      for k in xrange(self.stickCap): self.v[k,1] += self.z.shape[0] - sums[:k+1].sum()
+      
+      self.v[:,1] += self.z.shape[0]
+      self.v[:,1] -= numpy.cumsum(sums)
 
       # Calculate the log expectations on the stick breaking weights...
       self.vExpLog[:] = -scipy.special.psi(self.v.sum(axis=1))
