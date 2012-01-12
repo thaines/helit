@@ -1,5 +1,7 @@
 Stochastic Woodlands
 
+Note - this module has been superseded by the 'df' module. It should not be used by new code, and porting old code to the 'df' module might prove advantageous.
+
 An implementation of the method popularised by the paper
 'Random Forests' by L. Breiman
 which is a refinement, with a decent helping of rigour, of the papers
