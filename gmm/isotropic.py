@@ -83,7 +83,10 @@ class IsotropicGMM(Mixture):
     for (int iter=0;iter<maxIters;iter++)
     {
      // e-step - for all features calculate the weight vector (Also do convergance detection.)...
-     for (int c=0;c<Nmean[0];c++) norms[c] = pow(sqrt2pi*sd[c],Nmean[1]);
+     for (int c=0;c<Nmean[0];c++)
+     {
+      norms[c] = pow(sqrt2pi*sd[c], Nmean[1]);
+     }
      
      bool done = true;
      for (int f=0;f<Nfeats[0];f++)
@@ -98,7 +101,8 @@ class IsotropicGMM(Mixture):
         distSqr += diff*diff;
        }
        pwv[c] = WV2(f,c);
-       WV2(f,c) = mix[c]*exp(-0.5*distSqr/(sd[c]*sd[c])); // Unnormalised.
+       float core = -0.5*distSqr / (sd[c]*sd[c]);
+       WV2(f,c) = mix[c]*exp(core); // Unnormalised.
        WV2(f,c) /= norms[c]; // Normalisation
        sum += WV2(f,c);
       }
@@ -128,11 +132,20 @@ class IsotropicGMM(Mixture):
       for (int c=0;c<Nmean[0];c++)
       {
        mix[c] += WV2(f,c);
-       for (int i=0;i<Nmean[1];i++)
+       if (WV2(f,c)>1e-6) // Msut not update if value is too low due to division in update - NaN avoidance.
        {
-        MEAN2(c,i) += WV2(f,c) * (FEATS2(f,i) - MEAN2(c,i)) / mix[c];
+        for (int i=0;i<Nmean[1];i++)
+        {
+         MEAN2(c,i) += WV2(f,c) * (FEATS2(f,i) - MEAN2(c,i)) / mix[c];
+        }
        }
       }
+     }
+     
+     // prevent the mix of any given component getting too low - will cause the algorithm to NaN...
+     for (int c=0;c<Nmean[0];c++)
+     {
+      if (mix[c]<1e-6) mix[c] = 1e-6;
      }
 
      // *Calculate the sd simply, initial calculation is sum of squared differences...
@@ -157,7 +170,7 @@ class IsotropicGMM(Mixture):
       sd[c] = sqrt(sd[c]/(mix[c]*float(Nfeats[1])));
       mixSum += mix[c];
      }
-
+     
      for (int c=0;c<Nmean[0];c++) mix[c] /= mixSum;
     }
     """

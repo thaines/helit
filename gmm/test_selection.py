@@ -20,7 +20,7 @@ import gmm
 
 
 
-def test(model,sampCount = 1000):
+def test(model, sampCount = 1000):
   # Generate a random set of Gaussians to test with...
   count = random.randrange(2,5)
   mix = numpy.random.rand(count) + 1.0
@@ -51,14 +51,19 @@ def test(model,sampCount = 1000):
   print 'Estimated:'
   print 'count =',model.clusterCount()
   for c in xrange(model.clusterCount()):
-    print 'mix = %f; mean = %s; sd = %f;'%(model.getMix(c), str(model.getCentre(c)), model.getSD(c))
+    if hasattr(model,'getMix'):
+      print 'mix = %f; mean = %s; sd = %f;'%(model.getMix(c), str(model.getCentre(c)), model.getSD(c))
+    else:
+      print 'centre = %s;'%str(model.getCentre(c))
+  print
 
 
 
 def testAll():
+  print 'Testing kmeans3...'
+  test(gmm.KMeans3())
+  
   print 'Testing isotropic GMM...'
   test(gmm.IsotropicGMM())
-
-
 
 testAll()
