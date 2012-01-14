@@ -19,9 +19,9 @@ from gcp import gcp
 
 
 class DPGMM:
-  """A Dirichlet process Gaussian mixture model, implimented using the mean-field variational method, with the stick tying rather than capping method such that incrimental usage works."""
+  """A Dirichlet process Gaussian mixture model, implimented using the mean-field variational method, with the stick tying rather than capping method such that incrimental usage works. For those unfamiliar with Dirichlet processes the key thing to realise is that each stick corresponds to a mixture component for density estimation or a cluster for clustering, so the stick cap is the maximum number of these entities (Though it can choose to use less sticks than supplied.). As each stick has a computational cost standard practise is to start with a low number of sticks and then increase the count, updating the model each time, until no improvement to the model is obtained with further sticks. Note that because the model is fully Bayesian the output is in fact a probability distribution over the probability distribution from which the data is drawn, i.e. instead of the point estimate of a Gaussian mixture model you get back a probability distribution from which you can draw a Gaussian mixture model, though shortcut methods are provided to get the probability/component membership probability of features. Regarding the model it actually has an infinite number of sticks, but as computers don't have an infinite amount of memory or computation the sticks count is capped. The infinite number of sticks past the cap are still modeled in a limited manor, such that you can get the probability in clustering of a sample/feature belonging to an unknown cluster (i.e. one of the infinite number past the stick cap.). It also means that there is no explicit cluster count, as it is modelling a probability distribution over the number of clusters - if you need a cluster count the best choice is to threshold on the component weights, as returned by sampleMixture(...) or intMixture(...), i.e. keep only thise that are higher than a percentage of the highest weight."""
   def __init__(self, dims, stickCap = 1):
-    """You initialise with the number of dimensions and the cap on the number of sticks to have. Note that the stick cap should be high enough for it to represent enough components, but not so high that you run out of memory. You can always set the stick cap to 1 and use the solve grow methods, which in effect finds the right number of sticks. Altenativly if only given one parameter of the same type it acts as a copy constructor."""
+    """You initialise with the number of dimensions and the cap on the number of sticks to have. Note that the stick cap should be high enough for it to represent enough components, but not so high that you run out of memory. The better option is to set the stick cap to 1 (The default) and use the solve grow methods, which in effect find the right number of sticks. Alternativly if only given one parameter of the same type it acts as a copy constructor."""
     if isinstance(dims, DPGMM):
       self.dims = dims.dims
       self.stickCap = dims.stickCap
@@ -89,7 +89,7 @@ class DPGMM:
 
 
   def setPrior(self, mean = None, covar = None, weight = None, scale = 1.0):
-    """Sets a prior for the mixture components - basically a pass through for the addPrior method of the GaussianPrior class. If None (The default) is provided for the mean or the covar then it calculates these values for the currently contained sample set and uses them. Note that the prior defaults to nothing - this must be called before fitting the model, and if mean/covar are not provided then there must be enough data points to avoid problems. weight defaults to the number of dimensions if not specified. If covar is not given then scale is a multiplier for the covariance matrix - setting it high will soften the prior up and make it consider softer solutions when given less data. Returns True on success, False on failure - failure can happen if there is not enough data contained for automatic calculation (Think singular covariance matrix)."""
+    """Sets a prior for the mixture components - basically a pass through for the addPrior method of the GaussianPrior class. If None (The default) is provided for the mean or the covar then it calculates these values for the currently contained sample set and uses them. Note that the prior defaults to nothing - this must be called before fitting the model, and if mean/covar are not provided then there must be enough data points to avoid problems. weight defaults to the number of dimensions if not specified. If covar is not given then scale is a multiplier for the covariance matrix - setting it high will soften the prior up and make it consider softer solutions when given less data. Returns True on success, False on failure - failure can happen if there is not enough data contained for automatic calculation (Think singular covariance matrix). This must be called before any solve methods are called."""
     # Handle mean/covar being None...
     if mean==None or covar==None:
       inc = gcp.GaussianInc(self.dims)
@@ -110,7 +110,7 @@ class DPGMM:
 
 
   def setConcGamma(self, alpha, beta):
-    """Sets the parameters for the Gamma prior over the concentration. Note that whilst alpha and beta are used for the parameter names, in accordance with standard terminology for Gamma distributions, they are not related to the model variable names. Default values are (1,1)."""
+    """Sets the parameters for the Gamma prior over the concentration. Note that whilst alpha and beta are used for the parameter names, in accordance with standard terminology for Gamma distributions, they are not related to the model variable names. Default values are (1,1). The concentration parameter controls how much information the model requires to justify using a stick, such that lower numbers result in fewer sticks, higher numbers in larger numbers of sticks. The concentration parameter is learnt from the data, under the Gamma distribution prior set with this method, but this prior can still have a strong effect. If your data is not producing as many clusters as you expect then adjust this parameter accordingly, (e.g. increase alpha or decrease beta, or both.), but don't go too high or it will start hallucinating patterns where none exist!"""
     self.beta[0] = alpha
     self.beta[1] = beta
 
@@ -119,7 +119,7 @@ class DPGMM:
     self.epsilon = epsilon
 
   def add(self, sample):
-    """Adds either a single sample or several samples - either give a single sample as a 1D array or a 2D array as a data matrix, where each sample is [i,:]."""
+    """Adds either a single sample or several samples - either give a single sample as a 1D array or a 2D array as a data matrix, where each sample is [i,:]. (Sample = feature. I refer to them as samples as that more effectivly matches the concept of this modeling the probability distribution from which the features are drawn.)"""
     sample = numpy.asarray(sample, dtype=numpy.float32)
     if len(sample.shape)==1:
       self.data.append(numpy.reshape(sample, (1,self.dims)))
@@ -137,18 +137,18 @@ class DPGMM:
     return self.data[0]
 
   def size(self):
-    """Returns the number of samples contained within."""
+    """Returns the number of samples that have been added."""
     dm = self.getDM()
     if dm!=None: return dm.shape[0]
     else: return 0
 
 
   def lock(self, num=0):
-    """Prevents the algorithm updating the component weighting for the first num samples in the database - potentially useful for incrimental learning. If set to 0, the default, everything is updated."""
+    """Prevents the algorithm updating the component weighting for the first num samples in the database - potentially useful for incrimental learning if in a rush. If set to 0, the default, everything is updated."""
     self.skip = num
 
   def solve(self, iterCap=None):
-    """Iterates updating the parameters until the model has converged. Note that the system is designed such that you can converge, add more samples, and converge again. Returns the number of iterations required to acheive convergance. You can optionally provide a cap on the number of iterations it will perform."""
+    """Iterates updating the parameters until the model has converged. Note that the system is designed such that you can converge, add more samples, and converge again, i.e. incrimental learning. Alternativly you can converge, add more sticks, and then convegre again without issue, which makes finding the correct number of sticks computationally reasonable.. Returns the number of iterations required to acheive convergance. You can optionally provide a cap on the number of iterations it will perform."""
 
     # Deal with the z array being incomplete - enlarge/create as needed. Random initialisation is used...
     dm = self.getDM()
@@ -242,7 +242,7 @@ class DPGMM:
 
 
   def sampleMixture(self):
-    """Once solve has been called and a distribution over models determined this allows you to draw a specific model. Returns a 2-tuple, where the first entry is an array of weights and the second entry a list of Gaussian distributions - they line up. The probability of a specific point is then the sum of each weight multiplied by the probability of it comming from the associated Gaussian. Note that this includes an additional term to cover the infinite number of terms that follow, which is really an approximation, but tends to be such a small amount as to not matter."""
+    """Once solve has been called and a distribution over models determined this allows you to draw a specific model. Returns a 2-tuple, where the first entry is an array of weights and the second entry a list of Gaussian distributions - they line up, to give a specific Gaussian mixture model. For density estimation the probability of a specific point is then the sum of each weight multiplied by the probability of it comming from the associated Gaussian. For clustering the probability of a specific point belonging to a cluster is the weight multiplied by the probability of it comming from a specific Gaussian, normalised for all clusters. Note that this includes an additional term to cover the infinite number of terms that follow, which is really an approximation, but tends to be such a small amount as to not matter. Be warned that if doing clustering a point could be assigned to this 'null cluster', indicating that the model thinks the point belongs to an unknown cluster (i.e. one that it doesn't have enough information, or possibly sticks, to instanciate.)."""
     weight = numpy.empty(self.stickCap+1, dtype=numpy.float32)
     stick = 1.0
     for i in xrange(self.stickCap):
@@ -257,7 +257,7 @@ class DPGMM:
     return (weight,gauss)
 
   def intMixture(self):
-    """Returns the details needed to calculate the probability of a point given the density estimate, but with the actual draw of a mixture model from the model integrated out. Basically you get a 2-tuple - the first entry is an array of weights, the second a list of student-t distributions. The weights and distributions align, such that the probability for a point is the sum over all entrys of the weight multiplied by the probability of the sample comming from the student-t distribution. The prob method of this class calculates the use of this for a sample directly. Do not edit the returned value, and it will not persist if solve is called again. This must only be called after solve is called at least once. Note that an extra element is included to cover the remainder of the infinite number of elements."""
+    """Returns the details needed to calculate the probability of a point given the model (density estimation), or its probability of belonging to each stick (clustering), but with the actual draw of a mixture model from the model integrated out. It is an apprximation, though not a bad one. Basically you get a 2-tuple - the first entry is an array of weights, the second a list of student-t distributions. The weights and distributions align, such that for density estimation the probability for a point is the sum over all entrys of the weight multiplied by the probability of the sample comming from the student-t distribution. The prob method of this class calculates the use of this for a sample directly. For clustering the probability of belonging to each cluster is calculated as the weight multiplied by the probability of comming from the associated student-t, noting that you will need to normalise. stickProb allows you to get this assesment directly. Do not edit the returned value; also, it will not persist if solve is called again. This must only be called after solve is called at least once. Note that an extra element is included to cover the remainder of the infinite number of elements - be warned that a sample could have the highest probability of belonging to this dummy element, indicating that it probably belongs to something for which there is not enough data to infer a reasonable model."""
     weights = numpy.empty(self.stickCap+1, dtype=numpy.float32)
     
     stick = 1.0
@@ -270,17 +270,58 @@ class DPGMM:
     return (weights, self.nT + [self.priorT])
   
   def prob(self, x):
-    """Given a sample this returns its probability, with the actual draw from the model integrated out. Must not be called until after solve has been called."""
-    ret = 0.0
-    stick = 1.0
-    for i in xrange(self.stickCap):
-      bp = self.nT[i].prob(x)
-      ev = self.v[i,0] / self.v[i,:].sum()
-      ret += bp * stick * ev
-      stick *= 1.0 - ev
-    bp = self.priorT.prob(x)
-    ret += bp * stick 
-    return ret
+    """Given a sample this returns its probability, with the actual draw from the model integrated out. Must not be called until after solve has been called. This is the density estimate if using this model for density estimation. Will also accept a data matrix, in which case it will return a 1D array of probabilities aligning with the input data matrix."""
+    x = numpy.asarray(x)
+    if len(x.shape)==1:
+      ret = 0.0
+      stick = 1.0
+      for i in xrange(self.stickCap):
+        bp = self.nT[i].prob(x)
+        ev = self.v[i,0] / self.v[i,:].sum()
+        ret += bp * stick * ev
+        stick *= 1.0 - ev
+      bp = self.priorT.prob(x)
+      ret += bp * stick
+      return ret
+    else:
+      ret = numpy.zeros(x.shape[0])
+      stick = 1.0
+      for i in xrange(self.stickCap):
+        bp = self.nT[i].batchProb(x)
+        ev = self.v[i,0] / self.v[i,:].sum()
+        ret += bp * stick * ev
+        stick *= 1.0 - ev
+      bp = self.priorT.batchProb(x)
+      ret += bp * stick
+      return ret
+  
+  def stickProb(self, x):
+    """Given a sample this returns its probability of belonging to each of the components, as a 1D array, including a dummy element at the end to cover the infinite number of sticks not being explicitly modeled. This is the probability of belonging to each cluster if using the model for clustering. Must not be called until after solve has been called. Will also accept a data matrix, in which case it will return a matrix with a row for each vector in the input data matrix."""
+    x = numpy.asarray(x)
+    if len(x.shape)==1:
+      ret = numpy.empty(self.stickCap+1, dtype=numpy.float32)
+      stick = 1.0
+      for i in xrange(self.stickCap):
+        bp = self.nT[i].prob(x)
+        ev = self.v[i,0] / self.v[i,:].sum()
+        ret[i] = bp * stick * ev
+        stick *= 1.0 - ev
+      bp = self.priorT.prob(x)
+      ret[self.stickCap] = bp * stick
+      ret /= ret.sum()
+      return ret
+    else:
+      ret = numpy.empty((x.shape[0],self.stickCap+1), dtype=numpy.float32)
+      stick = 1.0
+      for i in xrange(self.stickCap):
+        bp = self.nT[i].batchProb(x)
+        ev = self.v[i,0] / self.v[i,:].sum()
+        ret[:,i] = bp * stick * ev
+        stick *= 1.0 - ev
+      bp = self.priorT.batchProb(x)
+      ret[:,self.stickCap] = bp * stick
+      ret /= ret.sum(axis=1).reshape((-1,1))
+      return ret
 
 
   def reset(self, alphaParam = True, vParam = True, zParam = True):
@@ -297,7 +338,7 @@ class DPGMM:
       self.z = None
 
   def nllData(self):
-    """Returns the negative log likelihood of the data given the current distribution over models, with the model integrated out - good for comparing multiple restarts."""
+    """Returns the negative log likelihood of the data given the current distribution over models, with the model integrated out - good for comparing multiple restarts/different numbers of sticks to find which is the best."""
     dm = self.getDM()
     model = self.intMixture()
 
