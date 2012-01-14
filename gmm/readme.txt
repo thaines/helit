@@ -13,6 +13,7 @@ gmm.py - exports all the functionality.
 kmeans.py - provides just the k-means classes, if that is all that is required.
 
 kmeans_shared.py - Provides the interface used by all k-means implementations.
+kmeans0.py - wrapper around the scipy kmeans implimentation, so it can be used with the other parts of this system.
 kmeans1.py - first implementation, brute force with multiple restarts.
 kmeans2.py - second implementation, still brute force but instead of multiple restarts uses a scheme of running on multiple small data sets and then initialising with kmeans on the combined clusters from all these runs.
 kmeans3.py - third implementation, assumes that distance computations are slow and trys to avoid them by storing information about cluster centre movement. This is both fast and reliable.

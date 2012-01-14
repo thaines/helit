@@ -36,6 +36,7 @@ def pruneClassOfDo(cls):
       delattr(cls, method)
 
 pruneClassOfDo(KMeansShared)
+pruneClassOfDo(gmm.KMeans0)
 pruneClassOfDo(gmm.KMeans1)
 pruneClassOfDo(gmm.KMeans2)
 pruneClassOfDo(gmm.KMeans3)
@@ -70,6 +71,7 @@ out.write(doc.bigsection('Functions','#ffffff','#eeaa77',funcs))
 # Classes...
 classes = ''
 classes += doc.docclass(KMeansShared)
+classes += doc.docclass(gmm.KMeans0)
 classes += doc.docclass(gmm.KMeans1)
 classes += doc.docclass(gmm.KMeans2)
 classes += doc.docclass(gmm.KMeans3)

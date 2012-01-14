@@ -60,10 +60,20 @@ def test(model, sampCount = 1000):
 
 
 def testAll():
+  print 'Testing isotropic GMM...'
+  test(gmm.IsotropicGMM())
+
   print 'Testing kmeans3...'
   test(gmm.KMeans3())
   
-  print 'Testing isotropic GMM...'
-  test(gmm.IsotropicGMM())
+  print 'Testing kmeans2...'
+  test(gmm.KMeans2())
+  
+  print 'Testing kmeans1...'
+  test(gmm.KMeans1())
+  
+  print 'Testing kmeans0...'
+  test(gmm.KMeans0())
+
 
 testAll()

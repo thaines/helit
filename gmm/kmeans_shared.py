@@ -101,32 +101,6 @@ class KMeansShared:
     else:
       raise exceptions.TypeError('bad type for features - expects a numpy.array or a list')
 
-  
-  #def doGetNLL(self, feats):
-    #"""Takes feats as a 2D data matrix and calculates the negative log likelihood of those features comming from the model, noting that it assumes a symmetric Gaussian for each centre and calculates the standard deviation using the provided features."""
-    
-    ## Assign each feature to a cluster and record its distance from the clusters centre...
-    #cat = numpy.empty(feats.shape[0], dtype=numpy.int_)
-    #distSqr = numpy.empty(feats.shape[0], dtype=numpy.float_)
-
-    #for i in xrange(feats.shape[0]):
-      #distsSqr = ((self.means-feats[i,:].reshape((1,-1)))**2).sum(axis=1)
-      #cat[i] = distsSqr.argmin()
-      #distSqr[i] = distsSqr[cat[i]]
-    
-    ## Calculate the standard deviation for each cluster...
-    #var = numpy.empty(self.means.shape[0], dtype=numpy.float_)
-    #for i in xrange(var.shape[0]): var[i] = distSqr[cat==i].mean()
-    
-    ## Sum up the log likelihood for each feature in turn...
-    #mult = -0.5/var
-    #norm = -0.5*self.means.shape[1]*numpy.log(2.0*numpy.pi*var)
-    
-    #ll = (distSqr*mult[cat]).sum()
-    #ll += norm[cat].sum()
-    
-    ## Return the negative ll...
-    #return -ll
 
   def doGetNLL(self, feats):
     """Takes feats as a 2D data matrix and calculates the negative log likelihood of those features comming from the model, noting that it assumes a symmetric Gaussian for each centre and calculates the standard deviation using the provided features."""

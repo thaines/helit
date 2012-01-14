@@ -12,6 +12,7 @@
 
 # Simple file that imports the various implimentations and provides a default implimentation of kmeans, which happens to be the most sophisticated version...
 
+from kmeans0 import KMeans0
 from kmeans1 import KMeans1
 from kmeans2 import KMeans2
 from kmeans3 import KMeans3
