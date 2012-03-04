@@ -92,7 +92,7 @@ class Classification(Goal):
     for stats in stats_list:
       dist = numpy.fromstring(stats, dtype=numpy.float32)
       ret += dist / dist.sum()
-    
+      
     ret /= ret.sum()
     return ret
 

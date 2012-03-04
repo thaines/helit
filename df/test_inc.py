@@ -189,8 +189,8 @@ for i in xrange(64):
   if incDF.size()==0 or batchDF.size()==0: continue
   
   # Test them both...
-  incRate = doTest(incDF)
-  batchRate = doTest(batchDF)
+  incRate = doTest(incDF) if incDF.size()!=0 else 0.0
+  batchRate = doTest(batchDF) if batchDF.size()!=0 else 0.0
   
   # Print out the stats...
   print '% 3i: Batch = %.1f%% in %.2fs | Inc = %.1f%% in %.2fs'%(i+1, 100.0*batchRate, batchEnd-batchStart, 100.0*incRate, incEnd-incStart)

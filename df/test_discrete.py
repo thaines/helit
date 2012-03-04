@@ -120,7 +120,7 @@ def doTest(gen):
   df.setGen(gen)
   
   start = time.time()
-  df.learn(8, es) # 8 = number of trees to learn. dm is in channel 0, cat in channel 1.
+  df.learn(8, es, mp = False) # 8 = number of trees to learn. dm is in channel 0, cat in channel 1.
   end = time.time()
   
   # Drop some stats...

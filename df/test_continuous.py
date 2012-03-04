@@ -15,6 +15,8 @@ import time
 import numpy
 import numpy.random
 
+from utils.prog_bar import ProgBar
+
 from df import *
 
 
@@ -158,12 +160,12 @@ def doTest(gen):
   df.setGoal(Classification(3,1)) # 3 = # of classes, 1 = channel of truth for trainning.
   df.setGen(gen)
   
-  start = time.time()
-  df.learn(8, es) # 8 = number of trees to learn. dm is in channel 0, cat in channel 1.
-  end = time.time()
+  pb = ProgBar()
+  df.learn(8, es, callback = pb.callback) # 8 = number of trees to learn. dm is in channel 0, cat in channel 1.
+  del pb
   
   # Drop some stats...
-  print '%i trees containing %i nodes trained in %.3f seconds.\nAverage error is %.3f.'%(df.size(), df.nodes(), end-start, df.error())
+  print '%i trees containing %i nodes.\nAverage error is %.3f.'%(df.size(), df.nodes(), df.error())
 
 
   # Test...
