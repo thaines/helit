@@ -92,25 +92,32 @@ class Classification(Goal):
 
   def answer_types(self):
     return {'best':'An integer indexing the class this feature is most likelly to belong to given the model.',
-            'prob':'A categorical distribution over class membership, represented as a numpy array of float32 type. Gives the probability of it belonging to each class.'}
+            'prob':'A categorical distribution over class membership, represented as a numpy array of float32 type. Gives the probability of it belonging to each class.',
+            'prob_samples':'The prob result is obtained by averaging a set of probability distributions, one from each tree - this outputs that list of distributions instead, so its varaibility can be accessed.'}
   
   def answer(self, stats_list, which):
     # Convert to a list, and process like that, before correcting for the return - simpler...
     single = isinstance(which, str)
     if single: which = [which]
     
-    # Calulate the probability distribution over class membership if needed...
-    if ('prob' in which) or ('best' in which):
-      prob = numpy.zeros(self.classCount, dtype=numpy.float32)
-      for stats in stats_list:
-        dist = numpy.fromstring(stats, dtype=numpy.float32)
-        prob += dist / dist.sum()
-      prob /= prob.sum()
+    # Calulate the probability distribution over class membership, and stuff...
+    prob_list = []
+    prob = numpy.zeros(self.classCount, dtype=numpy.float32)
+    
+    for stats in stats_list:
+      dist = numpy.fromstring(stats, dtype=numpy.float32)
+      dist /= dist.sum()
+      
+      prob_list.append(dist)
+      prob += dist
+      
+    prob /= prob.sum()
     
     # Prepare the return...
     def make_answer(t):
       if t=='prob': return prob
       elif t=='best': return prob.argmax()
+      elif t=='prob_samples': return prob_list
     
     ret = map(make_answer, which)
     
