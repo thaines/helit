@@ -19,6 +19,9 @@ from utils.prog_bar import ProgBar
 
 from df import *
 
+try: from svm import svm
+except: svm = None
+
 
 
 # A toy problem using continuous attributes only - a simulation of a politician/marketing/tele-sales differentiator.
@@ -161,7 +164,7 @@ def doTest(gen):
   df.setGen(gen)
   
   pb = ProgBar()
-  df.learn(8, es, callback = pb.callback) # 8 = number of trees to learn. dm is in channel 0, cat in channel 1.
+  df.learn(8, es, callback = pb.callback, mp=False) # 8 = number of trees to learn. dm is in channel 0, cat in channel 1.
   del pb
   
   # Drop some stats...
@@ -226,3 +229,9 @@ print
 print 'Linear classify generator:'
 doTest(LinearClassifyGen(0,1,2,4,8)) # 0 = channel to use to generate tests,1 = channel containing the actual answer to optimise, 2 = # of dimensions for each test, 4 = # of dimension possibilities to consider, 8 = # of orientations to consider.
 print
+
+if svm!=None:
+  print 'SVM generator:'
+  params = svm.ParamsSet(True)
+  doTest(SVMClassifyGen(params, 8, 1, 2, 0, 3, 2))
+  print

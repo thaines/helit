@@ -68,7 +68,8 @@ class Node:
         falseStats = fStats
         falseEntropy = fEntropy
         falseIndex = fIndex
-      
+
+
     # Use the pruner to decide if we should split or not, and if so do it...
     self.test = bestTest
     if bestTest!=None and pruner.keep(depth, trueIndex.shape[0], falseIndex.shape[0], infoGain, self)==True:

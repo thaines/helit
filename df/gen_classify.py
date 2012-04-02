@@ -8,6 +8,7 @@
 
 
 
+import random
 import numpy
 import numpy.random
 
@@ -209,3 +210,83 @@ class DiscreteClassifyGen(Generator, DiscreteBucket):
       
         # Yield a discrete decision object...
         yield numpy.asarray(feat, dtype=numpy.int32).tostring() + numpy.asarray(keepHigh, dtype=numpy.int32).tostring()
+
+
+
+try:
+  from svm import svm
+  
+    
+  class SVMClassifyGen(Generator, Test):
+    """Allows you to use the SVM library as a classifier for a node. Note that it detects if the SVM library is avaliable - if not then this class will not exist. Be warned that its quite memory intensive, as it just wraps the SVM objects without any clever packing. Works by randomly selecting a class to seperate and training a one vs all classifier, with random parameters on random features. Parameters are quite complicated, due to all the svm options and randomness control being extensive."""
+    def __init__(self, params, paramDraw, catChannel, catDraw, featChannel, featCount, featDraw):
+      """There are three parts - the svm parameters to use, the class to seperate and the features to train on, all of which allow for the introduction of randomness. The svm parameters are controlled by params - it must be either a single svm.Params or a list of them, which includes things like parameter sets provided by the svm library. For each test generation paramDraw parameter options are selected randomly from params and tried combinatorically with the other two parts. The class of each feature must be provided, as an integer in channel catChannel. For each test generation it selects one class randomly from the classes exhibited by the features, which it does catDraw times, combinatorically with the other two parts. The features to train on are found in channel featChannel, and it randomly selects featCount of them to be used for each trainning run, which it does featDraw times combinatorically with the other two parameters. Each time classifiers are generated it will produce the product of the three *Draw parameters generators, where it draws each set once and then tries all combinations between the three."""
+      
+      # svm parameters...
+      if isinstance(params, svm.Params):
+        self.params = [params]
+      else:
+        self.params = [x for x in params]
+      self.paramDraw = paramDraw
+      
+      # class parameters...
+      self.catChannel = catChannel
+      self.catDraw = catDraw
+      
+      # feature parameters...
+      self.featChannel = featChannel
+      self.featCount = featCount
+      self.featDraw = featDraw
+    
+    def clone(self):
+      return SVMClassifyGen(self.params, self.paramDraw, self.catChannel, self.catDraw, self.featChannel, self.featCount, self.featDraw)
+    
+    
+    def do(self, test, es, index = slice(None)):
+      # Test is (feat index, svm.Model) - feat index grabs the features to run the model on, which tells you which side they belong on...
+      dataMatrix = numpy.asarray(es[self.featChannel, index, test[0]], dtype=numpy.float_)
+      if len(dataMatrix.shape)!=2: 
+        dataMatrix = dataMatrix.reshape((1,-1))
+        
+      values = test[1].multiClassify(dataMatrix)
+      return values>0
+    
+    
+    def itertests(self, es, index, weights = None):
+      # Generate the set of svm parameters to use...
+      param_set = random.sample(self.params, self.paramDraw)
+      
+      # Generate the set of classes to train for...
+      cats = es[self.catChannel, index, 0]
+      if numpy.unique(cats).shape[0]<2: return
+      
+      cat_set = random.sample(cats, min(self.catDraw, cats.shape[0]))
+      y = numpy.empty(cats.shape[0], dtype=numpy.float_)
+      
+      # Iterate and yield each decision boundary by learning a model - base iteration is over the features to use for trainning...
+      smo = svm.smo.SMO()
+      
+      for _ in xrange(self.featDraw):
+        # Draw the feature set to use...
+        feat_index = random.sample(xrange(es.features(self.featChannel)), self.featCount)
+        feat_index = numpy.array(feat_index, dtype=numpy.int32)
+        
+        dataMatrix = numpy.asarray(es[self.featChannel, index, feat_index], dtype=numpy.float_)
+        
+        # Try it combinatorically with the other two...
+        for cat in cat_set:
+          y[:] = -1.0
+          y[cats==cat] = 1.0
+          smo.setData(dataMatrix, y)
+          
+          for param in param_set:
+            smo.setParams(param)
+            
+            smo.solve()
+            
+            yield (feat_index, smo.getModel())
+
+
+
+except ImportError:
+  pass # Allow it to still work when the svm module is not avaliable.
