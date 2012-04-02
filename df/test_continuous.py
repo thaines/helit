@@ -164,7 +164,7 @@ def doTest(gen):
   df.setGen(gen)
   
   pb = ProgBar()
-  df.learn(8, es, callback = pb.callback, mp=False) # 8 = number of trees to learn. dm is in channel 0, cat in channel 1.
+  df.learn(8, es, callback = pb.callback) # 8 = number of trees to learn. dm is in channel 0, cat in channel 1.
   del pb
   
   # Drop some stats...
