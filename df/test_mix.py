@@ -155,7 +155,7 @@ def doTest(gen):
     cat_ind = categories.index(cat)
     
     for mfs in examples:
-      dist, best = df.evaluate(mfs, best = None)[0]
+      dist, best = df.evaluate(mfs, which = ['prob', 'best'])[0]
       if cat_ind==best: success[cat] += 1
       prob[cat] += dist[cat_ind]
     

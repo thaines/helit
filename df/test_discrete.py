@@ -131,7 +131,7 @@ def doTest(gen):
   zombie_success = 0
   zombie_prob = 0.0
   for i in xrange(zombie_test):
-    dist, best = df.evaluate(MatrixFS(zombie[i]), best = None)[0]
+    dist, best = df.evaluate(MatrixFS(zombie[i]), which = ['prob', 'best'])[0]
     if 0==best: zombie_success += 1
     zombie_prob += dist[0]
 
@@ -140,7 +140,7 @@ def doTest(gen):
   human_success = 0
   human_prob = 0.0
   for i in xrange(human_test):
-    dist, best = df.evaluate(MatrixFS(human[i]), best = None)[0]
+    dist, best = df.evaluate(MatrixFS(human[i]), which = ['prob', 'best'])[0]
     if 1==best: human_success += 1
     human_prob += dist[1]
 

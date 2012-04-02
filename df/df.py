@@ -185,8 +185,12 @@ class DF:
       pool.join()
   
   
-  def evaluate(self, es, index = slice(None), best = False, mp = False, callback = None):
-    """Given some exemplars returns a list containing the output of the model for each exemplar. The returned list will align with the index, which defaults to everything and hence if not provided is aligned with es, the ExemplarSet. The meaning of the entity will depend on the Goal of the model. If best is set to True then instead of the output of Goal.merge you get the output of Goal.best. If you set best to None then you get both - a 2-tuple of (output of Goal.merge, output of Goal.best). Can be run in multiprocessing mode if you set the mp variable to True - only worth it if you have a lot of data (Also note that it splits by tree, so each process does all data items but for just one of the trees.). Should not be called if size()==0."""
+  def answer_types(self):
+    """Returns a dictionary giving all the answer types that can be requested using the which parameter of the evaluate method. The keys give the string to be provided to which, whilst the values give human readable descriptions of what will be returned. 'best' is always provided, as a point estimate of the best answer; most models also provide 'prob', which is a probability distribution over 'best', such that 'best' is the argmax of 'prob'."""
+    return self.goal.answer_types()
+
+  def evaluate(self, es, index = slice(None), which = 'best', mp = False, callback = None):
+    """Given some exemplars returns a list containing the output of the model for each exemplar. The returned list will align with the index, which defaults to everything and hence if not provided is aligned with es, the ExemplarSet. The meaning of the entrys in the list will depend on the Goal of the model and which: which can either be a single answer type from the goal object or a list of answer types, to get a tuple of answers for each list entry - the result is what the Goal-s answer method returns. The answer_types method passes through to provide relevent information. Can be run in multiprocessing mode if you set the mp variable to True - only worth it if you have a lot of data (Also note that it splits by tree, so each process does all data items but for just one of the trees.). Should not be called if size()==0."""
     if isinstance(index, slice): index = numpy.arange(*index.indices(es.exemplars()))
     
     # If multiprocessing has been requested set it up...
@@ -218,12 +222,7 @@ class DF:
     
     # Merge and obtain answers for the output...
     ret = []
-    for i in index:
-      m = self.goal.merge(store[i])
-      if best==None: ret.append((m, self.goal.best(m)))
-      elif best==False: ret.append(m)
-      elif best==True: ret.append(self.goal.best(m))
-      else: raise Exception('Bad value for best') 
+    for i in index: ret.append(self.goal.answer(store[i], which))
     
     # Clean up if we have been multiprocessing...
     if mp:

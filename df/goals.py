@@ -18,9 +18,10 @@ class Goal:
   def clone(self):
     """Returns a deep copy of this object."""
     raise NotImplementedError
-    
+  
+  
   def stats(self, es, index, weights = None):
-    """Generates a statistics object for a node, based on the features that make it to the node. The statistics object is decided by the task at hand, but must allow the nodes entropy to be calculated, plus a collection of these is used to generate the answer when a feature is given to the decision forest. fs is a feature set, index the indices of the features in fs that have made it to this node. weights is an optional set of weights for the features, weighting how many features they are worth - will be a 1D numpy.float32 array aligned with the feature set, and can contain fractional weights."""
+    """Generates a statistics entity for a node, based on the features that make it to the node. The statistics entity is decided by the task at hand, but must allow the nodes entropy to be calculated, plus a collection of these is used to generate the answer when a feature is given to the decision forest. fs is a feature set, index the indices of the features in fs that have made it to this node. weights is an optional set of weights for the features, weighting how many features they are worth - will be a 1D numpy.float32 array aligned with the feature set, and can contain fractional weights."""
     raise NotImplementedError
   
   def updateStats(self, stats, es, index, weights = None):
@@ -28,20 +29,21 @@ class Goal:
     raise NotImplementedError
 
   def entropy(self, stats):
-    """Given a statistics object this returns the associated entropy - this is used to choose which test is best."""
+    """Given a statistics entity this returns the associated entropy - this is used to choose which test is best."""
     raise NotImplementedError
   
-  def merge(self, stats_list):
-    """Given a list of the statistics objects that are stored at a bunch of leaf nodes as obtained by passing a feature through the forest this sumarises them, and returns that summary. The return from this is the 'answer', returned to the user when they provide features to the decision forest. Note that the type of a stats object and the return value from this are not necesarilly the same - the stats object might be optimised for size, where as the return from this has to be suitable for use by the user. As such its input can be a list with just one item, for if that conversion is needed."""
-    raise NotImplementedError
-    
-  def best(self, answer):
-    """Given the answer returned by the merge function this returns the best guess of the value of the kind used for trainning. This differentiates between the answer given to the user, which is typically a probability distribution over the true assignment, and a best guess at a true answer, which is what this provides given the first."""
+
+  def answer_types(self):
+    """When classifying a new feature an answer is to be provided, of which several possibilities exist. This returns a dictionary of those possibilities (key==name, value=human readable description of what it is.), from which the user can select. By convention 'best' must always exist, as the best guess that the algorithm can give (A point estimate of the answer the user is after.). If a probability distribution over 'best' can be provided then that should be avaliable as 'prob' (It is highly recomended that this be provided.)."""
+    return {'best':'Point estimate of the best guess at an answer, in the same form that it was provided for the trainning stage.'}
+  
+  def answer(self, stats_list, which):
+    """Given a feature then using a forest a list of statistics entitys can be obtained from the leaf nodes that the feature ends up in, one for each tree (Could be as low as just one entity.). This converts that statistics entity list into an answer, to be passed to the user. As multiple answer types exist (As provided by the answer_types method.) you provide the one(s) you want to the which variable - if which is a string then that answer type is returned, if it is a list of strings then a tuple aligned with it is returned, containing multiple answers. If multiple types are needed then returning a list should hopefuly be optimised by this method to avoid duplicate calculation."""
     raise NotImplementedError
   
   
   def summary(self, es, index, weights = None):
-    """Once a tree has been grown a testing set (The 'out-of-bag' set) is typically run through to find out how good it is. This consists of two steps, the first of which is to generate a summary of the oob set that made it to each leaf. This generates the summary, and must be done such that the next step - the use of a stats and summary object to infer an error metric with a weight for averaging the error metrics from all leafs, can be performed. For incrimental learning it is also required to be able to add new exemplars at a later time."""
+    """Once a tree has been grown a testing set (The 'out-of-bag' set) is typically run through to find out how good it is. This consists of two steps, the first of which is to generate a summary of the oob set that made it to each leaf. This generates the summary, and must be done such that the next step - the use of a stats and summary entity to infer an error metric with a weight for averaging the error metrics from all leafs, can be performed. For incrimental learning it is also required to be able to add new exemplars at a later time."""
     raise NotImplementedError
   
   def updateSummary(self, summary, es, index, weights = None):
@@ -49,7 +51,7 @@ class Goal:
     raise NotImplementedError
   
   def error(self, stats, summary):
-    """Given a stats object and a summary object (i.e. the details of the testing and trainning sets that have reached a leaf) this returns the error of the testing set versus the model learnt from the trainning set. The actual return is a pair - (error, weight), so that the errors from all the leafs can be combined in a wieghted average. The error metric is arbitary, but the probability of 'being wrong' is a good choice."""
+    """Given a stats entity and a summary entity (i.e. the details of the testing and trainning sets that have reached a leaf) this returns the error of the testing set versus the model learnt from the trainning set. The actual return is a pair - (error, weight), so that the errors from all the leafs can be combined in a weighted average. The error metric is arbitary, but the probability of 'being wrong' is a good choice."""
     raise NotImplementedError
 
 
@@ -63,6 +65,7 @@ class Classification(Goal):
   
   def clone(self):
     return Classification(self.classCount, self.channel)
+  
   
   def stats(self, es, index, weights = None):
     if len(index)!=0: 
@@ -86,18 +89,34 @@ class Classification(Goal):
     dist = dist[dist>1e-6] / dist.sum()
     return -(dist*numpy.log(dist)).sum() # At the time of coding scipy.stats.distributions.entropy is broken-ish <rolls eyes> (Gives right answer at the expense of filling your screen with warning about zeros.).
 
-  def merge(self, stats_list):
-    ret = numpy.zeros(self.classCount, dtype=numpy.float32)
-    
-    for stats in stats_list:
-      dist = numpy.fromstring(stats, dtype=numpy.float32)
-      ret += dist / dist.sum()
-      
-    ret /= ret.sum()
-    return ret
 
-  def best(self, answer):
-    return answer.argmax()
+  def answer_types(self):
+    return {'best':'An integer indexing the class this feature is most likelly to belong to given the model.',
+            'prob':'A categorical distribution over class membership, represented as a numpy array of float32 type. Gives the probability of it belonging to each class.'}
+  
+  def answer(self, stats_list, which):
+    # Convert to a list, and process like that, before correcting for the return - simpler...
+    single = isinstance(which, str)
+    if single: which = [which]
+    
+    # Calulate the probability distribution over class membership if needed...
+    if ('prob' in which) or ('best' in which):
+      prob = numpy.zeros(self.classCount, dtype=numpy.float32)
+      for stats in stats_list:
+        dist = numpy.fromstring(stats, dtype=numpy.float32)
+        prob += dist / dist.sum()
+      prob /= prob.sum()
+    
+    # Prepare the return...
+    def make_answer(t):
+      if t=='prob': return prob
+      elif t=='best': return prob.argmax()
+    
+    ret = map(make_answer, which)
+    
+    # Make sure the correct thing is returned...
+    if single: return ret[0]
+    else: return tuple(ret)
 
 
   def summary(self, es, index, weights = None):
