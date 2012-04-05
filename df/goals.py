@@ -9,6 +9,10 @@
 
 
 import numpy
+import numpy.linalg
+import numpy.random
+
+from exemplars import MatrixFS
 
 
 
@@ -32,13 +36,18 @@ class Goal:
     """Given a statistics entity this returns the associated entropy - this is used to choose which test is best."""
     raise NotImplementedError
   
+  
+  def postTreeGrow(self, root, gen):
+    """After a tree is initially grown (At which point its shape is locked, but incrimental learning could still be applied.) this method is given the root node of the tree, and can do anything it likes to it - a post processing step, in case the stats objects need some extra cleverness. Most Goal-s do not need to impliment this. Also provided the generator for the tests in the tree."""
+    pass
+  
 
   def answer_types(self):
     """When classifying a new feature an answer is to be provided, of which several possibilities exist. This returns a dictionary of those possibilities (key==name, value=human readable description of what it is.), from which the user can select. By convention 'best' must always exist, as the best guess that the algorithm can give (A point estimate of the answer the user is after.). If a probability distribution over 'best' can be provided then that should be avaliable as 'prob' (It is highly recomended that this be provided.)."""
     return {'best':'Point estimate of the best guess at an answer, in the same form that it was provided for the trainning stage.'}
   
-  def answer(self, stats_list, which):
-    """Given a feature then using a forest a list of statistics entitys can be obtained from the leaf nodes that the feature ends up in, one for each tree (Could be as low as just one entity.). This converts that statistics entity list into an answer, to be passed to the user. As multiple answer types exist (As provided by the answer_types method.) you provide the one(s) you want to the which variable - if which is a string then that answer type is returned, if it is a list of strings then a tuple aligned with it is returned, containing multiple answers. If multiple types are needed then returning a list should hopefuly be optimised by this method to avoid duplicate calculation."""
+  def answer(self, stats_list, which, es, index):
+    """Given a feature then using a forest a list of statistics entitys can be obtained from the leaf nodes that the feature ends up in, one for each tree (Could be as low as just one entity.). This converts that statistics entity list into an answer, to be passed to the user, possibly using the es with the index of the one entry that the stats list is for as well. As multiple answer types exist (As provided by the answer_types method.) you provide the one(s) you want to the which variable - if which is a string then that answer type is returned, if it is a list of strings then a tuple aligned with it is returned, containing multiple answers. If multiple types are needed then returning a list should hopefuly be optimised by this method to avoid duplicate calculation."""
     raise NotImplementedError
   
   
@@ -51,7 +60,7 @@ class Goal:
     raise NotImplementedError
   
   def error(self, stats, summary):
-    """Given a stats entity and a summary entity (i.e. the details of the testing and trainning sets that have reached a leaf) this returns the error of the testing set versus the model learnt from the trainning set. The actual return is a pair - (error, weight), so that the errors from all the leafs can be combined in a weighted average. The error metric is arbitary, but the probability of 'being wrong' is a good choice."""
+    """Given a stats entity and a summary entity (i.e. the details of the testing and trainning sets that have reached a leaf) this returns the error of the testing set versus the model learnt from the trainning set. The actual return is a pair - (error, weight), so that the errors from all the leafs can be combined in a weighted average. The error metric is arbitary, but the probability of 'being wrong' is a good choice. An alternate mode exists, where weight is set to None - in this case no averaging occurs and the results from all nodes are just summed together."""
     raise NotImplementedError
 
 
@@ -95,7 +104,7 @@ class Classification(Goal):
             'prob':'A categorical distribution over class membership, represented as a numpy array of float32 type. Gives the probability of it belonging to each class.',
             'prob_samples':'The prob result is obtained by averaging a set of probability distributions, one from each tree - this outputs that list of distributions instead, so its varaibility can be accessed.'}
   
-  def answer(self, stats_list, which):
+  def answer(self, stats_list, which, es, index):
     # Convert to a list, and process like that, before correcting for the return - simpler...
     single = isinstance(which, str)
     if single: which = [which]
@@ -152,3 +161,229 @@ class Classification(Goal):
     avgError = ((1.0-dist)*test).sum() / count
     
     return avgError, count
+
+
+
+class DensityGaussian(Goal):
+  """Provides the ability to construct a density estimate, using Gaussian distributions to represent the density at each node in the tree. A rather strange thing to be doing with a decision forest, and I am a little suspicious of it, but it does give usable results, at least for low enough dimensionalities where everything remains sane. Due to its nature it can be very memory consuming if your doing incrmental learning - the summary has to store all the provided samples. Requires a channel to contain all the features that are fed into the density estimate (It is to this that a Gaussian is fitted.), which is always in channel 0. Other features can not exist, so typically input data would only have 1 channel. Because the divisions between nodes are sharp (This is a mixture model only between trees, not between leaf nodes within each tree.) the normalisation constant for each Gaussian has to be adjusted to take this into account. This is acheived by sampling - sending samples from the Gaussian down the tree and counting what percentage make the node. Note that when calculating the Gaussian at each node a prior is used, to avoid degeneracies, with a default weight of 1, so if weights are provided they should be scaled accordingly."""
+  def __init__(self, feats, samples = 1024, prior_weight = 1.0):
+    """feats is the number of features to be found in channel 0 of the data, which it uses to fit a Gaussian at each node. samples is how many samples per node it sends down the tree, to weight that node according to the samples that can actually reach it. prior_weight is the weight assigned to a prior used on each node to avoid degeneracies - it defaults to 1, with 0 removing it entirly (Not recomended.)."""
+    self.feats = feats
+    self.samples = samples
+    self.prior_weight = prior_weight
+
+  def clone(self):
+    return DensityGaussian(self.feats, self.samples, self.prior_weight)
+  
+  
+  def stats(self, es, index, weights = None):
+    # First calculate the weighted mean of the samples we have...
+    data = es[0, index, :].copy()
+    
+    mean = numpy.empty(self.feats, dtype=numpy.float32)
+    if weights==None:
+      mean[:] = data.mean(axis=0)
+      weight = float(data.shape[0])
+    else:
+      w = weights[index]
+      weight = w.sum()
+      mean[:] = (data * w.reshape((-1,1))).sum(axis=0)
+      mean /= weight
+    
+    # Offset the data matrix by the mean...
+    data -= mean.reshape((1,-1))
+    
+    # Calculate the size of a symmetric Gaussian, to be used as a prior to avoid degenerate situations...
+    sym_var = numpy.square(data).mean()
+    if sym_var<1e-3: sym_var = 1e-3 # For safety.
+    
+    # Now calculate the covariance for a general Gaussian fitted to the data, with a symmetric prior with a weight of one...
+    covar = numpy.identity(self.feats, dtype=numpy.float32)
+    covar *= sym_var * self.prior_weight
+    
+    if weights!=None: data[:,:] *= w.reshape((-1,1))
+    covar += numpy.dot(data.T, data)
+    covar /= self.prior_weight + weight
+    
+    prec = numpy.linalg.inv(covar)
+    
+    # Encode what we have in the required format and return it...
+    params = numpy.zeros(3, dtype=numpy.float32)
+    params[0] = self.prior_weight + weight
+    
+    return params.tostring() + mean.tostring() + prec.tostring()
+  
+  def updateStats(self, stats, es, index, weights = None):
+    # Extract the previous state...
+    params = numpy.fromstring(stats[:12], dtype=numpy.float32)
+    precStart = 12 + 4*self.feats
+    mean = numpy.fromstring(stats[12:precStart], dtype=numpy.float32)
+    prec = numpy.fromstring(stats[precStart:], dtype=numpy.float32).reshape((self.feats, self.feats))
+    covar = numpy.linalg.inv(prec)
+    
+    # Calculate the weighted mean of the new samples...
+    exData = es[0, index, :].copy()
+    
+    exMean = numpy.empty(self.feats, dtype=numpy.float32)
+    if weights==None:
+      exMean[:] = exData.mean(axis=0)
+      weight = float(exData.shape[0])
+    else:
+      w = weights[index]
+      weight = w.sum()
+      exMean[:] = (exData * w.reshape((-1,1))).sum(axis=0)
+      exMean /= weight
+    
+    # Offset the data matrix by said mean...
+    exData -= exMean.reshape((1,-1))
+    
+    # Calculate the covariance matrix...
+    exCovar = numpy.zeros((self.feats, self.feats), dtype=numpy.float32)
+    
+    if weights!=None: exData[:,:] *= w.reshape((-1,1))
+    exCovar += numpy.dot(exData.T, exData)
+    exCovar /= weight
+    
+    # Update the previous model with the new samples...
+    newWeight = params[0] + weight
+    newMean = (params[0]*mean + weight*exMean) / newWeight
+    meanDiff = exMean - mean
+    newCovar = covar + exCovar + (params[0]*weight/newWeight) * numpy.outer(meanDiff)
+    
+    newPrec = numpy.linalg.inv(newCovar)
+    
+    # Update the normalising constant...
+    params[2] = params[1] * numpy.sqrt(numpy.linalg.det(newPrec)) * numpy.pow(2.0*numpy.pi, -0.5*self.feats)
+    
+    # Encode what we have in the required format and return it...
+    return params.tostring() + newMean.tostring() + newPrec.tostring()
+
+  def entropy(self, stats):
+    # Extract precision...
+    precStart = 12 + 4*self.feats
+    prec = numpy.fromstring(stats[precStart:], dtype=numpy.float32).reshape((self.feats, self.feats))
+    
+    # Calculate and return the distributions entropy...
+    return 0.5 * (numpy.log(2.0*numpy.pi*numpy.e) * self.feats - numpy.log(numpy.linalg.det(prec)))
+  
+  
+  def postTreeGrow(self, root, gen):
+    # Count the total weight in the system, to weight the nodes by the percentage of trainning samples they see...
+    def sumWeight(node):
+      w = numpy.fromstring(node.stats[:4], dtype=numpy.float32)[0] - self.prior_weight
+      if node.test!=None:
+        w += sumWeight(node.true)
+        w += sumWeight(node.false)
+      return w
+    
+    totalWeight = sumWeight(root)
+    
+    
+    # Define a recursive function to analyse each node...
+    def weightNode(node, parents):
+      # Decode the samples stats...
+      params = numpy.fromstring(node.stats[:12], dtype=numpy.float32)
+      precStart = 12 + 4*self.feats
+      mean = numpy.fromstring(node.stats[12:precStart], dtype=numpy.float32)
+      prec = numpy.fromstring(node.stats[precStart:], dtype=numpy.float32).reshape((self.feats, self.feats))
+      
+      covar = numpy.linalg.inv(prec)
+    
+      # Send samples down the chain and see how many arrive at the node, to measure how much it has been truncated by the decision boundaries...
+      ## Draw the set of samples to send, and stick them into an exemplar set...
+      samples = numpy.random.multivariate_normal(mean, covar, (self.samples,))
+      samples = numpy.asarray(samples, dtype=numpy.float32)
+      
+      es = MatrixFS(samples)
+      index = numpy.arange(self.samples)
+      
+      ## Go through the parents, culling samples at each step...
+      for par in parents:
+        res = gen.do(par.test, es, index)
+        index = index[res==True]
+        if index.shape[0]==0: break
+
+      ## Count the survivors and factor in the weighting to get the tree-shape part of the normalising constant...
+      tsWeight = (params[0] - self.prior_weight) / totalWeight
+      tsWeight *= float(self.samples) / max(index.shape[0], 1.0)
+      
+      # Calculate the normalising constant...
+      norm = tsWeight * numpy.sqrt(numpy.linalg.det(prec)) * numpy.power(2.0*numpy.pi, -0.5*self.feats)
+      
+      # Rencode the nodes stats with the updates...
+      params[1] = tsWeight
+      params[2] = norm
+      
+      node.stats = params.tostring() + node.stats[12:]
+      
+      # If it has children recurse to them...
+      if node.test!=None:
+        weightNode(node.true, parents + [node])
+        weightNode(node.false, parents + [node])
+
+    # Do each node recursivly, starting from the root...
+    weightNode(root, [])
+  
+
+  def answer_types(self):
+    return {'best':'Point estimate of the probability of the input point'}
+  
+  def answer(self, stats_list, which, es, index):
+    # Process each stat in turn, and calculate the average of the samples probability from each...
+    p = 0.0
+    
+    for stats in stats_list:
+      # Extract the details from the stat object...
+      params = numpy.fromstring(stats[:12], dtype=numpy.float32)
+      precStart = 12 + 4*self.feats
+      mean = numpy.fromstring(stats[12:precStart], dtype=numpy.float32)
+      prec = numpy.fromstring(stats[precStart:], dtype=numpy.float32).reshape((self.feats, self.feats))
+      
+      # Calculate the probability and add it in...
+      delta = es[0,index,:] - mean
+      p += params[2] * numpy.exp(-0.5 * numpy.dot(delta, numpy.dot(prec, delta)))
+    
+    return p / len(stats_list)
+
+
+  def summary(self, es, index, weights = None):
+    # The summary simply contains a lot of feature vectors, tightly packed, with weights - it will consume a lot of space...
+    data = numpy.asarray(es[0,index,:], dtype=numpy.float32)
+    if weights==None: weights = numpy.ones(data.shape[0], dtype=numpy.float32)
+    else: weights = weights[index]
+    
+    data = numpy.append(weights.reshape((-1,1)), data, axis=1)
+    
+    return data.tostring()
+  
+  def updateSummary(self, summary, es, index, weights = None):
+    data = numpy.asarray(es[0,index,:], dtype=numpy.float32)
+    if weights==None: weights = numpy.ones(data.shape[0], dtype=numpy.float32)
+    else: weights = weights[index]
+    
+    data = numpy.append(weights.reshape((-1,1)), data, axis=1)
+    
+    return summary + data.tostring()
+  
+  def error(self, stats, summary):
+    # Error is defined as the negative logarithm of the probability of the data provided...
+    
+    # Extract the details from the stats object...
+    params = numpy.fromstring(stats[:12], dtype=numpy.float32)
+    precStart = 12 + 4*self.feats
+    mean = numpy.fromstring(stats[12:precStart], dtype=numpy.float32)
+    prec = numpy.fromstring(stats[precStart:], dtype=numpy.float32).reshape((self.feats, self.feats))
+    
+    logNorm = numpy.log(params[2])
+    
+    # Go through and factor in each feature vector from the summary in turn...
+    err = 0.0
+    chunkSize = 4 * (self.feats + 1)
+    count = len(summary) / chunkSize
+    
+    for i in xrange(count):
+      fv = numpy.fromstring(summary[i*chunkSize:(i+1)*chunkSize], dtype=numpy.float32)
+      delta = fv[1:] - mean
+      err += fv[0] * (0.5 * numpy.dot(delta, numpy.dot(prec, delta)) - logNorm)
+    
+    return (err, None)

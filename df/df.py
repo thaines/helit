@@ -79,7 +79,7 @@ class DF:
     return self.gen
   
   def setInc(self, inc):
-    """Set this to True to support incrimental learning, False ot not. Having incrimental learning on costs extra memory, but has little if any computational affect."""
+    """Set this to True to support incrimental learning, False to not. Having incrimental learning on costs extra memory, but has little if any computational affect."""
     assert(self.trainCount==0)
     self.inc = inc
   
@@ -109,6 +109,9 @@ class DF:
     
     # Grow a tree...
     tree = Node(self.goal, self.gen, self.pruner, es, train, trainWeight)
+    
+    # Apply the goal-specific post processor to the tree...
+    self.goal.postTreeGrow(tree, self.gen)
     
     # Calculate the oob error for the tree...
     if test.shape[0]!=0:
@@ -222,7 +225,7 @@ class DF:
     
     # Merge and obtain answers for the output...
     ret = []
-    for i in index: ret.append(self.goal.answer(store[i], which))
+    for i in index: ret.append(self.goal.answer(store[i], which, es, i))
     
     # Clean up if we have been multiprocessing...
     if mp:

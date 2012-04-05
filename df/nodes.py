@@ -47,6 +47,9 @@ class Node:
       tIndex = index[res==True]
       fIndex = index[res==False]
       
+      # Check its safe to continue...
+      if tIndex.shape[0]==0 or fIndex.shape[0]==0: continue
+      
       # Calculate the statistics...
       tStats = goal.stats(es, tIndex, weights)
       fStats = goal.stats(es, fIndex, weights)
@@ -68,8 +71,7 @@ class Node:
         falseStats = fStats
         falseEntropy = fEntropy
         falseIndex = fIndex
-
-
+    
     # Use the pruner to decide if we should split or not, and if so do it...
     self.test = bestTest
     if bestTest!=None and pruner.keep(depth, trueIndex.shape[0], falseIndex.shape[0], infoGain, self)==True:
@@ -153,11 +155,14 @@ class Node:
         self.true.error(goal, gen, es, index, weights, inc, store)
         self.false.error(goal, gen, es, index, weights, inc, store)
     
-    # Calculate the weighted average of all the leafs all at once, to avoid an inefficient incrimental calculation...
+    # Calculate the weighted average of all the leafs all at once, to avoid an inefficient incrimental calculation, or just sum them up if a weight of None has been provided at any point...
     if ret and len(store)!=0:
-      store = numpy.asarray(store)
-      return numpy.average(store[:,0], weights=store[:,1])
-  
+      if None in map(lambda t: t[1], store):
+        return sum(map(lambda t: t[0], store))
+      else:
+        store = numpy.asarray(store)
+        return numpy.average(store[:,0], weights=store[:,1])
+
   def removeIncError(self):
     """Culls the information for incrimental testing from the data structure, either to reset ready for new information or just to shrink the data structure after learning is finished."""
     self.summary = None
