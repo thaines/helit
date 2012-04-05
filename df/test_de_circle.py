@@ -63,8 +63,9 @@ for i in xrange(samples):
   y = int(pixel_half_width * ydir[i] / axis_half_width + pixel_half_width)
   
   if x>=0 and x<pixel_width and y>=0 and y<pixel_width:
-    img[y,x,:] = 1.0
+    img[y,x,:] += 1.0
 
+img /= img.max()
 cv.SaveImage('test_de_circle_input.png',array2cv(img*255))
 
 
@@ -75,37 +76,39 @@ def doTest(name, gen):
   df = DF()
   df.setGoal(DensityGaussian(2)) # 2 = # of features
   df.setGen(gen)
-  #df.getPruner().setMaxDepth(1)
+  df.getPruner().setMinTrain(48) # Playing around shows that this is probably the most important number to get right when doing density estimation - the information gain heuristic just doesn't know when to stop.
   
   global es
   pb = ProgBar()
-  df.learn(8, es, callback = pb.callback, mp=False) # 8 = number of trees to learn.
+  df.learn(32, es, callback = pb.callback, mp=True) # 32 = number of trees to learn - you need a lot to get a good answer.
   del pb
   
   # Drop some stats...
   print '%i trees containing %i nodes.\nAverage error is %.3f.'%(df.size(), df.nodes(), df.error())
   
   # Visualise the density estimate...
-  testSet = numpy.empty((pixel_width*pixel_width,2), dtype=numpy.float32)
-  i = 0
+  global img
+  testSet = numpy.empty((pixel_width,2), dtype=numpy.float32)
+  pb = ProgBar()
+  
   for y in xrange(pixel_width):
+    pb.callback(y,pixel_width)
+    i = 0
     for x in xrange(pixel_width):
       testSet[i,0] = axis_half_width * float(x - pixel_half_width) / pixel_half_width
       testSet[i,1] = axis_half_width * float(y - pixel_half_width) / pixel_half_width
       i += 1
-  
-  test = MatrixFS(testSet)
-  pb = ProgBar()
-  res = df.evaluate(test, mp=True)
-  del pb
-  
-  global img
-  i = 0
-  for y in xrange(pixel_width):
+    
+    test = MatrixFS(testSet)
+    res = df.evaluate(test, mp=True)
+    
+    i = 0
     for x in xrange(pixel_width):
       img[y,x,:] = res[i]
       i += 1
-  
+    
+  del pb
+
   img /= img.max()
   cv.SaveImage('test_de_circle_%s.png'%name,array2cv(img*255))
 

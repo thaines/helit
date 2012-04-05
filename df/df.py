@@ -224,8 +224,11 @@ class DF:
         tree.evaluate(store, self.gen, es, index)
     
     # Merge and obtain answers for the output...
-    ret = []
-    for i in index: ret.append(self.goal.answer(store[i], which, es, i))
+    if mp:
+      ret = pool.map(getAnswer, map(lambda i: (self.goal, store[i], which, es, i), index))
+    else:
+      ret = []
+      for i in index: ret.append(self.goal.answer(store[i], which, es, i))
     
     # Clean up if we have been multiprocessing...
     if mp:
@@ -305,3 +308,11 @@ def treeEval(data):
   tree.evaluate(ret, gen, es, index)
   treesDone.value += 1
   return ret
+
+
+
+def getAnswer(data):
+  """Used for multiprocessing the calls to the answer method."""
+  goal, store, which, es, i = data
+  
+  return goal.answer(store, which, es, i)

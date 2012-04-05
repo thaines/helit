@@ -165,7 +165,7 @@ class Classification(Goal):
 
 
 class DensityGaussian(Goal):
-  """Provides the ability to construct a density estimate, using Gaussian distributions to represent the density at each node in the tree. A rather strange thing to be doing with a decision forest, and I am a little suspicious of it, but it does give usable results, at least for low enough dimensionalities where everything remains sane. Due to its nature it can be very memory consuming if your doing incrmental learning - the summary has to store all the provided samples. Requires a channel to contain all the features that are fed into the density estimate (It is to this that a Gaussian is fitted.), which is always in channel 0. Other features can not exist, so typically input data would only have 1 channel. Because the divisions between nodes are sharp (This is a mixture model only between trees, not between leaf nodes within each tree.) the normalisation constant for each Gaussian has to be adjusted to take this into account. This is acheived by sampling - sending samples from the Gaussian down the tree and counting what percentage make the node. Note that when calculating the Gaussian at each node a prior is used, to avoid degeneracies, with a default weight of 1, so if weights are provided they should be scaled accordingly."""
+  """Provides the ability to construct a density estimate, using Gaussian distributions to represent the density at each node in the tree. A rather strange thing to be doing with a decision forest, and I am a little suspicious of it, but it does give usable results, at least for low enough dimensionalities where everything remains sane. Due to its nature it can be very memory consuming if your doing incrmental learning - the summary has to store all the provided samples. Requires a channel to contain all the features that are fed into the density estimate (It is to this that a Gaussian is fitted.), which is always in channel 0. Other features can not exist, so typically input data would only have 1 channel. Because the divisions between nodes are sharp (This is a mixture model only between trees, not between leaf nodes within each tree.) the normalisation constant for each Gaussian has to be adjusted to take this into account. This is acheived by sampling - sending samples from the Gaussian down the tree and counting what percentage make the node. Note that when calculating the Gaussian at each node a prior is used, to avoid degeneracies, with a default weight of 1, so if weights are provided they should be scaled accordingly. Using a decision tree for density estimation is a bit hit and miss based on my experiance - you need to pay very close attention to tuning the min train parameter of the pruner, as information gain is a terrible stopping metric in this case. You also need a lot of trees to get something smooth out, which means it is quite computationally expensive."""
   def __init__(self, feats, samples = 1024, prior_weight = 1.0):
     """feats is the number of features to be found in channel 0 of the data, which it uses to fit a Gaussian at each node. samples is how many samples per node it sends down the tree, to weight that node according to the samples that can actually reach it. prior_weight is the weight assigned to a prior used on each node to avoid degeneracies - it defaults to 1, with 0 removing it entirly (Not recomended.)."""
     self.feats = feats
@@ -298,9 +298,9 @@ class DensityGaussian(Goal):
       index = numpy.arange(self.samples)
       
       ## Go through the parents, culling samples at each step...
-      for par in parents:
+      for par,path in parents:
         res = gen.do(par.test, es, index)
-        index = index[res==True]
+        index = index[res==path]
         if index.shape[0]==0: break
 
       ## Count the survivors and factor in the weighting to get the tree-shape part of the normalising constant...
@@ -318,8 +318,8 @@ class DensityGaussian(Goal):
       
       # If it has children recurse to them...
       if node.test!=None:
-        weightNode(node.true, parents + [node])
-        weightNode(node.false, parents + [node])
+        weightNode(node.true, parents + [(node,True)])
+        weightNode(node.false, parents + [(node,False)])
 
     # Do each node recursivly, starting from the root...
     weightNode(root, [])
