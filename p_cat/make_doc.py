@@ -37,6 +37,7 @@ classes += doc.docclass(p_cat.ProbCat)
 classes += doc.docclass(p_cat.ClassifyGaussian)
 classes += doc.docclass(p_cat.ClassifyKDE)
 classes += doc.docclass(p_cat.ClassifyDPGMM)
+classes += doc.docclass(p_cat.ClassifyDF)
 classes = classes.replace('&nbsp;',' ')
 out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
 

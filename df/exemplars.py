@@ -41,7 +41,7 @@ class ExemplarSet:
 
 
 
-class MatrixFS(ExemplarSet):
+class MatrixES(ExemplarSet):
   """The most common exemplar set - basically what you use when all the feature vectors can be computed and then stored in memory without issue. Contains a data matrix for each channel, where these are provided by the user."""
   def __init__(self, *args):
     """Optionally allows you to provide a list of numpy data matrices to by the channels data matrices. Alternativly you can use the add method to add them, one after another, post construction, or some combination of both. All data matrices must be 2D numpy arrays, with the first dimension, indexing the exemplar, being the same size in all cases. (If there is only 1 exemplar then it will accept 1D arrays.)"""
@@ -59,7 +59,7 @@ class MatrixFS(ExemplarSet):
     return len(self.dm)-1
   
   def append(self, *args):
-    """Allows you to add features to the structure, by providing a set of data matrices that align with those contained, which contain the new exemplars. Note that this is slow and generally ill advised. If adding a single new feature the arrays can be 1D."""
+    """Allows you to add exemplars to the structure, by providing a set of data matrices that align with those contained, which contain the new exemplars. Note that this is slow and generally ill advised. If adding a single new feature the arrays can be 1D."""
     assert(len(args)==len(self.dm))
     for i, (prev, extra) in enumerate(zip(self.dm, args)):
       if len(extra.shape)==1: extra = extra.reshape((1,-1))
@@ -82,3 +82,88 @@ class MatrixFS(ExemplarSet):
     b = numpy.asarray(index[2]).reshape(-1)
     if a.shape[0]==1 or b.shape[0]==1: return self.dm[index[0]][index[1],index[2]]
     else: return self.dm[index[0]][numpy.ix_(a,b)]
+
+
+
+MatrixFS = MatrixES # For backward compatability.
+
+
+
+class MatrixGrow(ExemplarSet):
+  """A slightly more advanced version of the basic exemplar set that has better support for incrimental learning, as it allows appends to be more efficient. It still assumes that all of the data can be fitted in memory, and makes use of numpy arrays for internal storage."""
+  def __init__(self, *args):
+    """Optionally allows you to provide a list of numpy data matrices to by the channels data matrices. Alternativly you can use the add method to add them, one after another, post construction, or use append to start things going. All data matrices must be 2D numpy arrays, with the first dimension, indexing the exemplar, being the same size in all cases. (If there is only 1 exemplar then it will accept 1D arrays.)"""
+    
+    # Internal storage is as a list, where each entry in the list is a set of exemplars. The exmplars are represented as a further list, indexed by channel, of 2D data matrices.
+    if len(args)!=0:
+      self.dmcList = [list(map(lambda a: a.reshape((1,-1)) if len(a.shape)==1 else a, args))]
+      
+      for dm in self.dmcList[0]:
+        assert(len(dm.shape)==2)
+        assert(dm.shape[0]==self.dm[0].shape[0])
+    else:
+      self.dmcList = []
+  
+  def add(self, dm):
+    """Adds a new data matrix of information as another channel. Returns its channel index. If given a 1D matrix assumes that there is only one exemplar and adjusts it accordingly."""
+    self.make_compact()
+    if len(dm.shape)==1: dm = dm.reshape((1,-1))
+    assert(len(dm.shape)==2)
+    
+    if len(dmcList)==0: dmcList.append([])
+    
+    self.dmcList[0].append(dm)
+    assert(dm.shape[0]==self.dmcList[0][0].shape[0])
+    
+    return len(self.dmcList[0])-1
+  
+  def append(self, *args):
+    """Allows you to add exemplars to the structure, by providing a set of data matrices that align with those contained, which contain the new exemplars. If adding a single new exemplar the arrays can be 1D."""
+    args = map(lambda dm: dm if len(dm.shape)!=1 else dm.reshape((1,-1)), args)
+    
+    for dm in args:
+      assert(len(dm.shape)==2)
+      assert(dm.shape[0]==args[0].shape[0])
+
+    if len(self.dmcList)!=0:
+      assert(len(args)==len(self.dmcList[0]))
+      for i, dm in enumerate(args):
+        assert(dm.dtype==self.dmcList[0][i].dtype)
+        assert(dm.shape[1]==self.dmcList[0][i].shape[1])
+    
+    self.dmcList.append(args)
+
+
+  def exemplars(self):
+    return sum(map(lambda dmc: dmc[0].shape[0], self.dmcList))
+  
+  def channels(self):
+    return len(self.dmcList[0]) if len(self.dmcList)!=0 else 0
+  
+  def dtype(self, channel):
+    return self.dmcList[0][channel].dtype
+  
+  def features(self, channel):
+    return self.dmcList[0][channel].shape[1]
+  
+  
+  def make_compact(self):
+    """Internal method really - converts the data structure so that len(dmcList)==1, by concatenating arrays as needed."""
+    if len(self.dmcList)>1:
+      rep = []
+      
+      for i in xrange(len(self.dmcList[0])):
+        dml = map(lambda dmc: dmc[i], self.dmcList)
+        dm = numpy.concatenate(dml, axis=0)
+        rep.append(dm)
+      
+      self.dmcList = [rep]
+
+
+  def __getitem__(self, index):
+    self.make_compact()
+    
+    a = numpy.asarray(index[1]).reshape(-1)
+    b = numpy.asarray(index[2]).reshape(-1)
+    if a.shape[0]==1 or b.shape[0]==1: return self.dmcList[0][index[0]][index[1],index[2]]
+    else: return self.dmcList[0][index[0]][numpy.ix_(a,b)]

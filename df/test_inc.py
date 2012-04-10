@@ -171,9 +171,11 @@ def doTest(df):
 incDF = createDF()
 incDF.setInc(True)
 
+es = MatrixGrow()
+
 for i in xrange(64):
-  # Create the data at this juncture...
-  es = MatrixFS(int_dm[:i+1,:], real_dm[:i+1,:], cats[:i+1,:])
+  # Update the data at this juncture...
+  es.append(int_dm[i,:], real_dm[i,:], cats[i,:])
   
   # Update the incrimental model...
   incStart = time.time()

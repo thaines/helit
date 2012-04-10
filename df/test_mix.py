@@ -119,14 +119,14 @@ for cat in categories:
 cats = cats.reshape((-1,1))
 weights = weights.reshape((-1,1))
 
-es = MatrixFS(int_dm, real_dm, cats, weights)
+es = MatrixES(int_dm, real_dm, cats, weights)
 
 
 
 # Generate the testing data...
 test = dict()
 for cat, count in test_count.iteritems():
-  test[cat] = map(lambda _: MatrixFS(*generate(cat)), xrange(count))
+  test[cat] = map(lambda _: MatrixES(*generate(cat)), xrange(count))
 
 
 

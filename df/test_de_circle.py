@@ -52,7 +52,7 @@ ydir *= scales
 
 data = numpy.append(xdir.reshape((-1,1)), ydir.reshape((-1,1)), axis=1)
 
-es = MatrixFS(data)
+es = MatrixES(data)
 
 
 
@@ -99,7 +99,7 @@ def doTest(name, gen):
       testSet[i,1] = axis_half_width * float(y - pixel_half_width) / pixel_half_width
       i += 1
     
-    test = MatrixFS(testSet)
+    test = MatrixES(testSet)
     res = df.evaluate(test, mp=True)
     
     i = 0

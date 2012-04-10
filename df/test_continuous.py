@@ -140,7 +140,7 @@ for i in xrange(total_count):
     cat[i] = 2
 
 cat = cat.reshape((-1,1))
-es = MatrixFS(dm, cat)
+es = MatrixES(dm, cat)
 
 
 
@@ -175,7 +175,7 @@ def doTest(gen):
   politician_success = 0
   politician_prob = 0.0
   for i in xrange(politician_test):
-    dist, best = df.evaluate(MatrixFS(politician[i]), which = ['prob', 'best'])[0]
+    dist, best = df.evaluate(MatrixES(politician[i]), which = ['prob', 'best'])[0]
     if 0==best: politician_success += 1
     politician_prob += dist[0]
 
@@ -184,7 +184,7 @@ def doTest(gen):
   marketing_success = 0
   marketing_prob = 0.0
   for i in xrange(marketing_test):
-    dist, best = df.evaluate(MatrixFS(marketing[i]), which = ['prob', 'best'])[0]
+    dist, best = df.evaluate(MatrixES(marketing[i]), which = ['prob', 'best'])[0]
     if 1==best: marketing_success += 1
     marketing_prob += dist[1]
 
@@ -193,7 +193,7 @@ def doTest(gen):
   tele_sales_success = 0
   tele_sales_prob = 0.0
   for i in xrange(tele_sales_test):
-    dist, best = df.evaluate(MatrixFS(tele_sales[i]), which = ['prob', 'best'])[0]
+    dist, best = df.evaluate(MatrixES(tele_sales[i]), which = ['prob', 'best'])[0]
     if 2==best: tele_sales_success += 1
     tele_sales_prob += dist[2]
 

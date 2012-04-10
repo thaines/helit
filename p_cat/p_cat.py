@@ -18,3 +18,6 @@ except: pass
 
 try: from classify_dpgmm import ClassifyDPGMM
 except: pass
+
+try: from classify_df import ClassifyDF
+except: pass

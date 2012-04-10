@@ -66,7 +66,7 @@ class Goal:
 
 
 class Classification(Goal):
-  """The standard goal of a decision forest - classification. When trainning expects the existence of a discrete channel containing a single feature for each exemplar, the index of which is provided. Each discrete feature indicates a different trainning class, and they should be densly packed, starting from 0 inclusive, i.e. belonging to the set {0, ..., # of classes-1}. Number of classes is also provided."""
+  """The standard goal of a decision forest - classification. When trainning expects the existence of a discrete channel containing a single feature for each exemplar, the index of which is provided. Each discrete feature indicates a different trainning class, and they should be densly packed, starting from 0 inclusive, i.e. belonging to the set {0, ..., # of classes-1}. Number of classes is typically provided, though None can be provided instead in which case it will automatically resize data structures as needed to make them larger as more classes (Still densly packed.) are seen. A side effect of this mode is when it returns arrays indexed by class the size will be data driven, and from the view of the user effectivly arbitrary - user code will have to handle this."""
   def __init__(self, classCount, channel):
     """You provide firstly how many classes exist, and secondly the index of the channel that contains the ground truth for the exemplars. This channel must contain a single integer value, ranging from 0 inclusive to the number of classes, exclusive."""
     self.classCount = classCount
@@ -79,16 +79,21 @@ class Classification(Goal):
   def stats(self, es, index, weights = None):
     if len(index)!=0: 
       ret = numpy.bincount(es[self.channel, index, 0], weights=weights[index] if weights!=None else None)
+      ret = numpy.asarray(ret, dtype=numpy.float32)
     else:
-      ret = numpy.zeros(self.classCount, dtype=numpy.float32)
-    ret = numpy.asarray(ret, dtype=numpy.float32)
-    if ret.shape[0]<self.classCount: ret = numpy.concatenate((ret, numpy.zeros(self.classCount-ret.shape[0], dtype=numpy.float32))) # When numpy 1.6.0 becomes common this line can be flipped to a minlength term in the bincount call.
+      ret = numpy.zeros(self.classCount if self.classCount!=None else 1, dtype=numpy.float32)
+    
+    if self.classCount!=None and ret.shape[0]<self.classCount: ret = numpy.concatenate((ret, numpy.zeros(self.classCount-ret.shape[0], dtype=numpy.float32))) # When numpy 1.6.0 becomes common this line can be flipped to a minlength term in the bincount call.
     
     return ret.tostring()
   
   def updateStats(self, stats, es, index, weights = None):
     ret = numpy.fromstring(stats, dtype=numpy.float32)
     toAdd = numpy.bincount(es[self.channel, index, 0], weights=weights[index] if weights!=None else None)
+    
+    if ret.shape[0]<toAdd.shape[0]:
+      ret = numpy.append(ret, numpy.zeros(toAdd.shape[0]-ret.shape[0], dtype=numpy.float32))
+    
     ret[:toAdd.shape[0]] += toAdd
     
     return ret.tostring()
@@ -96,7 +101,7 @@ class Classification(Goal):
   def entropy(self, stats):
     dist = numpy.fromstring(stats, dtype=numpy.float32)
     dist = dist[dist>1e-6] / dist.sum()
-    return -(dist*numpy.log(dist)).sum() # At the time of coding scipy.stats.distributions.entropy is broken-ish <rolls eyes> (Gives right answer at the expense of filling your screen with warning about zeros.).
+    return -(dist*numpy.log(dist)).sum() # At the time of coding scipy.stats.distributions.entropy is broken-ish <rolls eyes> (Gives right answer at the expense of filling your screen with warnings about zeros.).
 
 
   def answer_types(self):
@@ -111,14 +116,17 @@ class Classification(Goal):
     
     # Calulate the probability distribution over class membership, and stuff...
     prob_list = []
-    prob = numpy.zeros(self.classCount, dtype=numpy.float32)
+    prob = numpy.zeros(self.classCount if self.classCount!=None else 1, dtype=numpy.float32)
     
     for stats in stats_list:
       dist = numpy.fromstring(stats, dtype=numpy.float32)
       dist /= dist.sum()
       
       prob_list.append(dist)
-      prob += dist
+      
+      if dist.shape[0]>prob.shape[0]:
+        prob = numpy.append(prob, numpy.zeros(dist.shape[0]-prob.shape[0], dtype=numpy.float32))
+      prob[:dist.shape[0]] += dist
       
     prob /= prob.sum()
     
@@ -138,13 +146,18 @@ class Classification(Goal):
   def summary(self, es, index, weights = None):
     ret = numpy.bincount(es[self.channel, index, 0], weights=weights[index] if weights!=None else None)
     ret = numpy.asarray(ret, dtype=numpy.float32)
-    if ret.shape[0]<self.classCount: ret = numpy.concatenate((ret, numpy.zeros(self.classCount-ret.shape[0], dtype=numpy.float32))) # When numpy 1.6.0 becomes common this line can be flipped to a minlength term in the bincount call.
+    
+    if self.classCount!=None and ret.shape[0]<self.classCount: ret = numpy.append(ret, numpy.zeros(self.classCount-ret.shape[0], dtype=numpy.float32)) # When numpy 1.6.0 becomes common this line can be flipped to a minlength term in the bincount call.
     
     return ret.tostring()
   
   def updateSummary(self, summary, es, index, weights = None):
     ret = numpy.fromstring(summary, dtype=numpy.float32)
     toAdd = numpy.bincount(es[self.channel, index,0], weights=weights[index] if weights!=None else None)
+    
+    if ret.shape[0]<toAdd.shape[0]:
+      ret = numpy.append(ret, numpy.zeros(toAdd.shape[0]-ret.shape[0], dtype=numpy.float32))
+    
     ret[:toAdd.shape[0]] += toAdd
     
     return ret.tostring()
@@ -157,8 +170,11 @@ class Classification(Goal):
     test = numpy.fromstring(summary, dtype=numpy.float32)
     count = test.sum()
     
+    if dist.shape[0] < test.shape[0]:
+      dist = numpy.append(dist, numpy.zeros(test.shape[0]-dist.shape[0], dtype=numpy.float32))
+    
     # Calculate and average the probabilities...
-    avgError = ((1.0-dist)*test).sum() / count
+    avgError = ((1.0-dist[:test.shape[0]])*test).sum() / count
     
     return avgError, count
 

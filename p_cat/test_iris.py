@@ -63,8 +63,9 @@ print
 c_g   = ClassifyGaussian(4)
 c_kde = ClassifyKDE(0.3*numpy.eye(4, dtype=numpy.float32))
 c_dpgmm = ClassifyDPGMM(4)
+c_df = ClassifyDF(4, 8)
 
-models = [('gaussian',c_g), ('kde',c_kde), ('dpgmm',c_dpgmm)]
+models = [('gaussian',c_g), ('kde',c_kde), ('dpgmm',c_dpgmm), ('df',c_df)]
 
 
 
