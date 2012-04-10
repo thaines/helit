@@ -12,7 +12,7 @@
 
 from utils.python_obj_cpp import python_obj_code
 from linked_list_cpp import linked_list_gc_code
-from funcs_cpp import funcs_code
+from utils.gamma_cpp import gamma_code
 from sampling_cpp import sampling_code
 from conc_cpp import conc_code
 from dir_est_cpp import dir_est_code
@@ -20,4 +20,4 @@ from dir_est_cpp import dir_est_code
 
 
 # Put all the suplied code together into one easy to use include...
-dp_utils_code = python_obj_code + linked_list_gc_code + funcs_code + sampling_code + conc_code + dir_est_code
+dp_utils_code = python_obj_code + linked_list_gc_code + gamma_code + sampling_code + conc_code + dir_est_code

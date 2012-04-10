@@ -22,9 +22,9 @@ from utils.start_cpp import start_cpp
 
 
 # Provides various gamma-related functions...
-funcs_code = start_cpp() + """
-#ifndef FUNCS_CODE
-#define FUNCS_CODE
+gamma_code = start_cpp() + """
+#ifndef GAMMA_CODE
+#define GAMMA_CODE
 
 #include <cmath>
 
@@ -104,32 +104,32 @@ double trigamma(double z)
 
 def lnGamma(z):
   """Pointless as scipy, a library this is dependent on, defines this, but useful for testing. Returns the logorithm of the gamma function"""
-  code = start_cpp(func_code) + """
+  code = start_cpp(gamma_code) + """
   return_val = lnGamma(z);
   """
-  return weave.inline(code, ['z'], support_code=func_code)
+  return weave.inline(code, ['z'], support_code=gamma_code)
 
 def digamma(z):
   """Pointless as scipy, a library this is dependent on, defines this, but useful for testing. Returns an evaluation of the digamma function"""
-  code = start_cpp(func_code) + """
+  code = start_cpp(gamma_code) + """
   return_val = digamma(z);
   """
-  return weave.inline(code, ['z'], support_code=func_code)
+  return weave.inline(code, ['z'], support_code=gamma_code)
 
 def trigamma(z):
   """Pointless as scipy, a library this is dependent on, defines this, but useful for testing. Returns an evaluation of the trigamma function"""
-  code = start_cpp(func_code) + """
+  code = start_cpp(gamma_code) + """
   return_val = trigamma(z);
   """
-  return weave.inline(code, ['z'], support_code=func_code)
+  return weave.inline(code, ['z'], support_code=gamma_code)
 
 
 class TestFuncs(unittest.TestCase):
   """Test code for the assorted gamma-related functions."""
   def test_compile(self):
-    code = start_cpp(func_code) + """
+    code = start_cpp(gamma_code) + """
     """
-    weave.inline(code, support_code=func_code)
+    weave.inline(code, support_code=gamma_code)
 
   def test_error_lngamma(self):
     for _ in xrange(1000):
@@ -156,3 +156,4 @@ class TestFuncs(unittest.TestCase):
 # If this file is run do the unit tests...
 if __name__ == '__main__':
   unittest.main()
+
