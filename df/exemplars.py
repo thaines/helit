@@ -165,5 +165,5 @@ class MatrixGrow(ExemplarSet):
     
     a = numpy.asarray(index[1]).reshape(-1)
     b = numpy.asarray(index[2]).reshape(-1)
-    if a.shape[0]==1 or b.shape[0]==1: return self.dmcList[0][index[0]][index[1],index[2]]
+    if not isinstance(index[1],numpy.ndarray) or not isinstance(index[2],numpy.ndarray): return self.dmcList[0][index[0]][index[1],index[2]]
     else: return self.dmcList[0][index[0]][numpy.ix_(a,b)]

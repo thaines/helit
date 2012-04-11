@@ -99,14 +99,14 @@ class LinearClassifyGen(Generator, LinearSplit):
       for di in dirs:
         dists = (es[self.channel, index, dims] * di.reshape((1,-1))).sum(axis=1)
         cats = es[self.catChannel, index, 0]
-      
-        if cats.shape[0]<2: split = 0.0
-        else:
+        
+        split = 0.0
+        if cats.shape[0]>1:
           indices = numpy.argsort(dists)
           dists = dists[indices]
           cats = cats[indices]
       
-          high = numpy.bincount(cats, weights=weights[index] if weights!=None else None)
+          high = numpy.bincount(cats, weights=weights[index[indices]] if weights!=None else None)
           low = numpy.zeros(high.shape[0], dtype=numpy.float32)
       
           improvement = -1e100
@@ -121,7 +121,8 @@ class LinearClassifyGen(Generator, LinearSplit):
         
             # Keep if best...
             if imp>improvement:
-              split = 0.5*(dists[i] + dists[i+1])
+              ratio = numpy.random.random()
+              split = ratio*dists[i] + (1.0-ratio)*dists[i+1]
               improvement = imp
         
         yield numpy.asarray(dims, dtype=numpy.int32).tostring() + numpy.asarray(di, dtype=numpy.float32).tostring() + numpy.asarray([split], dtype=numpy.float32).tostring()

@@ -26,6 +26,7 @@ class ClassifyDF(ProbCat):
     
     # Setup the classification forest...
     self.classify = DF()
+    self.classify.setInc(True)
     self.classify.setGoal(Classification(None, 1))
     self.classify.setGen(LinearClassifyGen(0, 1, testDims, dimCount, rotCount))
     
@@ -34,6 +35,7 @@ class ClassifyDF(ProbCat):
     
     # Setup the density estimation forest...
     self.density = DF()
+    self.density.setInc(True)
     self.density.setGoal(DensityGaussian(dims))
     self.density.setGen(LinearMedianGen(0, testDims, dimCount, rotCount))
     self.density.getPruner().setMinTrain(48)
@@ -76,6 +78,8 @@ class ClassifyDF(ProbCat):
     return self.cats.keys()
 
   def getCatCounts(self):
+    if len(self.cats)==0: return dict()
+    
     counts = numpy.bincount(self.classifyData[1,:,0])
     
     ret = dict()
@@ -86,21 +90,26 @@ class ClassifyDF(ProbCat):
 
   def getDataProb(self, sample, state = None):
     # Update the models as needed - this will potentially take some time...
-    if self.classifyTrain!=0:
+    if self.classifyTrain!=0 and self.classifyData.exemplars()!=0:
       self.classify.learn(min(self.classifyTrain, self.treeCount), self.classifyData, clamp = self.treeCount, mp=False)
       self.classifyTrain = 0
       
-    if self.densityTrain!=0:
+    if self.densityTrain!=0 and self.densityData.exemplars()!=0:
       self.density.learn(min(self.densityTrain, self.treeCount), self.densityData, clamp = self.treeCount, mp=False)
       self.densityTrain = 0
     
-    # Generate the result...
-    eval_c = self.classify.evaluate(MatrixES(sample), which = 'prob')[0]
-    eval_d = self.density.evaluate(MatrixES(sample), which = 'best')[0]
-    
-    # Create and return the right output structure...
+    # Generate the result and create and return the right output structure...
     ret = dict()
-    ret[None] = eval_d
-    for cat, c in self.cats.iteritems():
-      ret[cat] = eval_c[c] if c<eval_c.shape[0] else 0.0
+    
+    if self.classify.size()!=0:
+      eval_c = self.classify.evaluate(MatrixES(sample), which = 'prob')[0]
+      for cat, c in self.cats.iteritems():
+        ret[cat] = eval_c[c] if c<eval_c.shape[0] else 0.0
+    
+    if self.density.size()!=0:
+      eval_d = self.density.evaluate(MatrixES(sample), which = 'best')[0]
+      ret[None] = eval_d
+    else:
+      ret[None] = 1.0
+
     return ret

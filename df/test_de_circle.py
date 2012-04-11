@@ -108,7 +108,8 @@ def doTest(name, gen):
       i += 1
     
   del pb
-
+  
+  print 'Maximum probability = %.2f'%img.max()
   img /= img.max()
   cv.SaveImage('test_de_circle_%s.png'%name,array2cv(img*255))
 
