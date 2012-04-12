@@ -195,8 +195,8 @@ class Pool:
     return Entity._make(ret[:3])
 
 
-  def selectWrong(self, softSelect = False, hardChoice = False, dp = True):
-    """Eight different selection strategies, all rolled into one. Bite me! All work on the basis of selecting the entity in the pool with the greatest chance of being misclassified by the current classifier. There are three binary flags that control the behaviour, and their defaults match up with the algorithm presented in the paper 'Active Learning using Dirichlet Processes for Rare Class Discovery and Classification'. softSelect indicates if the classifier selects the category with the highest probability (False) or selects the category probalistically from P(class|data) (True). hardChoice comes into play once P(wrong) has been calculated for each entity in the pool - when True the entity with the highest P(wrong) is selected, otherwise the P(wrong) are used as weights for a probabilistic selection. dp indicates if the Dirichlet process assumption is to be used, such that we consider the probability that the entity belongs to a new category in addition to the existing categories. Note that the classifier cannot select an unknown class, so an entity with a high probability of belonging to a new class has a high P(wrong) score when the dp assumption is True."""
+  def selectWrong(self, softSelect = False, hardChoice = False, dp = True, dw = False):
+    """Sixteen different selection strategies, all rolled into one. Bite me! All work on the basis of selecting the entity in the pool with the greatest chance of being misclassified by the current classifier. There are four binary flags that control the behaviour, and their defaults match up with the algorithm presented in the paper 'Active Learning using Dirichlet Processes for Rare Class Discovery and Classification'. softSelect indicates if the classifier selects the category with the highest probability (False) or selects the category probalistically from P(class|data) (True). hardChoice comes into play once P(wrong) has been calculated for each entity in the pool - when True the entity with the highest P(wrong) is selected, otherwise the P(wrong) are used as weights for a probabilistic selection. dp indicates if the Dirichlet process assumption is to be used, such that we consider the probability that the entity belongs to a new category in addition to the existing categories. Note that the classifier cannot select an unknown class, so an entity with a high probability of belonging to a new class has a high P(wrong) score when the dp assumption is True. dw indicates if it should weight the metric by a density estimate over the data set, and hence bias selection towards areas with lots of samples."""
     if len(self.cats)==0 and dp==False: return self.selectRandom()
     
     wrong = numpy.ones(len(self.entities))
@@ -236,6 +236,9 @@ class Pool:
           if p>best:
             best = p
             wrong[i] = 1.0 - probIs[cat]
+      
+      # If requested include a weighting by density...
+      if dw: wrong[i] *= entity[1][None]
 
     if hardChoice:
       pos = numpy.argmax(wrong)
@@ -255,7 +258,7 @@ class Pool:
   @staticmethod
   def methods():
     """Returns a list of the method names that can be passed to the select method. Read the select method to work out which they each are. p_wrong_soft is the published techneque."""
-    return ['random', 'outlier', 'entropy', 'p_new_hard', 'p_new_soft', 'p_wrong_hard', 'p_wrong_soft', 'p_wrong_hard_pcat', 'p_wrong_soft_pcat', 'p_wrong_hard_naive', 'p_wrong_soft_naive', 'p_wrong_hard_pcat_naive', 'p_wrong_soft_pcat_naive']
+    return ['random', 'outlier', 'entropy', 'p_new_hard', 'p_new_soft', 'p_wrong_hard', 'p_wrong_soft', 'p_wrong_hard_pcat', 'p_wrong_soft_pcat', 'p_wrong_hard_naive', 'p_wrong_soft_naive', 'p_wrong_hard_pcat_naive', 'p_wrong_soft_pcat_naive', 'dxp_wrong_hard', 'dxp_wrong_soft', 'dxp_wrong_hard_pcat', 'dxp_wrong_soft_pcat', 'dxp_wrong_hard_naive', 'dxp_wrong_soft_naive', 'dxp_wrong_hard_pcat_naive', 'dxp_wrong_soft_pcat_naive']
 
   def select(self, method):
     """Pass through for all of the select methods that have no problamatic parameters - allows you to select the method using a string. You can get a list of all method strings from the methods() method."""
@@ -264,12 +267,20 @@ class Pool:
     elif method=='entropy': return self.selectEntropy()
     elif method=='p_new_hard': return self.selectDP(True)
     elif method=='p_new_soft': return self.selectDP(False)
-    elif method=='p_wrong_hard': return self.selectWrong(False,True,True)
-    elif method=='p_wrong_soft': return self.selectWrong(False,False,True)
-    elif method=='p_wrong_hard_pcat': return self.selectWrong(True,True,True)
-    elif method=='p_wrong_soft_pcat': return self.selectWrong(True,False,True)
-    elif method=='p_wrong_hard_naive': return self.selectWrong(False,True,False)
-    elif method=='p_wrong_soft_naive': return self.selectWrong(False,False,False)
-    elif method=='p_wrong_hard_pcat_naive': return self.selectWrong(True,True,False)
-    elif method=='p_wrong_soft_pcat_naive': return self.selectWrong(True,False,False)
+    elif method=='p_wrong_hard': return self.selectWrong(False,True,True,False)
+    elif method=='p_wrong_soft': return self.selectWrong(False,False,True,False)
+    elif method=='p_wrong_hard_pcat': return self.selectWrong(True,True,True,False)
+    elif method=='p_wrong_soft_pcat': return self.selectWrong(True,False,True,False)
+    elif method=='p_wrong_hard_naive': return self.selectWrong(False,True,False,False)
+    elif method=='p_wrong_soft_naive': return self.selectWrong(False,False,False,False)
+    elif method=='p_wrong_hard_pcat_naive': return self.selectWrong(True,True,False,False)
+    elif method=='p_wrong_soft_pcat_naive': return self.selectWrong(True,False,False,False)
+    elif method=='dxp_wrong_hard': return self.selectWrong(False,True,True,True)
+    elif method=='dxp_wrong_soft': return self.selectWrong(False,False,True,True)
+    elif method=='dxp_wrong_hard_pcat': return self.selectWrong(True,True,True,True)
+    elif method=='dxp_wrong_soft_pcat': return self.selectWrong(True,False,True,True)
+    elif method=='dxp_wrong_hard_naive': return self.selectWrong(False,True,False,True)
+    elif method=='dxp_wrong_soft_naive': return self.selectWrong(False,False,False,True)
+    elif method=='dxp_wrong_hard_pcat_naive': return self.selectWrong(True,True,False,True)
+    elif method=='dxp_wrong_soft_pcat_naive': return self.selectWrong(True,False,False,True)
     else: raise Exception('Unknown selection method')
