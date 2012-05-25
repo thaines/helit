@@ -18,6 +18,11 @@ class Test:
   def do(self, test, es, index = slice(-1)):
     """Does the test. Given the entity that defines the actual test and an ExemplarSet to run the test on. An optional index for the features can be provided (Passed directly through to the exemplar sets [] operator, so its indexing rules apply.), but if omitted it runs for all. Return value is a boolean numpy array indexed by the relative exemplar indices, that gives True if it passsed the test, False if it failed."""
     raise NotImplementedError
+  
+  
+  def testCodeC(self, name, exemplar_list):
+    """Provides C code to perform the test - provides a C function that is given the test object as a pointer to the first byte and the index of the exemplar to test; it then returns true or false dependeing on if it passes the test or not. Returned string contains a function with the calling convention bool <name>(PyObject * data, void * test, size_t test_length, int exemplar). data is a python tuple indexed by channel containning the object to be fed to the exemplar access function. To construct this function it needs the return value of listCodeC for an ExemplarSet, so it can get the calling convention to access the channel. When compiled the various functions must be avaliable."""
+    raise NotImplementedError
 
 
 
@@ -34,6 +39,18 @@ class AxisSplit(Test):
     values = es[self.channel, index, value_index[0]]
     
     return (values-offset[0])>=0.0
+  
+  
+  def testCodeC(self, name, exemplar_list):
+    ret  = 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)'%name
+    ret += '{'
+    ret +=  'int feature = *(int*)test;'
+    ret +=  'float offset = *((float*)test + 1);'
+    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});'.format(exemplar_list[self.channel]['itype'], self.channel)
+    ret +=  'float value = (float)%s_get(channel, exemplar, feature);'%exemplar_list[self.channel]['name']
+    ret +=  'return (value-offset)>=0.0;'
+    ret += '}'
+    return ret
 
 
 
@@ -58,6 +75,24 @@ class LinearSplit(Test):
     return ((values*plane_axis.reshape((1,-1))).sum(axis=1) - offset)>=0.0
 
 
+  def testCodeC(self, name, exemplar_list):
+    ret  = 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)'%name
+    ret += '{'
+    ret +=  'int * feature = (int*)test;'
+    ret +=  'float * plane_axis = (float*)test + %i;'%self.dims
+    ret +=  'float offset = *((float*)test + %i);'%(self.dims*2)
+    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});'.format(exemplar_list[self.channel]['itype'], self.channel)
+    ret +=  'float value = 0.0;'
+    ret +=  'for (int i=0;i<%i;i++)'%self.dims
+    ret +=  '{'
+    ret +=   'float v = (float)%s_get(channel, exemplar, feature[i]);'%exemplar_list[self.channel]['name']
+    ret +=   'value += v*plane_axis[i];'
+    ret +=  '}'
+    ret +=  'return (value-offset)>=0.0;'
+    ret += '}'
+    return ret
+
+
 
 class DiscreteBucket(Test):
   """For discrete values. The test is applied to a single value, and consists of a list of values such that if it is equal to one of them it passes, but if it is not equal to any of them it fails. Basically a binary split of categorical data. The test entity is a string encoding first a int32 of the index of which feature to use, followed by the remainder of the string forming a list of int32's that constitute the values that result in success."""
@@ -71,3 +106,19 @@ class DiscreteBucket(Test):
     values = es[self.channel, index, t[0]]
     
     return numpy.in1d(values, t[1:])
+  
+  
+  def testCodeC(self, name, exemplar_list):
+    ret  = 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)'%name
+    ret += '{'
+    ret +=  'size_t steps = test_length>>2;'
+    ret +=  'int * accept = (int*)test;'
+    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});'.format(exemplar_list[self.channel]['itype'], self.channel)
+    ret +=  'int value = (int)%s_get(channel, exemplar, accept[0]);'%exemplar_list[self.channel]['name']
+    ret +=  'for (size_t=1; i<steps; i++)'
+    ret +=  '{'
+    ret +=   'if (accept[i]==value) return true;'
+    ret +=  '}'
+    ret +=  'return false;'
+    ret += '}'
+    return ret

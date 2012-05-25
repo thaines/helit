@@ -38,6 +38,15 @@ class ExemplarSet:
   def __getitem__(self, index):
     """Actual data access is via the [] operator, with 3 entities - [channel, exemplar(s), feature(s)]. channel must index the channel, and indicates which channel to get the data from - must always be an integer. exemplars(s) indicates which examples to return and features(s) which features to return for each of the exemplars. For both of these 3 indexing types must be supported - a single integer, a slice, or a numpy array of indexing integers. For indexing integers the system is designed to work such that repetitions are never used, though that is in fact supported most of the time by actual implimentations. The return value must always have the type indicated by the dtype method for the channel in question. If both are indexed with an integer then it will return a single number (But still of the numpy dtype.); if only 1 is an integer a 1D numpy array; and if neither are integers a 2D numpy array, indexed [relative exemplar, relative feature]. Note that this last requirement is not the numpy default, which would actually continue to give a 1D array rather than the 2D subset defined by two sets of indicies."""
     raise NotImplementedError
+  
+  
+  def codeC(self, channel, name):
+    """Returns a dictionary containning all the entities needed to access the given channel of the exemplar from within C, using name to provide a unique string to avoid namespace clashes. Will raise a NotImplementedError if not avaliable. ['type'] = The C type of the channel, often 'float'. ['input'] = The input object to be passed into the C code, must be protected from any messing around that scipy.weave might do. ['itype'] = The input type in C, as a string, usually 'PyObject *' or 'PyArrayObject *'. ['get'] = Returns code for a function to get values from the channel of the exemplar; has calling convention <type> <name>_get(<itype> input, int exemplar, int feature). ['exemplars'] = Code for a function to get the number of exemplars; has calling convention int <name>_exemplars(<itype> input). Will obviously return the same value for all channels, so can be a bit redundant. ['features'] = Code for a function that returns how many features the channel has; calling convention is int <name>_features(<itype> input). ['name'] is also provided, which contains the base name handed to this method, for conveniance."""
+    raise NotImplementedError
+  
+  def listCodeC(self, name):
+    """Helper method - returns a tuple indexed by channel that gives the dictionary returned by codeC for each channel in this exemplar. It generates the names using the provided name by adding the number indexing the channel to the end. Happens to by the required input elsewhere."""
+    return tuple(map(lambda c: self.codeC(c, name+str(c)), xrange(self.channels())))
 
 
 
@@ -82,6 +91,23 @@ class MatrixES(ExemplarSet):
     b = numpy.asarray(index[2]).reshape(-1)
     if a.shape[0]==1 or b.shape[0]==1: return self.dm[index[0]][index[1],index[2]]
     else: return self.dm[index[0]][numpy.ix_(a,b)]
+  
+  def codeC(self, channel, name):
+    ret = dict()
+    
+    inp = self.dm[channel]
+    dtoc = {numpy.int8:'char', numpy.int16:'short', numpy.int32:'long', numpy.int64:'long long', numpy.uint8:'unsigned char', numpy.uint16:'unsigned short', numpy.uint32:'unsigned long', numpy.uint64:'unsigned long long', numpy.float32:'float', numpy.float64:'double'}
+    if inp.dtype not in dtoc: raise NotImplementedError
+    
+    ret['name'] = name
+    ret['type'] = dtoc[inp.dtype]
+    ret['input'] = inp
+    ret['itype'] = 'PyArrayObject *'
+    ret['get'] = 'inline %s %s_get(PyArrayObject * input, int exemplar, int feature) {return *(%s *)(input->data + exemplar*input->strides[0] + feature*input->strides[1]);}' % (ret['type'], name, ret['type'])
+    ret['exemplars'] = 'inline int %s_exemplars(PyArrayObject * input) {return input->dimensions[0];}'%name
+    ret['features'] = 'inline int %s_features(PyArrayObject * input) {return input->dimensions[1];}'%name
+
+    return ret
 
 
 
@@ -167,3 +193,20 @@ class MatrixGrow(ExemplarSet):
     b = numpy.asarray(index[2]).reshape(-1)
     if not isinstance(index[1],numpy.ndarray) or not isinstance(index[2],numpy.ndarray): return self.dmcList[0][index[0]][index[1],index[2]]
     else: return self.dmcList[0][index[0]][numpy.ix_(a,b)]
+
+  def codeC(self, channel, name):
+    ret = dict()
+    
+    inp = self.dm[channel]
+    dtoc = {numpy.int8:'char', numpy.int16:'short', numpy.int32:'long', numpy.int64:'long long', numpy.uint8:'unsigned char', numpy.uint16:'unsigned short', numpy.uint32:'unsigned long', numpy.uint64:'unsigned long long', numpy.float32:'float', numpy.float64:'double'}
+    if inp.dtype not in dtoc: raise NotImplementedError
+    
+    ret['name'] = name
+    ret['type'] = dtoc[inp.dtype]
+    ret['input'] = inp
+    ret['itype'] = 'PyArrayObject *'
+    ret['get'] = 'inline %s %s_get(PyArrayObject * input, int exemplar, int feature) {return *(%s *)(input->data + exemplar*input->strides[0] + feature*input->strides[1]);}' % (ret['type'], name, ret['type'])
+    ret['exemplars'] = 'inline int %s_exemplars(PyArrayObject * input) {return input->dimensions[0];}'%name
+    ret['features'] = 'inline int %s_features(PyArrayObject * input) {return input->dimensions[1];}'%name
+
+    return ret
