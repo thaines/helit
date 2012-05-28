@@ -129,26 +129,38 @@ def doTest(gen):
 
   # Test...
   zombie_success = 0
+  zombie_gen_success = 0
   zombie_prob = 0.0
+  zombie_gen_prob = 0.0
   for i in xrange(zombie_test):
-    dist, best = df.evaluate(MatrixES(zombie[i]), which = ['prob', 'best'])[0]
+    dist, best, gen = df.evaluate(MatrixES(zombie[i]), which = ['prob', 'best', 'gen'])[0]
     if 0==best: zombie_success += 1
+    if gen.argmax()==0: zombie_gen_success += 1
     zombie_prob += dist[0]
+    zombie_gen_prob += gen[0]
 
   print 'Of %i zombies %i (%.1f%%) were correctly detected, with %.1f%% of total probability.'%(zombie_test, zombie_success, 100.0*zombie_success/float(zombie_test), 100.0*zombie_prob/zombie_test)
+  print 'Generative: Of %i zombies %i (%.1f%%) were correctly detected, with %.1f%% of total probability.'%(zombie_test, zombie_gen_success, 100.0*zombie_gen_success/float(zombie_test), 100.0*zombie_gen_prob/zombie_test)
   
   human_success = 0
+  human_gen_success = 0
   human_prob = 0.0
+  human_gen_prob = 0.0
   for i in xrange(human_test):
-    dist, best = df.evaluate(MatrixES(human[i]), which = ['prob', 'best'])[0]
+    dist, best, gen = df.evaluate(MatrixES(human[i]), which = ['prob', 'best', 'gen'])[0]
     if 1==best: human_success += 1
+    if gen.argmax()==1: human_gen_success += 1
     human_prob += dist[1]
+    human_gen_prob += gen[1]
 
   print 'Of %i humans %i (%.1f%%) were correctly detected, with %.1f%% of total probability.'%(human_test, human_success, 100.0*human_success/float(human_test), 100.0*human_prob/human_test)
+  print 'Generative: Of %i humans %i (%.1f%%) were correctly detected, with %.1f%% of total probability.'%(human_test, human_gen_success, 100.0*human_gen_success/float(human_test), 100.0*human_gen_prob/human_test)
   
   total_success = zombie_success + human_success
+  total_gen_success = zombie_gen_success + human_gen_success
   total_test = zombie_test + human_test
   print 'Combined success is %i out of %i (%.1f%%)'%(total_success, total_test, 100.0*total_success/float(total_test))
+  print 'Generative: Combined success is %i out of %i (%.1f%%)'%(total_gen_success, total_test, 100.0*total_gen_success/float(total_test))
 
 
 

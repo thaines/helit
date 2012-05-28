@@ -102,7 +102,7 @@ class ClassifyDF(ProbCat):
     ret = dict()
     
     if self.classify.size()!=0:
-      eval_c = self.classify.evaluate(MatrixES(sample), which = 'prob')[0]
+      eval_c = self.classify.evaluate(MatrixES(sample), which = 'gen')[0]
       for cat, c in self.cats.iteritems():
         ret[cat] = eval_c[c] if c<eval_c.shape[0] else 0.0
     

@@ -225,10 +225,10 @@ class DF:
     
     # Merge and obtain answers for the output...
     if mp:
-      ret = pool.map(getAnswer, map(lambda i: (self.goal, store[i], which, es, i), index))
+      ret = pool.map(getAnswer, map(lambda i: (self.goal, store[i], which, es, i, map(lambda t: t[0], self.trees)), index))
     else:
       ret = []
-      for i in index: ret.append(self.goal.answer(store[i], which, es, i))
+      for i in index: ret.append(self.goal.answer(store[i], which, es, i, map(lambda t: t[0], self.trees)))
     
     # Clean up if we have been multiprocessing...
     if mp:
@@ -313,6 +313,6 @@ def treeEval(data):
 
 def getAnswer(data):
   """Used for multiprocessing the calls to the answer method."""
-  goal, store, which, es, i = data
+  goal, store, which, es, i, trees = data
   
-  return goal.answer(store, which, es, i)
+  return goal.answer(store, which, es, i, trees)

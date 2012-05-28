@@ -46,8 +46,8 @@ class Goal:
     """When classifying a new feature an answer is to be provided, of which several possibilities exist. This returns a dictionary of those possibilities (key==name, value=human readable description of what it is.), from which the user can select. By convention 'best' must always exist, as the best guess that the algorithm can give (A point estimate of the answer the user is after.). If a probability distribution over 'best' can be provided then that should be avaliable as 'prob' (It is highly recomended that this be provided.)."""
     return {'best':'Point estimate of the best guess at an answer, in the same form that it was provided for the trainning stage.'}
   
-  def answer(self, stats_list, which, es, index):
-    """Given a feature then using a forest a list of statistics entitys can be obtained from the leaf nodes that the feature ends up in, one for each tree (Could be as low as just one entity.). This converts that statistics entity list into an answer, to be passed to the user, possibly using the es with the index of the one entry that the stats list is for as well. As multiple answer types exist (As provided by the answer_types method.) you provide the one(s) you want to the which variable - if which is a string then that answer type is returned, if it is a list of strings then a tuple aligned with it is returned, containing multiple answers. If multiple types are needed then returning a list should hopefuly be optimised by this method to avoid duplicate calculation."""
+  def answer(self, stats_list, which, es, index, trees):
+    """Given a feature then using a forest a list of statistics entitys can be obtained from the leaf nodes that the feature ends up in, one for each tree (Could be as low as just one entity.). This converts that statistics entity list into an answer, to be passed to the user, possibly using the es with the index of the one entry that the stats list is for as well. As multiple answer types exist (As provided by the answer_types method.) you provide the one(s) you want to the which variable - if which is a string then that answer type is returned, if it is a list of strings then a tuple aligned with it is returned, containing multiple answers. If multiple types are needed then returning a list should hopefuly be optimised by this method to avoid duplicate calculation. Also requires the trees themselves, as a list aligned with stats_list."""
     raise NotImplementedError
   
   
@@ -106,35 +106,57 @@ class Classification(Goal):
 
   def answer_types(self):
     return {'best':'An integer indexing the class this feature is most likelly to belong to given the model.',
-            'prob':'A categorical distribution over class membership, represented as a numpy array of float32 type. Gives the probability of it belonging to each class.',
-            'prob_samples':'The prob result is obtained by averaging a set of probability distributions, one from each tree - this outputs that list of distributions instead, so its varaibility can be accessed.'}
+            'prob':'A categorical distribution over class membership, represented as a numpy array of float32 type. Gives the probability of it belonging to each class, P(class|data).',
+            'prob_samples':'The prob result is obtained by averaging a set of probability distributions, one from each tree - this outputs that list of distributions instead, so its varaibility can be accessed.',
+            'gen':'The default probability returned by the system is discriminative - this instead returns a generative result, P(data|class). A numpy array of float32 type containing the data probability for each class - will not sum to 1.',
+            'gen_list':'Is to gen as prob_samples is to prob. Gives a list of probabilities representing P(class|data), so the consistancy can be accessed.'}
   
-  def answer(self, stats_list, which, es, index):
+  def answer(self, stats_list, which, es, index, trees):
     # Convert to a list, and process like that, before correcting for the return - simpler...
     single = isinstance(which, str)
     if single: which = [which]
     
-    # Calulate the probability distribution over class membership, and stuff...
-    prob_list = []
-    prob = numpy.zeros(self.classCount if self.classCount!=None else 1, dtype=numpy.float32)
+    # Calulate the probability distribution over class membership, both discriminativly and generativly...
+    needGen = ('gen' in which) or ('gen_list' in which)
     
-    for stats in stats_list:
-      dist = numpy.fromstring(stats, dtype=numpy.float32)
-      dist /= dist.sum()
+    prob_list = []
+    if needGen: gen_list = []
+    
+    cCount = self.classCount if self.classCount!=None else 1
+    prob = numpy.zeros(cCount, dtype=numpy.float32)
+    if needGen: gen = numpy.zeros(cCount, dtype=numpy.float32)
+    
+    for stats, tree in zip(stats_list, trees):
+      cat = numpy.fromstring(stats, dtype=numpy.float32)
       
+      dist = cat / cat.sum()
       prob_list.append(dist)
       
       if dist.shape[0]>prob.shape[0]:
         prob = numpy.append(prob, numpy.zeros(dist.shape[0]-prob.shape[0], dtype=numpy.float32))
       prob[:dist.shape[0]] += dist
       
+      if needGen:
+        div = numpy.fromstring(tree.stats, dtype=numpy.float32)
+        use = numpy.where(div[:cat.shape[0]]>0.0)
+        g = numpy.zeros(cat.shape[0], dtype=numpy.float32)
+        g[use] = cat[use] / div[use]
+        gen_list.append(g)
+        
+        if g.shape[0]>gen.shape[0]:
+          gen = numpy.append(gen, numpy.zeros(g.shape[0]-gen.shape[0], dtype=numpy.float32))
+        gen[:g.shape[0]] += g
+    
     prob /= prob.sum()
+    if needGen: gen /= len(gen_list)
     
     # Prepare the return...
     def make_answer(t):
       if t=='prob': return prob
       elif t=='best': return prob.argmax()
       elif t=='prob_samples': return prob_list
+      elif t=='gen': return gen
+      elif t=='gen_list': return gen_list
     
     ret = map(make_answer, which)
     
@@ -344,7 +366,7 @@ class DensityGaussian(Goal):
   def answer_types(self):
     return {'best':'Point estimate of the probability of the input point'}
   
-  def answer(self, stats_list, which, es, index):
+  def answer(self, stats_list, which, es, index, trees):
     # Process each stat in turn, and calculate the average of the samples probability from each...
     p = 0.0
     
