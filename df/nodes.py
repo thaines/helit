@@ -129,16 +129,16 @@ class Node:
       store = []
       if isinstance(index, slice): index = numpy.arange(*index.indices(es.exemplars()))
     
+    # Update the summary at this node if needed...
+    summary = None
+    if es!=None:
+      if self.summary==None: summary = goal.summary(es, index, weights)
+      else: summary = goal.updateSummary(self.summary, es, index, weights)
+      if inc: self.summary = summary
+    
     # Either recurse to the leafs or include this leaf...
     if self.test==None:
       # A leaf...
-      if es!=None:
-        if inc==False or self.summary==None: summary = goal.summary(es, index, weights)
-        else: summary = goal.updateSummary(self.summary, es, index, weights)
-        if inc==True: self.summary = summary
-      else:
-        summary = self.summary
-      
       if summary!=None: store.append(goal.error(self.stats, summary))
     else:
       # Not a leaf...
@@ -160,7 +160,7 @@ class Node:
       if None in map(lambda t: t[1], store):
         return sum(map(lambda t: t[0], store))
       else:
-        store = numpy.asarray(store)
+        store = numpy.asarray(store, dtype=numpy.float32)
         return numpy.average(store[:,0], weights=store[:,1])
 
   def removeIncError(self):

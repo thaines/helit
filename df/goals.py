@@ -198,7 +198,7 @@ class Classification(Goal):
     # Calculate and average the probabilities...
     avgError = ((1.0-dist[:test.shape[0]])*test).sum() / count
     
-    return avgError, count
+    return (avgError, count)
 
 
 
