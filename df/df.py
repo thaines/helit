@@ -42,6 +42,8 @@ class DF:
       self.trees = map(lambda t: (t[0].clone(), t[1]), other.trees)
       self.inc = other.inc
       self.trainCount = other.trainCount
+      
+      self.evaluateCodeC = other.evaluateCodeC
     else:
       self.goal = None
       self.pruner = PruneCap()
@@ -49,6 +51,8 @@ class DF:
       self.trees = [] # A list of pairs: (root node, oob score)
       self.inc = False # True to support incrimental learning, False to not.
       self.trainCount = 0 # Count of how many trainning examples were used to train with - this is so it knows how to split up the data when doing incrimental learning (between new and old exmeplars.). Also used to detect if trainning has occured.
+      
+      self.evaluateCodeC = dict()
   
   
   def setGoal(self, goal):
@@ -72,6 +76,7 @@ class DF:
   def setGen(self, gen):
     """Allows you to set the Generator object from which node tests are obtained - must be set before anything happens. You must not change this once trainning starts."""
     assert(self.trainCount==0)
+    self.evaluateCodeC = dict()
     self.gen = gen
   
   def getGen(self):
@@ -196,6 +201,12 @@ class DF:
     """Given some exemplars returns a list containing the output of the model for each exemplar. The returned list will align with the index, which defaults to everything and hence if not provided is aligned with es, the ExemplarSet. The meaning of the entrys in the list will depend on the Goal of the model and which: which can either be a single answer type from the goal object or a list of answer types, to get a tuple of answers for each list entry - the result is what the Goal-s answer method returns. The answer_types method passes through to provide relevent information. Can be run in multiprocessing mode if you set the mp variable to True - only worth it if you have a lot of data (Also note that it splits by tree, so each process does all data items but for just one of the trees.). Should not be called if size()==0."""
     if isinstance(index, slice): index = numpy.arange(*index.indices(es.exemplars()))
     
+    # Handle the generation of C code, with caching...
+    es_type = str(type(es))
+    if es_type not in self.evaluateCodeC:
+      self.evaluateCodeC[es_type] = self.trees[0][0].evaluateC(self.gen, es)
+    code = self.evaluateCodeC[es_type]
+    
     # If multiprocessing has been requested set it up...
     if Pool==None: mp = False
     elif cpu_count()<2: mp = False
@@ -205,30 +216,34 @@ class DF:
       treesDone = manager.Value('i',0)
 
     # Collate the relevent stats objects...
-    store = dict()
+    store = []
     if mp:
-      result = pool.map_async(treeEval, map(lambda tree_error: (tree_error[0], self.gen, es, index, treesDone), self.trees))
+      # Dummy run, to avoid a race condition during compilation...
+      if code!=None:
+        ei = numpy.zeros(0, dtype=index.dtype)
+        self.trees[0][0].evaluate([], self.gen, es, ei, code)
+      
+      # Do the actual work...
+      result = pool.map_async(treeEval, map(lambda tree_error: (tree_error[0], self.gen, es, index, treesDone, code), self.trees))
       
       while not result.ready():
         result.wait(0.1)
         if callback: callback(treesDone.value, len(self.trees))
 
-      result = result.get()
-      for res in result:
-        for key, value in res.iteritems():
-          if key in store: store[key] += value
-          else: store[key] = value
+      store += result.get()
     else:
       for ti, (tree, _) in enumerate(self.trees):
         if callback: callback(ti, len(self.trees))
-        tree.evaluate(store, self.gen, es, index)
+        res = [None] * es.exemplars()
+        tree.evaluate(res, self.gen, es, index, code)
+        store.append(res)
     
     # Merge and obtain answers for the output...
     if mp:
-      ret = pool.map(getAnswer, map(lambda i: (self.goal, store[i], which, es, i, map(lambda t: t[0], self.trees)), index))
+      ret = pool.map(getAnswer, map(lambda i: (self.goal, map(lambda s: s[i], store), which, es, i, map(lambda t: t[0], self.trees)), index))
     else:
       ret = []
-      for i in index: ret.append(self.goal.answer(store[i], which, es, i, map(lambda t: t[0], self.trees)))
+      for i in index: ret.append(self.goal.answer(map(lambda s: s[i], store), which, es, i, map(lambda t: t[0], self.trees)))
     
     # Clean up if we have been multiprocessing...
     if mp:
@@ -237,8 +252,8 @@ class DF:
 
     # Return the answer...
     return ret
-  
-  
+
+
   def size(self):
     """Returns the number of trees within the forest."""
     return len(self.trees)
@@ -302,10 +317,10 @@ def updateTree(data):
 
 def treeEval(data):
   """Used by the evaluate method when doing multiprocessing."""
-  tree, gen, es, index, treesDone = data
+  tree, gen, es, index, treesDone, code = data
   
-  ret = dict()
-  tree.evaluate(ret, gen, es, index)
+  ret = [None] * es.exemplars()
+  tree.evaluate(ret, gen, es, index, code)
   treesDone.value += 1
   return ret
 

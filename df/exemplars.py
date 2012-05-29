@@ -47,6 +47,10 @@ class ExemplarSet:
   def listCodeC(self, name):
     """Helper method - returns a tuple indexed by channel that gives the dictionary returned by codeC for each channel in this exemplar. It generates the names using the provided name by adding the number indexing the channel to the end. Happens to by the required input elsewhere."""
     return tuple(map(lambda c: self.codeC(c, name+str(c)), xrange(self.channels())))
+  
+  def tupleInputC(self):
+    """Helper method, that can be overriden - returns a tuple containing the inputs needed for the exemplar."""
+    return tuple(map(lambda c: self.codeC(c, name+str(c))['input'], xrange(self.channels())))
 
 
 
@@ -96,11 +100,20 @@ class MatrixES(ExemplarSet):
     ret = dict()
     
     inp = self.dm[channel]
-    dtoc = {numpy.int8:'char', numpy.int16:'short', numpy.int32:'long', numpy.int64:'long long', numpy.uint8:'unsigned char', numpy.uint16:'unsigned short', numpy.uint32:'unsigned long', numpy.uint64:'unsigned long long', numpy.float32:'float', numpy.float64:'double'}
-    if inp.dtype not in dtoc: raise NotImplementedError
+    if inp.dtype==numpy.float32: dtype = 'float'
+    elif inp.dtype==numpy.float64: dtype = 'double'
+    elif inp.dtype==numpy.int32: dtype = 'long'
+    elif inp.dtype==numpy.int64: dtype = 'long long'
+    elif inp.dtype==numpy.uint32: dtype = 'unsigned long'
+    elif inp.dtype==numpy.uint64: dtype = 'unsigned long long'
+    elif inp.dtype==numpy.int16: dtype = 'short'
+    elif inp.dtype==numpy.uint16: dtype = 'unsigned short'
+    elif inp.dtype==numpy.int8: dtype = 'char'
+    elif inp.dtype==numpy.uint8: dtype = 'unsigned char'
+    else: raise NotImplementedError
     
     ret['name'] = name
-    ret['type'] = dtoc[inp.dtype]
+    ret['type'] = dtype
     ret['input'] = inp
     ret['itype'] = 'PyArrayObject *'
     ret['get'] = 'inline %s %s_get(PyArrayObject * input, int exemplar, int feature) {return *(%s *)(input->data + exemplar*input->strides[0] + feature*input->strides[1]);}' % (ret['type'], name, ret['type'])
@@ -108,6 +121,9 @@ class MatrixES(ExemplarSet):
     ret['features'] = 'inline int %s_features(PyArrayObject * input) {return input->dimensions[1];}'%name
 
     return ret
+  
+  def tupleInputC(self):
+    return tuple(self.dm)
 
 
 
@@ -195,14 +211,25 @@ class MatrixGrow(ExemplarSet):
     else: return self.dmcList[0][index[0]][numpy.ix_(a,b)]
 
   def codeC(self, channel, name):
+    self.make_compact()
+    
     ret = dict()
     
     inp = self.dm[channel]
-    dtoc = {numpy.int8:'char', numpy.int16:'short', numpy.int32:'long', numpy.int64:'long long', numpy.uint8:'unsigned char', numpy.uint16:'unsigned short', numpy.uint32:'unsigned long', numpy.uint64:'unsigned long long', numpy.float32:'float', numpy.float64:'double'}
-    if inp.dtype not in dtoc: raise NotImplementedError
+    if inp.dtype==numpy.float32: dtype = 'float'
+    elif inp.dtype==numpy.float64: dtype = 'double'
+    elif inp.dtype==numpy.int32: dtype = 'long'
+    elif inp.dtype==numpy.int64: dtype = 'long long'
+    elif inp.dtype==numpy.uint32: dtype = 'unsigned long'
+    elif inp.dtype==numpy.uint64: dtype = 'unsigned long long'
+    elif inp.dtype==numpy.int16: dtype = 'short'
+    elif inp.dtype==numpy.uint16: dtype = 'unsigned short'
+    elif inp.dtype==numpy.int8: dtype = 'char'
+    elif inp.dtype==numpy.uint8: dtype = 'unsigned char'
+    else: raise NotImplementedError
     
     ret['name'] = name
-    ret['type'] = dtoc[inp.dtype]
+    ret['type'] = dtype
     ret['input'] = inp
     ret['itype'] = 'PyArrayObject *'
     ret['get'] = 'inline %s %s_get(PyArrayObject * input, int exemplar, int feature) {return *(%s *)(input->data + exemplar*input->strides[0] + feature*input->strides[1]);}' % (ret['type'], name, ret['type'])
@@ -210,3 +237,8 @@ class MatrixGrow(ExemplarSet):
     ret['features'] = 'inline int %s_features(PyArrayObject * input) {return input->dimensions[1];}'%name
 
     return ret
+
+  def tupleInputC(self):
+    self.make_compact()
+    
+    return tuple(self.dm)

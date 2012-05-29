@@ -11,6 +11,8 @@
 import numpy
 import numpy.random
 
+from utils.start_cpp import start_cpp
+
 
 
 class Generator:
@@ -44,15 +46,40 @@ class MergeGen(Generator):
     self.gens.append(gen)
     assert(len(self.gens)<=256)
   
+  
   def itertests(self, es, index, weights = None):
     for c, gen in enumerate(self.gens):
       code = chr(c)
       for test in gen.itertests(es, index, weights):
         yield code+test
   
+  
   def do(self, test, es, index = slice(None)):
     code = ord(test[0])
     return self.gens[code].do(test[1:], es, index)
+  
+  def testCodeC(self, name, exemplar_list):
+    # Add the children...
+    ret = ''
+    for i, gen in enumerate(self.gens):
+      ret += gen.testCodeC(name + '_%i'%i, exemplar_list)
+    
+    # Put in the final test function...
+    ret += start_cpp()
+    ret += 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)\n'%name
+    ret += '{\n'
+    ret += 'void * sub_test = ((char*)test) + 1;\n'
+    ret += 'size_t sub_test_length = test_length - 1;\n'
+    ret += 'int which = *(unsigned char*)test;\n'
+    ret += 'switch(which)\n'
+    ret += '{\n'
+    for i in xrange(len(self.gens)):
+      ret += 'case %i: return %s_%i(data, sub_test, sub_test_length, exemplar);\n'%(i, name, i)
+    ret += '}\n'
+    ret += 'return 0;\n' # To stop the compiler issuing a warning.
+    ret += '}\n'
+    
+    return ret
 
 
 
@@ -74,6 +101,7 @@ class RandomGen(Generator):
     self.gens.append((gen, weight))
     assert(len(self.gens)<=256)
   
+  
   def itertests(self, es, index, weights = None):
     # Select which generators get to play...
     w = numpy.asarray(map(lambda g: g[1], self.gens))
@@ -87,6 +115,30 @@ class RandomGen(Generator):
         for test in self.gens[genInd][0].itertests(es, index, weights):
           yield code+test
 
+
   def do(self, test, es, index = slice(None)):
     code = ord(test[0])
     return self.gens[code][0].do(test[1:], es, index)
+
+  def testCodeC(self, name, exemplar_list):
+    # Add the children...
+    ret = ''
+    for i, (gen, _) in enumerate(self.gens):
+      ret += gen.testCodeC(name + '_%i'%i, exemplar_list)
+    
+    # Put in the final test function...
+    ret += start_cpp()
+    ret += 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)\n'%name
+    ret += '{\n'
+    ret += 'void * sub_test = ((char*)test) + 1;\n'
+    ret += 'size_t sub_test_length = test_length - 1;\n'
+    ret += 'int which = *(unsigned char*)test;\n'
+    ret += 'switch(which)\n'
+    ret += '{\n'
+    for i in xrange(len(self.gens)):
+      ret += 'case %i: return %s_%i(data, sub_test, sub_test_length, exemplar);\n'%(i, name, i)
+    ret += '}\n'
+    ret += 'return 0;\n' # To stop the compiler issuing a warning.
+    ret += '}\n'
+    
+    return ret

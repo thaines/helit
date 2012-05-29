@@ -10,6 +10,8 @@
 
 import numpy
 
+from utils.start_cpp import start_cpp
+
 
 
 class Test:
@@ -42,14 +44,15 @@ class AxisSplit(Test):
   
   
   def testCodeC(self, name, exemplar_list):
-    ret  = 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)'%name
-    ret += '{'
-    ret +=  'int feature = *(int*)test;'
-    ret +=  'float offset = *((float*)test + 1);'
-    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});'.format(exemplar_list[self.channel]['itype'], self.channel)
-    ret +=  'float value = (float)%s_get(channel, exemplar, feature);'%exemplar_list[self.channel]['name']
-    ret +=  'return (value-offset)>=0.0;'
-    ret += '}'
+    ret = start_cpp()
+    ret += 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)\n'%name
+    ret += '{\n'
+    ret +=  'int feature = *(int*)test;\n'
+    ret +=  'float offset = *((float*)test + 1);\n'
+    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});\n'.format(exemplar_list[self.channel]['itype'], self.channel)
+    ret +=  'float value = (float)%s_get(channel, exemplar, feature);\n'%exemplar_list[self.channel]['name']
+    ret +=  'return (value-offset)>=0.0;\n'
+    ret += '}\n'
     return ret
 
 
@@ -76,20 +79,21 @@ class LinearSplit(Test):
 
 
   def testCodeC(self, name, exemplar_list):
-    ret  = 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)'%name
-    ret += '{'
-    ret +=  'int * feature = (int*)test;'
-    ret +=  'float * plane_axis = (float*)test + %i;'%self.dims
-    ret +=  'float offset = *((float*)test + %i);'%(self.dims*2)
-    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});'.format(exemplar_list[self.channel]['itype'], self.channel)
-    ret +=  'float value = 0.0;'
-    ret +=  'for (int i=0;i<%i;i++)'%self.dims
+    ret = start_cpp()
+    ret += 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)\n'%name
+    ret += '{\n'
+    ret +=  'int * feature = (int*)test;\n'
+    ret +=  'float * plane_axis = (float*)test + %i;\n'%self.dims
+    ret +=  'float offset = *((float*)test + %i);\n'%(self.dims*2)
+    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});\n'.format(exemplar_list[self.channel]['itype'], self.channel)
+    ret +=  'float value = 0.0;\n'
+    ret +=  'for (int i=0;i<%i;i++)\n'%self.dims
     ret +=  '{'
-    ret +=   'float v = (float)%s_get(channel, exemplar, feature[i]);'%exemplar_list[self.channel]['name']
-    ret +=   'value += v*plane_axis[i];'
-    ret +=  '}'
-    ret +=  'return (value-offset)>=0.0;'
-    ret += '}'
+    ret +=   'float v = (float)%s_get(channel, exemplar, feature[i]);\n'%exemplar_list[self.channel]['name']
+    ret +=   'value += v*plane_axis[i];\n'
+    ret +=  '}\n'
+    ret +=  'return (value-offset)>=0.0;\n'
+    ret += '}\n'
     return ret
 
 
@@ -109,16 +113,17 @@ class DiscreteBucket(Test):
   
   
   def testCodeC(self, name, exemplar_list):
-    ret  = 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)'%name
-    ret += '{'
-    ret +=  'size_t steps = test_length>>2;'
-    ret +=  'int * accept = (int*)test;'
-    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});'.format(exemplar_list[self.channel]['itype'], self.channel)
-    ret +=  'int value = (int)%s_get(channel, exemplar, accept[0]);'%exemplar_list[self.channel]['name']
-    ret +=  'for (size_t=1; i<steps; i++)'
-    ret +=  '{'
-    ret +=   'if (accept[i]==value) return true;'
-    ret +=  '}'
-    ret +=  'return false;'
-    ret += '}'
+    ret = start_cpp()
+    ret += 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)\n'%name
+    ret += '{\n'
+    ret +=  'size_t steps = test_length>>2;\n'
+    ret +=  'int * accept = (int*)test;\n'
+    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});\n'.format(exemplar_list[self.channel]['itype'], self.channel)
+    ret +=  'int value = (int)%s_get(channel, exemplar, accept[0]);\n'%exemplar_list[self.channel]['name']
+    ret +=  'for (size_t i=1; i<steps; i++)\n'
+    ret +=  '{\n'
+    ret +=   'if (accept[i]==value) return true;\n'
+    ret +=  '}\n'
+    ret +=  'return false;\n'
+    ret += '}\n'
     return ret
