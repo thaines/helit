@@ -20,9 +20,9 @@ from utils.start_cpp import start_cpp
 class Node:
   """Defines a node - these are the bread and butter of the system. Each decision tree is made out of nodes, each of which contains a binary test - if a feature vector passes the test then it travels to the true child node; if it fails it travels to the false child node (Note lowercase to avoid reserved word clash.). Eventually a leaf node is reached, where test==None, at which point the stats object is obtained, merged with the equivalent for all decision trees, and then provided as the answer to the user. Note that this python object uses the __slots__ techneque to keep it small - there will often be many thousands of these in a trained model."""
   __slots__ = ['test', 'true', 'false', 'stats', 'summary']
-  
-  def __init__(self, goal, gen, pruner, es, index = slice(None), weights = None, depth = 0, stats = None, entropy = None):
-    """This recursivly grows the tree until the pruner says to stop. goal is a Goal object, so it knows what to optimise, gen a Generator object that provides tests for it to choose between and pruner is a Pruner object that decides when to stop growing. The exemplar set to train on is then provided, optionally with the indices of which members to use and weights to assign to them (weights align with the exemplar set, not with the relative exemplar indices defined by index. depth is the depth of this node - part of the recursive construction and used by the pruner as a possible reason to stop growing. stats is optionally provided to save on duplicate calculation, as it will be calculated as part of working out the split. entropy matches up with stats - if stats is provided so must it be."""
+    
+  def __init__(self, goal, gen, pruner, es, index = slice(None), weights = None, depth = 0, stats = None, entropy = None, code = None):
+    """This recursivly grows the tree until the pruner says to stop. goal is a Goal object, so it knows what to optimise, gen a Generator object that provides tests for it to choose between and pruner is a Pruner object that decides when to stop growing. The exemplar set to train on is then provided, optionally with the indices of which members to use and weights to assign to them (weights align with the exemplar set, not with the relative exemplar indices defined by index. depth is the depth of this node - part of the recursive construction and used by the pruner as a possible reason to stop growing. stats is optionally provided to save on duplicate calculation, as it will be calculated as part of working out the split. entropy matches up with stats - if stats is provided so must it be. The static method initC can be called to generate code that can be used by this constructor to accelerate test selection, but only if it is passed in."""
     
     if goal==None: return # For the clone method.
     
@@ -35,54 +35,124 @@ class Node:
     self.summary = None
     
     # Select the best test...
-    ## Details of best test found so far...
-    bestInfoGain = -1.0
-    bestTest = None
-    trueStats = None
-    trueEntropy = None
-    trueIndex = None
-    falseStats = None
-    falseEntropy = None
-    falseIndex = None
+    if isinstance(code, str) and weave!=None:
+      # Do things in C...
+      init = start_cpp(code) + """
+      if (Nindex[0]!=0)
+      {
+       // Create the Exemplar data structure, in  triplicate!..
+        Exemplar * items = (Exemplar*)malloc(sizeof(Exemplar)*Nindex[0]);
+        Exemplar * splitItems = (Exemplar*)malloc(sizeof(Exemplar)*Nindex[0]);
+        Exemplar * temp = (Exemplar*)malloc(sizeof(Exemplar)*Nindex[0]);
+        for (int i=0; i<Nindex[0]; i++)
+        {
+         int ind = index[i];
+         float we = weights[ind];
+        
+         items[i].index = ind;
+         items[i].weight = we;
+         items[i].next = &items[i+1];
+        
+         splitItems[i].index = ind;
+         splitItems[i].weight = we;
+         splitItems[i].next = &splitItems[i+1];
+        
+         temp[i].next = &temp[i+1];
+        }
+        items[Nindex[0]-1].next = 0;
+        splitItems[Nindex[0]-1].next = 0;
+        temp[Nindex[0]-1].next = 0;
+       
+       // Do the work...
+        selectTest(out, data, items, splitItems, temp, entropy);
+      
+       // Clean up...
+        free(temp);
+        free(splitItems);
+        free(items);
+      }
+      """
+      
+      data = es.tupleInputC()
+      out = dict()
+      
+      if weights==None: weights = numpy.ones(es.exemplars(), dtype=numpy.float32)
+      weave.inline(init, ['out', 'data', 'index', 'weights', 'entropy'], support_code=code)
+      if index.shape[0]==0: return
+      
+      bestTest = out['bestTest']
+      if bestTest!=None:
+        bestInfoGain = out['bestInfoGain']
+        trueStats = out['trueStats']
+        trueEntropy = out['trueEntropy']
+        trueIndex = out['trueIndex']
+        falseStats = out['falseStats']
+        falseEntropy = out['falseEntropy']
+        falseIndex = out['falseIndex']
+      
+        trueIndex.sort()  # Not needed to work - to improve cache coherance.
+        falseIndex.sort() # "
+    else:
+      if index.shape[0]==0: return
+      
+      # Do things in python...
+      ## Details of best test found so far...
+      bestInfoGain = -1.0
+      bestTest = None
+      trueStats = None
+      trueEntropy = None
+      trueIndex = None
+      falseStats = None
+      falseEntropy = None
+      falseIndex = None
     
-    ## Get a bunch of tests and evaluate them against the goal...
-    for test in gen.itertests(es, index, weights):
-      # Apply the test, work out which items pass and which fail..
-      res = gen.do(test, es, index)
-      tIndex = index[res==True]
-      fIndex = index[res==False]
+      ## Get a bunch of tests and evaluate them against the goal...
+      for test in gen.itertests(es, index, weights):
+        # Apply the test, work out which items pass and which fail..
+        res = gen.do(test, es, index)
+        tIndex = index[res==True]
+        fIndex = index[res==False]
       
-      # Check its safe to continue...
-      if tIndex.shape[0]==0 or fIndex.shape[0]==0: continue
+        # Check its safe to continue...
+        if tIndex.shape[0]==0 or fIndex.shape[0]==0: continue
       
-      # Calculate the statistics...
-      tStats = goal.stats(es, tIndex, weights)
-      fStats = goal.stats(es, fIndex, weights)
+        # Calculate the statistics...
+        tStats = goal.stats(es, tIndex, weights)
+        fStats = goal.stats(es, fIndex, weights)
       
-      # Calculate the information gain...
-      tEntropy = goal.entropy(tStats)
-      fEntropy = goal.entropy(fStats)
-      tWeight = float(tIndex.shape[0]) / float(tIndex.shape[0]+fIndex.shape[0])
-      fWeight = float(fIndex.shape[0]) / float(tIndex.shape[0]+fIndex.shape[0])
-      infoGain = entropy - tWeight*tEntropy - fWeight*fEntropy
+        # Calculate the information gain...
+        tEntropy = goal.entropy(tStats)
+        fEntropy = goal.entropy(fStats)
       
-      # Store if the best so far...
-      if infoGain>bestInfoGain:
-        bestInfoGain = infoGain
-        bestTest = test
-        trueStats = tStats
-        trueEntropy = tEntropy
-        trueIndex = tIndex
-        falseStats = fStats
-        falseEntropy = fEntropy
-        falseIndex = fIndex
+        if weights==None:
+          tWeight = float(tIndex.shape[0])
+          fWeight = float(fIndex.shape[0])
+        else:
+          tWeight = weights[tIndex].sum()
+          fWeight = weights[fIndex].sum()
+        div = tWeight + fWeight
+        tWeight /= div
+        fWeight /= div
+      
+        infoGain = entropy - tWeight*tEntropy - fWeight*fEntropy
+      
+        # Store if the best so far...
+        if infoGain>bestInfoGain:
+          bestInfoGain = infoGain
+          bestTest = test
+          trueStats = tStats
+          trueEntropy = tEntropy
+          trueIndex = tIndex
+          falseStats = fStats
+          falseEntropy = fEntropy
+          falseIndex = fIndex
     
     # Use the pruner to decide if we should split or not, and if so do it...
     self.test = bestTest
-    if bestTest!=None and pruner.keep(depth, trueIndex.shape[0], falseIndex.shape[0], infoGain, self)==True:
+    if bestTest!=None and pruner.keep(depth, trueIndex.shape[0], falseIndex.shape[0], bestInfoGain, self)==True:
       # We are splitting - time to recurse...
-      self.true = Node(goal, gen, pruner, es, trueIndex, weights, depth+1, trueStats, trueEntropy)
-      self.false = Node(goal, gen, pruner, es, falseIndex, weights, depth+1, falseStats, falseEntropy)
+      self.true = Node(goal, gen, pruner, es, trueIndex, weights, depth+1, trueStats, trueEntropy, code)
+      self.false = Node(goal, gen, pruner, es, falseIndex, weights, depth+1, falseStats, falseEntropy, code)
     else:
       self.test = None
       self.true = None
@@ -99,6 +169,280 @@ class Node:
     ret.summary = self.summary
     
     return ret
+
+
+  @staticmethod
+  def initC(goal, gen, es):
+    # Get the evaluateC code, which this code is dependent on...
+    code = Node.evaluateC(gen, es, 'es')
+    if code==None: return None
+    
+    # Add in the generator code...
+    escl = es.listCodeC('es')
+    try:
+      gCode, gState = gen.genCodeC('gen', escl)
+    except NotImplementedError:
+      return None
+    code += gCode
+    
+    # Add in the goal code...
+    try:
+      gDic = goal.codeC('goal', escl)
+    except NotImplementedError:
+      return None
+    code += gDic['stats']
+    code += gDic['entropy']
+    
+    # And finally add in the code we need to specifically handle the selection of a test for a node...
+    code += start_cpp() + """
+    
+    // out - A dictionary to output into; data - The list of entities that represent the exemplar set; items - The set of items to optimise the test for, splitItems - A copy of items, which will be screwed with; temp - Like items, same size, so we can keep a temporary copy; entropy - The entropy of the set of items.
+    void selectTest(PyObject * out, PyObject * data, Exemplar * items, Exemplar * splitItems, Exemplar * temp, float entropy)
+    {
+     // Setup the generator...
+      %(gState)s state;
+      gen_init(state, data, items);
+    
+     // Loop the tests, scoring each one and keeping the best so far...
+      void * bestTest = 0;
+      size_t bestTestLen = 0;
+      void * bestPassStats = 0;
+      size_t bestPassStatsLen = 0;
+      float bestPassEntropy = -1.0;
+      Exemplar * bestPassItems = temp;
+      int bestPassItemsLen = 0;
+      void * bestFailStats = 0;
+      size_t bestFailStatsLen = 0;
+      float bestFailEntropy = -1.0;
+      Exemplar * bestFailItems = 0;
+      int bestFailItemsLen = 0;
+      float bestGain = 0.0;
+      
+      Exemplar * pass = splitItems;
+      void * passStats = 0;
+      size_t passStatsLength = 0;
+      
+      Exemplar * fail = 0;
+      void * failStats = 0;
+      size_t failStatsLength = 0;
+      
+      while (gen_next(state, data, items))
+      {
+       // Apply the test...
+        Exemplar * newPass = 0;
+        float passWeight = 0.0;
+        
+        Exemplar * newFail = 0;
+        float failWeight = 0.0;
+
+        while (pass)
+        {
+         Exemplar * next = pass->next;
+         
+         if (do_test(data, state.test, state.length, pass->index))
+         {
+          pass->next = newPass;
+          newPass = pass;
+          passWeight += pass->weight;
+         }
+         else
+         {
+          pass->next = newFail;
+          newFail = pass;
+          failWeight += pass->weight;
+         }
+         
+         pass = next;
+        }
+        
+        while (fail)
+        {
+         Exemplar * next = fail->next;
+         
+         if (do_test(data, state.test, state.length, fail->index))
+         {
+          fail->next = newPass;
+          newPass = fail;
+          passWeight += fail->weight;
+         }
+         else
+         {
+          fail->next = newFail;
+          newFail = fail;
+          failWeight += fail->weight;
+         }
+         
+         fail = next;
+        }
+        
+        pass = newPass;
+        fail = newFail;
+        
+        if ((pass==0)||(fail==0))
+        {
+         // All data has gone one way - this scernario can not provide an advantage so ignore it.
+          continue;
+        }
+
+       // Generate the stats objects and entropy...
+        goal_stats(data, pass, passStats, passStatsLength);
+        goal_stats(data, fail, failStats, failStatsLength);
+        
+        float passEntropy = goal_entropy(passStats, passStatsLength);
+        float failEntropy = goal_entropy(failStats, failStatsLength);
+        
+       // Calculate the information gain...
+        float div = passWeight + failWeight;
+        passWeight /= div;
+        failWeight /= div;
+        
+        float gain = entropy - passWeight*passEntropy - failWeight*failEntropy;
+       
+       // If it is the largest store its output for future consumption...
+        if (gain>bestGain)
+        {
+         bestTestLen = state.length;
+         bestTest = realloc(bestTest, bestTestLen);
+         memcpy(bestTest, state.test, bestTestLen);
+         
+         bestPassStatsLen = passStatsLength;
+         bestPassStats = realloc(bestPassStats, bestPassStatsLen);
+         memcpy(bestPassStats, passStats, bestPassStatsLen);
+         
+         bestFailStatsLen = failStatsLength;
+         bestFailStats = realloc(bestFailStats, bestFailStatsLen);
+         memcpy(bestFailStats, failStats, bestFailStatsLen);
+         
+         bestPassEntropy = passEntropy;
+         bestFailEntropy = failEntropy;
+         bestGain = gain;
+         
+         Exemplar * storeA = bestPassItems;
+         Exemplar * storeB = bestFailItems;
+         bestPassItems = 0;
+         bestPassItemsLen = 0;
+         bestFailItems = 0;
+         bestFailItemsLen = 0;
+         
+         Exemplar * targPass = pass;
+         while (targPass)
+         {
+          // Get an output node...
+           Exemplar * out;
+           if (storeA)
+           {
+            out = storeA;
+            storeA = storeA->next;
+           }
+           else
+           {
+            out = storeB;
+            storeB = storeB->next;
+           }
+           
+          // Store it...
+           out->next = bestPassItems;
+           bestPassItems = out;
+           bestPassItemsLen++;
+           
+           out->index = targPass->index;
+          
+          targPass = targPass->next;
+         }
+         
+         Exemplar * targFail = fail;
+         while (targFail)
+         {
+          // Get an output node...
+           Exemplar * out;
+           if (storeA)
+           {
+            out = storeA;
+            storeA = storeA->next;
+           }
+           else
+           {
+            out = storeB;
+            storeB = storeB->next;
+           }
+           
+          // Store it...
+           out->next = bestFailItems;
+           bestFailItems = out;
+           bestFailItemsLen++;
+           
+           out->index = targFail->index;
+          
+          targFail = targFail->next;
+         }
+        }
+      }
+    
+     // Output the best into the provided dictionary - quite a lot of information...
+      if (bestTest!=0)
+      {
+       PyObject * t = PyFloat_FromDouble(bestGain);
+       PyDict_SetItemString(out, "bestInfoGain", t);
+       Py_DECREF(t);
+      
+       t = PyString_FromStringAndSize((char*)bestTest, bestTestLen);
+       PyDict_SetItemString(out, "bestTest", t);
+       Py_DECREF(t);
+      
+       t = PyString_FromStringAndSize((char*)bestPassStats, bestPassStatsLen);
+       PyDict_SetItemString(out, "trueStats", t);
+       Py_DECREF(t);
+   
+       t = PyFloat_FromDouble(bestPassEntropy);
+       PyDict_SetItemString(out, "trueEntropy", t);
+       Py_DECREF(t);
+      
+       PyArrayObject * ta = (PyArrayObject*)PyArray_FromDims(1, &bestPassItemsLen, NPY_INT32);
+       int i = 0;
+       while (bestPassItems)
+       {
+        *(int*)(ta->data + ta->strides[0]*i) = bestPassItems->index;
+        i++;
+        bestPassItems = bestPassItems->next;
+       }
+       PyDict_SetItemString(out, "trueIndex", (PyObject*)ta);
+       Py_DECREF(ta);
+
+       t = PyString_FromStringAndSize((char*)bestFailStats, bestFailStatsLen);
+       PyDict_SetItemString(out, "falseStats", t);
+       Py_DECREF(t);
+   
+       t = PyFloat_FromDouble(bestFailEntropy);
+       PyDict_SetItemString(out, "falseEntropy", t);
+       Py_DECREF(t);
+      
+       ta = (PyArrayObject*)PyArray_FromDims(1, &bestFailItemsLen, NPY_INT32);
+       i = 0;
+       while (bestFailItems)
+       {
+        *(int*)(ta->data + ta->strides[0]*i) = bestFailItems->index;
+        i++;
+        bestFailItems = bestFailItems->next;
+       }
+       PyDict_SetItemString(out, "falseIndex", (PyObject*)ta);
+       Py_DECREF(ta);
+      }
+      else
+      {
+       PyDict_SetItemString(out, "bestTest", Py_None);
+       Py_INCREF(Py_None);
+      }
+      
+     // Clean up...
+      free(bestTest);
+      free(bestPassStats);
+      free(bestFailStats);
+      free(passStats);
+      free(failStats);
+    }
+    """%{'gState':gState}
+    
+    return code
 
 
   def evaluate(self, out, gen, es, index = slice(None), code=None):
@@ -143,11 +487,12 @@ class Node:
       if fIndex.shape[0]!=0: self.false.evaluate(out, gen, es, fIndex)
   
   
-  def evaluateC(self, gen, es):
+  @staticmethod
+  def evaluateC(gen, es, esclName = 'es'):
     """For a given generator and exemplar set this returns the C code (Actually the support code.) that evaluate can use to accelerate its run time, or None if the various components involved do not support C code generation."""
     # First do accessors for the data set...
     try:
-      escl = es.listCodeC('es')
+      escl = es.listCodeC(esclName)
     except NotImplementedError: return None
     
     code = ''
@@ -163,10 +508,11 @@ class Node:
     
     # Finally add in the code that recurses through and evaluates the nodes on the provided data...
     code += start_cpp() + """
-    // So we can use an inplace modified linkied list to avoid malloc's during the real work...
+    // So we can use an inplace modified linkied list to avoid malloc's during the real work (Weight is included because this code is reused by the generator system, which needs it.)...
     struct Exemplar
     {
      int index;
+     float weight;
      Exemplar * next;
     };
     

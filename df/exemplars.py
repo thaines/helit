@@ -51,6 +51,11 @@ class ExemplarSet:
   def tupleInputC(self):
     """Helper method, that can be overriden - returns a tuple containing the inputs needed for the exemplar."""
     return tuple(map(lambda c: self.codeC(c, name+str(c))['input'], xrange(self.channels())))
+  
+  def key(self):
+    """Provides a unique string that can be used to hash the results of codeC, to avoid repeated generation. Must be implimented if codeC is implimented."""
+    raise NotImplementedError
+    
 
 
 
@@ -124,6 +129,9 @@ class MatrixES(ExemplarSet):
   
   def tupleInputC(self):
     return tuple(self.dm)
+  
+  def key(self):
+    return 'MatrixES|' + reduce(lambda a,b: a+':'+b, map(lambda d: str(d.dtype), self.dm))
 
 
 
@@ -242,3 +250,6 @@ class MatrixGrow(ExemplarSet):
     self.make_compact()
     
     return tuple(self.dm)
+
+  def key(self):
+    return 'MatrixGrow|' + reduce(lambda a,b: a+':'+b, map(lambda d: str(d.dtype), self.dm))

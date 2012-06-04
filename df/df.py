@@ -43,7 +43,9 @@ class DF:
       self.inc = other.inc
       self.trainCount = other.trainCount
       
-      self.evaluateCodeC = other.evaluateCodeC
+      self.evaluateCodeC = dict(other.evaluateCodeC)
+      self.addCodeC = dict(other.addCodeC)
+      self.useC = other.useC
     else:
       self.goal = None
       self.pruner = PruneCap()
@@ -53,11 +55,15 @@ class DF:
       self.trainCount = 0 # Count of how many trainning examples were used to train with - this is so it knows how to split up the data when doing incrimental learning (between new and old exmeplars.). Also used to detect if trainning has occured.
       
       self.evaluateCodeC = dict()
+      self.addCodeC = dict()
+      
+      self.useC = True
   
   
   def setGoal(self, goal):
     """Allows you to set a goal object, of type Goal - must be called before doing anything, and must not be changed after anything is done."""
     assert(self.trainCount==0)
+    self.addCodeC = dict()
     self.goal = goal
     
   def getGoal(self):
@@ -77,6 +83,7 @@ class DF:
     """Allows you to set the Generator object from which node tests are obtained - must be set before anything happens. You must not change this once trainning starts."""
     assert(self.trainCount==0)
     self.evaluateCodeC = dict()
+    self.addCodeC = dict()
     self.gen = gen
   
   def getGen(self):
@@ -92,9 +99,27 @@ class DF:
     """Returns the status of incrimental learning - True if its enabled, False if it is not."""
     return self.inc
   
+  def allowC(self, allow):
+    """By default the system will attempt to compile and use C code instead of running the (much slower) python code - this allows you to force it to not use C code, or switch C back on if you had previously switched it off. Typically only used for speed comparisons and debugging, but also useful if the use of C code doesn't work on your system. Just be aware that the speed difference is galactic."""
+    self.useC = allow
   
-  def addTree(self, es, weightChannel = None, ret = False):
+  
+  def addTree(self, es, weightChannel = None, ret = False, dummy = False):
     """Adds an entirely new tree to the system given all of the new data. Uses all exemplars in the ExemplarSet, which can optionally include a channel with a single feature in it to weight the vectors; indicated via weightChannel. Typically this is used indirectly via the learn method, rather than by the user of an instance of this class."""
+
+    # Arrange for code...
+    if self.useC:
+      if es.key() not in self.addCodeC:
+        self.addCodeC[es.key()] = Node.initC(self.goal, self.gen, es)
+      code = self.addCodeC[es.key()]
+    else:
+      code = None
+      
+    # Special case code for a dummy run...
+    if dummy:
+      if code!=None:
+        Node(self.goal, self.gen, self.pruner, es, numpy.zeros(0, dtype=numpy.int32), numpy.ones(0, dtype=numpy.float32), code=code)
+      return
     
     # First select which samples are to be used for trainning, and which for testing, calculating the relevant weights...
     draw = numpy.random.poisson(size=es.exemplars()) # Equivalent to a bootstrap sample, assuming an infinite number of exemplars are avaliable. Correct thing to do given that incrimental learning is an option.
@@ -113,7 +138,7 @@ class DF:
     if train.shape[0]==0: return # Safety for if it selects to use none of the items - do nothing...
     
     # Grow a tree...
-    tree = Node(self.goal, self.gen, self.pruner, es, train, trainWeight)
+    tree = Node(self.goal, self.gen, self.pruner, es, train, trainWeight, code=code)
     
     # Apply the goal-specific post processor to the tree...
     self.goal.postTreeGrow(tree, self.gen)
@@ -170,13 +195,19 @@ class DF:
   
     # Create new trees...
     if mp:
+      # There is a risk of a race condition caused by compilation - do a dummy run to make sure we compile in advance...
+      self.addTree(es, weightChannel, dummy=True)
+      
+      # Set the runs going...
       newTreesResult = pool.map_async(mpGrowTree, map(lambda _: (self, es, weightChannel, treesDone, numpy.random.randint(1000000000)), xrange(trees)))
       
+      # Wait for the runs to complete...
       while (not newTreesResult.ready()) and ((result==None) or (not result.ready())):
         newTreesResult.wait(0.1)
         if result: result.wait(0.1)
         if callback: callback(treesDone.value, totalTrees)
-        
+      
+      # Put the result into the dta structure...
       if result: self.trees = result.get()
       self.trees += filter(lambda tree: tree!=None, newTreesResult.get())
     else:
@@ -202,10 +233,13 @@ class DF:
     if isinstance(index, slice): index = numpy.arange(*index.indices(es.exemplars()))
     
     # Handle the generation of C code, with caching...
-    es_type = str(type(es))
-    if es_type not in self.evaluateCodeC:
-      self.evaluateCodeC[es_type] = self.trees[0][0].evaluateC(self.gen, es)
-    code = self.evaluateCodeC[es_type]
+    if self.useC:
+      es_type = es.key()
+      if es_type not in self.evaluateCodeC:
+        self.evaluateCodeC[es_type] = Node.evaluateC(self.gen, es)
+      code = self.evaluateCodeC[es_type]
+    else:
+      code = None
     
     # If multiprocessing has been requested set it up...
     if Pool==None: mp = False

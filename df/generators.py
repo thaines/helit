@@ -26,6 +26,11 @@ class Generator:
     """Generates test entities that split the provided features into two sets, yielding them one at a time such that the caller can select the best, according to the current goal. It really is allowed to do whatever it likes to create these test entities, which means it provides an insane amount of customisation potential, if possibly rather too much choice. es is the exemplar set, whilst index is the set of exemplars within the exemplar set it is creating a test for. weights optionally provides a weight for each exemplar, aligned with es."""
     raise NotImplementedError
     yield
+  
+  
+  def genCodeC(self, name, exemplar_list):
+    """Provides C code for a generator. The return value is a 2-tuple, the first entry containing the code and the second entry <state>, the name of a state object to be used by the system. The state object has two public variables for use by the user - 'void * test' and 'size_t length'. The code itself will contain the definition of <state> and two functions: void <name>_init(<state> & state, PyObject * data, Exemplar * test_set) and bool <name>_next(<state> & state, PyObject * data, Exemplar * test_set). Usage consists of creating an instance of State and calling <name>_init on it, then repeatedly calling <name>_next - each time it returns true you can use the variables in <state> to get at the test, but when it returns false it is time to stop (And the <State> will have been cleaned up.). If it is not avaliable then a NotImplementedError will be raised."""
+    raise NotImplementedError
 
 
 

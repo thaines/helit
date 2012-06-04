@@ -14,6 +14,8 @@ import numpy.random
 
 from exemplars import MatrixFS
 
+from utils.start_cpp import start_cpp
+
 
 
 class Goal:
@@ -44,7 +46,7 @@ class Goal:
 
   def answer_types(self):
     """When classifying a new feature an answer is to be provided, of which several possibilities exist. This returns a dictionary of those possibilities (key==name, value=human readable description of what it is.), from which the user can select. By convention 'best' must always exist, as the best guess that the algorithm can give (A point estimate of the answer the user is after.). If a probability distribution over 'best' can be provided then that should be avaliable as 'prob' (It is highly recomended that this be provided.)."""
-    return {'best':'Point estimate of the best guess at an answer, in the same form that it was provided for the trainning stage.'}
+    return {'best':'Point estimate of the best guess at an answer, in the same form as provided to the trainning stage.'}
   
   def answer(self, stats_list, which, es, index, trees):
     """Given a feature then using a forest a list of statistics entitys can be obtained from the leaf nodes that the feature ends up in, one for each tree (Could be as low as just one entity.). This converts that statistics entity list into an answer, to be passed to the user, possibly using the es with the index of the one entry that the stats list is for as well. As multiple answer types exist (As provided by the answer_types method.) you provide the one(s) you want to the which variable - if which is a string then that answer type is returned, if it is a list of strings then a tuple aligned with it is returned, containing multiple answers. If multiple types are needed then returning a list should hopefuly be optimised by this method to avoid duplicate calculation. Also requires the trees themselves, as a list aligned with stats_list."""
@@ -62,13 +64,22 @@ class Goal:
   def error(self, stats, summary):
     """Given a stats entity and a summary entity (i.e. the details of the testing and trainning sets that have reached a leaf) this returns the error of the testing set versus the model learnt from the trainning set. The actual return is a pair - (error, weight), so that the errors from all the leafs can be combined in a weighted average. The error metric is arbitary, but the probability of 'being wrong' is a good choice. An alternate mode exists, where weight is set to None - in this case no averaging occurs and the results from all nodes are just summed together."""
     raise NotImplementedError
+    
+    
+  def codeC(self, name, escl):
+    """Returns a dictionary of strings containing C code, that impliment the Goal's methods in C - name is a prefix on the names used, escl the result of listCodeC on the exemplar set from which it will get its data. The contents of its return value must be: {'stats': 'void <name>_stats(PyObject * data, Exemplar * index, void *& out, size_t & outLen)' - data is the list of channels for the exemplar object, index the exemplars to use. The stats object is stuck into out, and the size updated accordingly. If the provided out object is too small it will be free-ed and then a large enough buffer malloc-ed; null is handled correctly if outLen is 0., 'entropy':'float <name>_entropy(void * stats, size_t statsLen) - Given a stats object returns its entropy.'}. Optional - if it throws the NotImplementedError (The default) everything will be done in python. The code can be dependent on the associated exempler code where applicable."""
+    raise NotImplementedError
+  
+  def key(self):
+    """Provides a unique string that can be used to hash the results of codeC, to avoid repeated generation. Must be implimented if codeC is implimented."""
+    raise NotImplementedError
 
 
 
 class Classification(Goal):
   """The standard goal of a decision forest - classification. When trainning expects the existence of a discrete channel containing a single feature for each exemplar, the index of which is provided. Each discrete feature indicates a different trainning class, and they should be densly packed, starting from 0 inclusive, i.e. belonging to the set {0, ..., # of classes-1}. Number of classes is typically provided, though None can be provided instead in which case it will automatically resize data structures as needed to make them larger as more classes (Still densly packed.) are seen. A side effect of this mode is when it returns arrays indexed by class the size will be data driven, and from the view of the user effectivly arbitrary - user code will have to handle this."""
   def __init__(self, classCount, channel):
-    """You provide firstly how many classes exist, and secondly the index of the channel that contains the ground truth for the exemplars. This channel must contain a single integer value, ranging from 0 inclusive to the number of classes, exclusive."""
+    """You provide firstly how many classes exist (Or None if unknown.), and secondly the index of the channel that contains the ground truth for the exemplars. This channel must contain a single integer value, ranging from 0 inclusive to the number of classes, exclusive."""
     self.classCount = classCount
     self.channel = channel
   
@@ -199,6 +210,86 @@ class Classification(Goal):
     avgError = ((1.0-dist[:test.shape[0]])*test).sum() / count
     
     return (avgError, count)
+
+
+  def codeC(self, name, escl):    
+    cStats = start_cpp() + """
+    void %(name)s_stats(PyObject * data, Exemplar * index, void *& out, size_t & outLen)
+    {
+     // Make sure the output it at least as large as classCount, and zero it out...
+      if (outLen<(sizeof(float)*%(classCount)i))
+      {
+       outLen = sizeof(float) * %(classCount)i;
+       out = realloc(out, outLen);
+      }
+      
+      for (int i=0; i<(outLen/sizeof(float)); i++)
+      {
+       ((float*)out)[i] = 0.0;
+      }
+     
+     // Iterate and play weighted histogram, growing out as needed...
+      %(channelType)s cData = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+      
+      int maxSeen = %(classCount)i;
+      while (index)
+      {
+       int cls = %(channelName)s_get(cData, index->index, 0);
+       int cap = cls+1;
+       if (cap>maxSeen) maxSeen = cap;
+       
+       if ((cap*sizeof(float))>outLen)
+       {
+        int zero_start = outLen / sizeof(float);
+        
+        outLen = cap*sizeof(float);
+        out = realloc(out, outLen);
+        
+        for (int i=zero_start; i<cap; i++)
+        {
+         ((float*)out)[i] = 0.0;
+        }
+       }
+       
+       ((float*)out)[cls] += index->weight;
+       
+       index = index->next;
+      }
+      
+     // Correct the output size if needed (It could be too large)...
+      outLen = maxSeen * sizeof(float);
+    }
+    """%{'name':name, 'channel':self.channel, 'channelName':escl[self.channel]['name'], 'channelType':escl[self.channel]['itype'], 'classCount':self.classCount if self.classCount!=None else 1}
+    
+    cEntropy = start_cpp() + """
+    float %(name)s_entropy(void * stats, size_t statsLen)
+    {
+     float sum = 0.0;
+     int length = statsLen>>2;
+     for (int i=0; i<length; i++)
+     {
+      sum += ((float*)stats)[i];
+     }
+     
+     float ret = 0.0;
+     for (int i=0; i<length; i++)
+     {
+      float val = ((float*)stats)[i];
+      if (val>1e-6)
+      {
+       val /= sum;
+       ret -= val * log(val);
+      }
+     }
+     
+     return ret;
+    }
+    """%{'name':name}
+    
+    return {'stats':cStats, 'entropy':cEntropy}
+  
+  def key(self):
+    return ('Classification|%i'%self.channel) + ('' if self.classCount==None else (':%i'%self.classCount))
 
 
 
