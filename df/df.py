@@ -118,14 +118,16 @@ class DF:
     # Special case code for a dummy run...
     if dummy:
       if code!=None:
-        Node(self.goal, self.gen, self.pruner, es, numpy.zeros(0, dtype=numpy.int32), numpy.ones(0, dtype=numpy.float32), code=code)
+        i = numpy.zeros(0, dtype=numpy.int32)
+        w = numpy.ones(0, dtype=numpy.float32)
+        Node(self.goal, self.gen, self.pruner, es, i, w, code=code)
       return
     
     # First select which samples are to be used for trainning, and which for testing, calculating the relevant weights...
     draw = numpy.random.poisson(size=es.exemplars()) # Equivalent to a bootstrap sample, assuming an infinite number of exemplars are avaliable. Correct thing to do given that incrimental learning is an option.
     
-    train = numpy.where(draw!=0)[0]
-    test = numpy.where(draw==0)[0]
+    train = numpy.asarray(numpy.where(draw!=0)[0], dtype=numpy.int32)
+    test = numpy.asarray(numpy.where(draw==0)[0], dtype=numpy.int32)
     
     if weightChannel==None:
       trainWeight = numpy.asarray(draw, dtype=numpy.float32)

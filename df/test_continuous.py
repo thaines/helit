@@ -206,9 +206,9 @@ def doTest(gen):
 
 
 # Run the test on a set of generators...
-#print 'Axis-aligned median generator:'
-#doTest(AxisMedianGen(0,2)) # 0 = channel to use to generate tests, 2 = # of tests to try.
-#print
+print 'Axis-aligned median generator:'
+doTest(AxisMedianGen(0,2)) # 0 = channel to use to generate tests, 2 = # of tests to try.
+print
 
 #print 'Linear median generator:'
 #doTest(LinearMedianGen(0,2,4,8)) # 0 = channel to use to generate tests, 2 = # of dimensions for each test, 4 = # of dimension possibilities to consider, 8 = # of orientations to consider.

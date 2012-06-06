@@ -39,11 +39,138 @@ class AxisMedianGen(Generator, AxisSplit):
       else:
         cw = numpy.cumsum(weights[index])
         half = 0.5*cw[-1]
-        pos = numpy.searchsorted(cw,half)
-        t = (half - cw[pos-1])/max(cw[pos] - cw[pos-1], 1e-6)
+        pos = numpy.searchsorted(cw, half)
+        t = (half - cw[pos-1]) / max(cw[pos] - cw[pos-1], 1e-6)
         median = (1.0-t)*values[pos-1] + t*values[pos]
       
       yield numpy.asarray([ind], dtype=numpy.int32).tostring() + numpy.asarray([median], dtype=numpy.float32).tostring()
+
+
+  def genCodeC(self, name, exemplar_list):
+    code = start_cpp() + """
+    struct State%(name)s
+    {
+     void * test; // Will be the length of a 32 bit int followed by a float.
+     size_t length;
+     
+     int countRemain;
+     
+     float * temp; // Temporary used for calculating the median.
+    };
+    
+    int %(name)s_float_comp(const void * lhs, const void * rhs)
+    {
+     float l = (*(float*)lhs);
+     float r = (*(float*)rhs);
+     
+     if (l<r) return -1;
+     if (l>r) return 1;
+     return 0;
+    }
+    
+    void %(name)s_init(State%(name)s & state, PyObject * data, Exemplar * test_set)
+    {
+     assert(sizeof(int)==4);
+     
+     int count = 0;
+     while (test_set)
+     {
+      count++;
+      test_set = test_set->next;
+     }
+     
+     state.length = sizeof(int) + sizeof(float);
+     state.test = malloc(state.length);
+     
+     state.countRemain = %(count)i;
+     
+     state.temp = (float*)malloc(sizeof(float) * 2 * count);
+    }
+    
+    bool %(name)s_next(State%(name)s & state, PyObject * data, Exemplar * test_set)
+    {
+     // Check if we are done...
+      if (state.countRemain==0)
+      {
+       free(state.test);
+       free(state.temp);
+       return false;
+      }
+      
+      state.countRemain--;
+      
+     // Select a random feature...
+      %(channelType)s cd = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+      int feat = lrand48() %% %(channelName)s_features(cd);
+     
+     // Extract the values...
+      int count = 0;
+      while (test_set)
+      {
+       state.temp[count*2] = %(channelName)s_get(cd, test_set->index, feat);
+       state.temp[count*2+1] = test_set->weight;
+       
+       count++;
+       test_set = test_set->next;
+      }
+     
+     // Sort them...
+      qsort(state.temp, count, sizeof(float)*2, %(name)s_float_comp);
+     
+     // Pull out the median...
+      float median;
+      if (%(ignoreWeights)s||(count<2))
+      {
+       int half = count/2;
+       if ((count%%2)==1) median = state.temp[half*2];
+       else median = 0.5*(state.temp[(half-1)*2] + state.temp[half*2]);
+      }
+      else
+      {
+       // Convert to a cumulative sum...
+        for (int i=1;i<count;i++)
+        {
+         state.temp[i*2+1] += state.temp[i*2-1];
+        }
+        
+        float half = 0.5*state.temp[(count-1)*2+1];
+
+       // Find the position just after the half way point...
+        int low = 0;
+        int high = count-1;
+        
+        while (low<high)
+        {
+         int middle = (low+high)/2;
+         if (state.temp[middle*2+1]<half)
+         {
+          if (low==middle) middle++;
+          low = middle;
+         }
+         else
+         {
+          if (high==middle) middle--;
+          high = middle;
+         }
+        }
+      
+       // Use linear interpolation to select a value...
+        float t = half - state.temp[low*2-1];
+        float div = state.temp[low*2+1] - state.temp[low*2-1];
+        if (div<1e-6) div = 1e-6;
+        t /= div;
+        median = (1.0-t) * state.temp[low*2-2] + t * state.temp[low*2];
+      }
+     
+     // Store the test and return...
+      ((int*)state.test)[0] = feat;
+      ((float*)state.test)[1] = median;
+     
+     return true;
+    }
+    """%{'name':name, 'channel':self.channel, 'channelName':exemplar_list[self.channel]['name'], 'channelType':exemplar_list[self.channel]['itype'], 'count':self.count, 'ignoreWeights':('true' if self.ignoreWeights else 'false')}
+    
+    return (code, 'State'+name)
 
 
 
