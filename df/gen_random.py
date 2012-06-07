@@ -198,7 +198,7 @@ class LinearRandomGen(Generator, LinearSplit):
      void * test; 
      size_t length;
      
-     float * dirs; // Vectors giving points uniformly distributed on the sphere.
+     float * dirs; // Vectors giving points uniformly distributed on the hyper-sphere.
      int * feat; // The features to index at this moment.
      
      float mean;
@@ -240,13 +240,21 @@ class LinearRandomGen(Generator, LinearSplit):
        }
       }
       
-     // Which features are currentlt being used...
+     // Which features are currently being used...
       state.feat = (int*)malloc(sizeof(int)*%(dims)i);
      
      // Setup the counters so we do the required work when next is called...
       state.featRemain = %(dimCount)i;
       state.dirRemain = 0;
       state.splitRemain = 0;
+      
+     // Safety...
+      %(channelType)s cd = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+      int featCount = %(channelName)s_features(cd);
+      if (%(dims)i>featCount)
+      {
+       state.featRemain = 0; // Effectivly cancels work.
+      }
     }
     
     bool %(name)s_next(State%(name)s & state, PyObject * data, Exemplar * test_set)

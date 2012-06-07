@@ -223,7 +223,7 @@ class MatrixGrow(ExemplarSet):
     
     ret = dict()
     
-    inp = self.dm[channel]
+    inp = self.dmcList[0][channel]
     if inp.dtype==numpy.float32: dtype = 'float'
     elif inp.dtype==numpy.float64: dtype = 'double'
     elif inp.dtype==numpy.int32: dtype = 'long'
@@ -249,7 +249,8 @@ class MatrixGrow(ExemplarSet):
   def tupleInputC(self):
     self.make_compact()
     
-    return tuple(self.dm)
+    return tuple(self.dmcList[0])
 
   def key(self):
-    return 'MatrixGrow|' + reduce(lambda a,b: a+':'+b, map(lambda d: str(d.dtype), self.dm))
+    self.make_compact()
+    return 'MatrixGrow|' + reduce(lambda a,b: a+':'+b, map(lambda d: str(d.dtype), self.dmcList[0]))

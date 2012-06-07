@@ -169,6 +169,6 @@ print 'Discrete random generator:'
 doTest(DiscreteRandomGen(0,4,4)) # 0 = channel to use to generate tests, 4 = # of features to randomly select and generate test for, 4 = # of tests to generate per feature.
 print
 
-#print 'Discrete classify generator:'
-#doTest(DiscreteClassifyGen(0,1,2,4)) # 0 = channel to use to generate tests, 1 = channel that contains the true categories, 2 = # of features to randomly select and generate tests for, 4 = # of tests to generate per feature.
-#print
+print 'Discrete classify generator:'
+doTest(DiscreteClassifyGen(0,1,2,4)) # 0 = channel to use to generate tests, 1 = channel that contains the true categories, 2 = # of features to randomly select and generate tests for, 4 = # of tests to generate per feature.
+print

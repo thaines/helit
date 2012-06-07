@@ -87,6 +87,75 @@ class MergeGen(Generator):
     return ret
 
 
+  def genCodeC(self, name, exemplar_list):
+    code = ''
+    states = []
+    for i, gen in enumerate(self.gens):
+      c, s = gen.genCodeC(name+'_%i'%i, exemplar_list)
+      code += c
+      states.append(s)
+    
+    code += start_cpp() + """
+    struct State%(name)s
+    {
+     void * test;
+     size_t length;
+     
+    """%{'name':name}
+    
+    for i,s in enumerate(states):
+      code += ' %s gen_%i;\n'%(s,i)
+
+    code += start_cpp() + """
+    
+     int upto;
+    };
+    
+    void %(name)s_init(State%(name)s & state, PyObject * data, Exemplar * test_set)
+    {
+     state.test = 0;
+     state.length = 0;
+     
+    """%{'name':name}
+    
+    for i in xrange(len(self.gens)):
+      code += '%(name)s_%(i)i_init(state.gen_%(i)i, data, test_set);\n'%{'name':name, 'i':i}
+    
+    code += start_cpp() + """
+     state.upto = 0;
+    }
+    
+    bool %(name)s_next(State%(name)s & state, PyObject * data, Exemplar * test_set)
+    {
+     switch (state.upto)
+     {
+    """%{'name':name}
+    
+    for i in xrange(len(self.gens)):
+      code += start_cpp() + """
+      case %(i)i:
+       if (%(name)s_%(i)i_next(state.gen_%(i)i, data, test_set))
+       {
+        state.length = 1 + state.gen_%(i)i.length;
+        state.test = realloc(state.test, state.length);
+        ((unsigned char*)state.test)[0] = %(i)i;
+        memcpy((unsigned char*)state.test+1, state.gen_%(i)i.test, state.gen_%(i)i.length);
+        return true;
+       }
+       else state.upto += 1;
+      """%{'name':name, 'i':i}
+    
+    code += start_cpp() + """
+     }
+     
+     free(state.test);
+     return false;
+    }
+    """
+    
+    return (code, 'State'+name)
+
+
 
 class RandomGen(Generator):
   """This generator contains several generators, and randomly selects one to provide the tests each time itertests is called - not entirly sure what this could be used for, but it can certainly add some more randomness, for good or for bad. Supports weighting and merging multiple draws from the set of generators contained within. Has the same limit of 256 that MergeGen has, for the same reasons."""
@@ -147,3 +216,112 @@ class RandomGen(Generator):
     ret += '}\n'
     
     return ret
+
+
+  def genCodeC(self, name, exemplar_list):
+    code = ''
+    states = []
+    for i, gen in enumerate(self.gens):
+      c, s = gen[0].genCodeC(name+'_%i'%i, exemplar_list)
+      code += c
+      states.append(s)
+    
+    code += start_cpp() + """
+    struct State%(name)s
+    {
+     void * test;
+     size_t length;
+     
+    """%{'name':name}
+    
+    for i,s in enumerate(states):
+      code += ' %s gen_%i;\n'%(s,i)
+
+    code += start_cpp() + """
+    
+     int upto;
+     int * seq; // Sequence of things to try.
+    };
+    
+    void %(name)s_init(State%(name)s & state, PyObject * data, Exemplar * test_set)
+    {
+     state.test = 0;
+     state.length = 0;
+     
+     state.upto = -1;
+     state.seq = (int*)malloc(sizeof(int)*%(draws)i);
+     
+     for (int i=0;i<%(draws)i;i++)
+     {
+      float weight = drand48();
+    """%{'name':name, 'draws':self.draws, 'count':len(self.gens)}
+    
+    total = sum(map(lambda g: g[1], self.gens))
+    ssf = 0.0
+    for i,gen in enumerate(self.gens):
+      ssf += gen[1]/total
+      code += start_cpp() + """
+      if (weight<%(thres)f) state.seq[i] = %(i)i;
+      else
+      """%{'i':i, 'thres':ssf}
+     
+    code += start_cpp() + """
+      state.seq[i] = %(count)i-1;
+     }
+    }
+    
+    bool %(name)s_next(State%(name)s & state, PyObject * data, Exemplar * test_set)
+    {
+     while (state.upto<%(draws)i)
+     {
+      if (state.upto!=-1) 
+      {
+       switch (state.seq[state.upto])
+       {
+    """%{'name':name, 'draws':self.draws, 'count':len(self.gens)}
+    
+    for i in xrange(len(self.gens)):
+      code += start_cpp() + """
+      case %(i)i:
+       if (%(name)s_%(i)i_next(state.gen_%(i)i, data, test_set))
+       {
+        state.length = 1 + state.gen_%(i)i.length;
+        state.test = realloc(state.test, state.length);
+        ((unsigned char*)state.test)[0] = %(i)i;
+        memcpy((unsigned char*)state.test+1, state.gen_%(i)i.test, state.gen_%(i)i.length);
+        return true;
+       }
+      break;
+      """%{'name':name, 'i':i}
+    
+    code += start_cpp() + """
+       }
+      }
+      
+      state.upto++;
+      
+      if (state.upto<%(draws)i)
+      {
+       switch(state.seq[state.upto])
+       {
+    """ %{'draws':self.draws}
+    
+    for i in xrange(len(self.gens)):
+      code += start_cpp() + """
+      case %(i)i:
+       %(name)s_%(i)i_init(state.gen_%(i)i, data, test_set);
+      break;
+      """%{'name':name, 'i':i}
+    
+    code += start_cpp() + """  
+       }
+      }
+     }
+     
+     free(state.test);
+     free(state.seq);
+     return false;
+    }
+    """
+    
+    return (code, 'State'+name)

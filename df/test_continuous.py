@@ -210,9 +210,9 @@ print 'Axis-aligned median generator:'
 doTest(AxisMedianGen(0,2)) # 0 = channel to use to generate tests, 2 = # of tests to try.
 print
 
-#print 'Linear median generator:'
-#doTest(LinearMedianGen(0,2,4,8)) # 0 = channel to use to generate tests, 2 = # of dimensions for each test, 4 = # of dimension possibilities to consider, 8 = # of orientations to consider.
-#print
+print 'Linear median generator:'
+doTest(LinearMedianGen(0,2,4,8)) # 0 = channel to use to generate tests, 2 = # of dimensions for each test, 4 = # of dimension possibilities to consider, 8 = # of orientations to consider.
+print
 
 print 'Axis-aligned random generator:'
 doTest(AxisRandomGen(0,4,8)) # 0 = channel to generate tests for, 4 = # of dimensions to try splits for, 8 = # of splits to try per dimension.
@@ -222,16 +222,16 @@ print 'Linear random generator:'
 doTest(LinearRandomGen(0,2,4,8,4)) # 0 = channel to generate tests for, 2 = # of dimensions used for each test, 4 = number of random dimension selections to try, 8 = number of random directions to try, 4 = number of random split points to try.
 print
 
-#print 'Axis-aligned classify generator:'
-#doTest(AxisClassifyGen(0,1,3)) # 0 = channel to get features for tests from, 1 = channel containing the actual answer to optimise, 3 = number of tests to generate.
-#print
+print 'Axis-aligned classify generator:'
+doTest(AxisClassifyGen(0,1,3)) # 0 = channel to get features for tests from, 1 = channel containing the actual answer to optimise, 3 = number of tests to generate.
+print
 
-#print 'Linear classify generator:'
-#doTest(LinearClassifyGen(0,1,2,4,8)) # 0 = channel to use to generate tests,1 = channel containing the actual answer to optimise, 2 = # of dimensions for each test, 4 = # of dimension possibilities to consider, 8 = # of orientations to consider.
-#print
+print 'Linear classify generator:'
+doTest(LinearClassifyGen(0,1,2,4,8)) # 0 = channel to use to generate tests,1 = channel containing the actual answer to optimise, 2 = # of dimensions for each test, 4 = # of dimension possibilities to consider, 8 = # of orientations to consider.
+print
 
-#if svm!=None:
-#  print 'SVM generator:'
-#  params = svm.ParamsSet(True)
-#  doTest(SVMClassifyGen(params, 8, 1, 2, 0, 3, 2))
-#  print
+if svm!=None:
+  print 'SVM generator:'
+  params = svm.ParamsSet(True)
+  doTest(SVMClassifyGen(params, 8, 1, 2, 0, 3, 2))
+  print

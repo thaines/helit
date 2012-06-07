@@ -9,6 +9,7 @@
 
 
 import numpy
+import numpy.random
 
 try: from scipy import weave
 except: weave = None
@@ -40,6 +41,8 @@ class Node:
       init = start_cpp(code) + """
       if (Nindex[0]!=0)
       {
+       srand48(rand);
+       
        // Create the Exemplar data structure, in  triplicate!..
         Exemplar * items = (Exemplar*)malloc(sizeof(Exemplar)*Nindex[0]);
         Exemplar * splitItems = (Exemplar*)malloc(sizeof(Exemplar)*Nindex[0]);
@@ -75,9 +78,10 @@ class Node:
       
       data = es.tupleInputC()
       out = dict()
+      rand = numpy.random.randint(-1000000000,1000000000)
       
       if weights==None: weights = numpy.ones(es.exemplars(), dtype=numpy.float32)
-      weave.inline(init, ['out', 'data', 'index', 'weights', 'entropy'], support_code=code)
+      weave.inline(init, ['out', 'data', 'index', 'weights', 'entropy', 'rand'], support_code=code)
       if index.shape[0]==0: return
       
       bestTest = out['bestTest']

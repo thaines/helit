@@ -67,6 +67,161 @@ class AxisClassifyGen(Generator, AxisSplit):
       yield numpy.asarray([ind], dtype=numpy.int32).tostring() + numpy.asarray([split], dtype=numpy.float32).tostring()
 
 
+  def genCodeC(self, name, exemplar_list):
+    code = start_cpp() + """
+    struct Store%(name)s
+    {
+     int cat;
+     float value;
+     float weight;
+    };
+    
+    struct State%(name)s
+    {
+     void * test; // Will be the length of a 32 bit int followed by a float.
+     size_t length;
+     
+     int countRemain;
+     
+     Store%(name)s * temp; // Temporary used for storing the sorted values.
+     
+     int catCount;
+     float * low;
+     float * high;
+    };
+    
+    int %(name)s_store_comp(const void * lhs, const void * rhs)
+    {
+     const Store%(name)s & l = (*(Store%(name)s*)lhs);
+     const Store%(name)s & r = (*(Store%(name)s*)rhs);
+     
+     if (l.value<r.value) return -1;
+     if (l.value>r.value) return 1;
+     return 0;
+    }
+    
+    void %(name)s_init(State%(name)s & state, PyObject * data, Exemplar * test_set)
+    {
+     assert(sizeof(int)==4);
+     
+     int count = 0;
+     state.catCount = 0;
+     %(catChannelType)s ccd = (%(catChannelType)s)PyTuple_GetItem(data, %(catChannel)i);
+     
+     while (test_set)
+     {
+      count++;
+      int cat = %(catChannelName)s_get(ccd, test_set->index, 0);
+      if (cat>=state.catCount) state.catCount = cat+1;
+      test_set = test_set->next;
+     }
+     
+     state.length = sizeof(int) + sizeof(float);
+     state.test = malloc(state.length);
+     
+     state.countRemain = %(count)i;
+     
+     state.temp = (Store%(name)s*)malloc(sizeof(Store%(name)s) * count);
+     
+     state.low  = (float*)malloc(state.catCount*sizeof(float));
+     state.high = (float*)malloc(state.catCount*sizeof(float));
+    }
+    
+    bool %(name)s_next(State%(name)s & state, PyObject * data, Exemplar * test_set)
+    {
+     // Check if we are done...
+      if (state.countRemain==0)
+      {
+       free(state.test);
+       free(state.temp);
+       free(state.low);
+       free(state.high);
+       return false;
+      }
+      
+      state.countRemain--;
+      
+     // Select a random feature...
+      %(channelType)s cd = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+      int feat = lrand48() %% %(channelName)s_features(cd);
+      %(catChannelType)s ccd = (%(catChannelType)s)PyTuple_GetItem(data, %(catChannel)i);
+     
+     // Extract the values...
+      int count = 0;
+      while (test_set)
+      {
+       state.temp[count].cat = %(catChannelName)s_get(ccd, test_set->index, 0);
+       state.temp[count].value = %(channelName)s_get(cd, test_set->index, feat);
+       state.temp[count].weight = test_set->weight;
+       
+       count++;
+       test_set = test_set->next;
+      }
+     
+     // Sort them...
+      qsort(state.temp, count, sizeof(Store%(name)s), %(name)s_store_comp);
+     
+     // Find the optimal split point...
+      float bestSplit = 0.0;
+      float bestImp = -1e100;
+      
+      for (int c=0; c<state.catCount; c++)
+      {
+       state.low[c] = 0.0;
+       state.high[c] = 0.0;
+      }
+      
+      for (int i=0; i<count; i++)
+      {
+       state.high[state.temp[i].cat] += state.temp[i].weight;
+      }
+      
+      for (int i=0; i<(count-1); i++)
+      {
+       // Move the indexed element across...
+        int c = state.temp[i].cat;
+        float w = state.temp[i].weight;
+        state.low[c] += w;
+        state.high[c] -= w;
+      
+       // Calculate the improvement...
+        float lowSum = 0.0;
+        float highSum = 0.0;
+        for (int c=0; c<state.catCount; c++)
+        {
+         lowSum += state.low[c];
+         highSum += state.high[c];
+        }
+        
+        float logLowSum = log(lowSum);
+        float logHighSum = log(highSum);
+        
+        float imp = 0.0;
+        for (int c=0; c<state.catCount; c++)
+        {
+         if (state.low[c]>1e-6)  imp +=  state.low[c] * (log(state.low[c])  -  logLowSum);
+         if (state.high[c]>1e-6) imp += state.high[c] * (log(state.high[c]) - logHighSum);
+        }
+       
+       // If its the best calculate and store the split point...
+        if (imp>bestImp)
+        {
+         bestSplit = 0.5 * (state.temp[i].value + state.temp[i+1].value);
+         bestImp = imp;
+        }
+      }
+     
+     // Store the test and return...
+      ((int*)state.test)[0] = feat;
+      ((float*)state.test)[1] = bestSplit;
+     
+     return true;
+    }
+    """%{'name':name, 'channel':self.channel, 'channelName':exemplar_list[self.channel]['name'], 'channelType':exemplar_list[self.channel]['itype'], 'catChannel':self.catChannel, 'catChannelName':exemplar_list[self.catChannel]['name'], 'catChannelType':exemplar_list[self.catChannel]['itype'], 'count':self.count}
+    
+    return (code, 'State'+name)
+
+
 
 class LinearClassifyGen(Generator, LinearSplit):
   """Provides a generator for split planes that projected the features perpendicular to a random plane direction but then optimises where to put the split plane to maximise classification performance. Randomly selects which dimensions to work with and the orientation of the split plane."""
@@ -130,6 +285,235 @@ class LinearClassifyGen(Generator, LinearSplit):
         yield numpy.asarray(dims, dtype=numpy.int32).tostring() + numpy.asarray(di, dtype=numpy.float32).tostring() + numpy.asarray([split], dtype=numpy.float32).tostring()
 
 
+  def genCodeC(self, name, exemplar_list):
+    code = start_cpp() + """
+    struct Store%(name)s
+    {
+     int cat;
+     float value;
+     float weight;
+    };
+    
+    struct State%(name)s
+    {
+     void * test; // Will be the length of a 32 bit int followed by a float.
+     size_t length;
+     
+     float * dirs; // Vectors giving points uniformly distributed on the hyper-sphere.
+     int * feat; // The features to index at this moment.
+     
+     int dimRemain;
+     int dirRemain;
+     
+     Store%(name)s * temp; // Temporary used for storing the sorted values.
+     
+     int catCount;
+     float * low;
+     float * high;
+    };
+    
+    int %(name)s_store_comp(const void * lhs, const void * rhs)
+    {
+     const Store%(name)s & l = (*(Store%(name)s*)lhs);
+     const Store%(name)s & r = (*(Store%(name)s*)rhs);
+     
+     if (l.value<r.value) return -1;
+     if (l.value>r.value) return 1;
+     return 0;
+    }
+    
+    void %(name)s_init(State%(name)s & state, PyObject * data, Exemplar * test_set)
+    {
+     assert(sizeof(int)==4);
+     
+     // Count how many exemplars are in the input, and how many classes are represented...
+      int count = 0;
+      state.catCount = 0;
+      %(catChannelType)s ccd = (%(catChannelType)s)PyTuple_GetItem(data, %(catChannel)i);
+     
+      while (test_set)
+      {
+       count++;
+       int cat = %(catChannelName)s_get(ccd, test_set->index, 0);
+       if (cat>=state.catCount) state.catCount = cat+1;
+       test_set = test_set->next;
+      }
+     
+     // Setup the output...
+      state.length = sizeof(int) * %(dims)i + sizeof(float) * (%(dims)i+1);
+      state.test = malloc(state.length);
+     
+     // Counters so we know when we are done...
+      state.dimRemain = %(dimCount)i;
+      state.dirRemain = 0;
+     
+     // Generate a bunch of random directions...
+      state.dirs = (float*)malloc(sizeof(float)*%(dims)i*%(dirCount)i);
+      for (int d=0;d<%(dirCount)i;d++)
+      {
+       float length = 0.0;
+       int base = %(dims)i * d;
+       for (int f=0; f<%(dims)i; f++)
+       {
+        double u = 1.0-drand48();
+        double v = 1.0-drand48();
+        float bg = sqrt(-2.0*log(u)) * cos(2.0*M_PI*v);
+        length += bg*bg;
+        state.dirs[base+f] = bg;
+       }
+       
+       length = sqrt(length);
+       for (int f=0; f<%(dims)i; f++)
+       {
+        state.dirs[base+f] /= length;
+       }
+      }
+      
+     // Which features are currently being used...
+      state.feat = (int*)malloc(sizeof(int)*%(dims)i);
+
+     // Temporary for sorting the exemplars by value...
+      state.temp = (Store%(name)s*)malloc(sizeof(Store%(name)s) * count);
+     
+     // Class count arrays for optimal split selection...
+      state.low  = (float*)malloc(state.catCount*sizeof(float));
+      state.high = (float*)malloc(state.catCount*sizeof(float));
+      
+     // Safety...
+      %(channelType)s cd = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+      int featCount = %(channelName)s_features(cd);
+      if (%(dims)i>featCount)
+      {
+       state.dimRemain = 0; // Effectivly cancels work.
+      }
+    }
+    
+    bool %(name)s_next(State%(name)s & state, PyObject * data, Exemplar * test_set)
+    {
+     // Need access to the data...
+      %(channelType)s cd = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+      %(catChannelType)s ccd = (%(catChannelType)s)PyTuple_GetItem(data, %(catChannel)i);
+      
+     // If we are done for this set of features select a new set...
+      if (state.dirRemain==0)
+      {
+       if (state.dimRemain==0)
+       {
+        free(state.test);
+        free(state.dirs);
+        free(state.feat);
+        free(state.temp);
+        return false;
+       }
+       state.dimRemain--;
+      
+       // Select a new set of features...
+        int featCount = %(channelName)s_features(cd);
+        for (int f=0; f<%(dims)i; f++)
+        {
+         state.feat[f] = lrand48() %% (featCount-f);
+         for (int j=0; j<f; j++)
+         {
+          if (state.feat[j]<=state.feat[f]) state.feat[f]++;
+         }
+        }
+        
+       // Reset the counter...
+        state.dirRemain = %(dirCount)i;
+      }
+      state.dirRemain--;
+         
+     // Extract the values, projecting them using the current direction...
+      int count = 0;
+      while (test_set)
+      {
+       float val = 0.0;
+       int base = %(dims)i * state.dirRemain;
+       for (int f=0; f<%(dims)i; f++)
+       {
+        val += state.dirs[base+f] * %(channelName)s_get(cd, test_set->index, state.feat[f]);
+       }
+       
+       state.temp[count].cat = %(catChannelName)s_get(ccd, test_set->index, 0);
+       state.temp[count].value = val;
+       state.temp[count].weight = test_set->weight;
+       
+       count++;
+       test_set = test_set->next;
+      }
+
+     // Sort them...
+      qsort(state.temp, count, sizeof(Store%(name)s), %(name)s_store_comp);
+     
+     // Find the optimal split point...
+      float bestSplit = 0.0;
+      float bestImp = -1e100;
+      
+      for (int c=0; c<state.catCount; c++)
+      {
+       state.low[c] = 0.0;
+       state.high[c] = 0.0;
+      }
+      
+      for (int i=0; i<count; i++)
+      {
+       state.high[state.temp[i].cat] += state.temp[i].weight;
+      }
+      
+      for (int i=0; i<(count-1); i++)
+      {
+       // Move the indexed element across...
+        int c = state.temp[i].cat;
+        float w = state.temp[i].weight;
+        state.low[c] += w;
+        state.high[c] -= w;
+      
+       // Calculate the improvement...
+        float lowSum = 0.0;
+        float highSum = 0.0;
+        for (int c=0; c<state.catCount; c++)
+        {
+         lowSum += state.low[c];
+         highSum += state.high[c];
+        }
+        
+        float logLowSum = log(lowSum);
+        float logHighSum = log(highSum);
+        
+        float imp = 0.0;
+        for (int c=0; c<state.catCount; c++)
+        {
+         if (state.low[c]>1e-6)  imp +=  state.low[c] * (log(state.low[c])  -  logLowSum);
+         if (state.high[c]>1e-6) imp += state.high[c] * (log(state.high[c]) - logHighSum);
+        }
+       
+       // If its the best calculate and store the split point...
+        if (imp>bestImp)
+        {
+         bestSplit = 0.5 * (state.temp[i].value + state.temp[i+1].value);
+         bestImp = imp;
+        }
+      }
+     
+     // Store it all in the output...
+      for (int i=0; i<%(dims)i;i++)
+      {
+       ((int*)state.test)[i] = state.feat[i];
+      }
+      int base = %(dims)i * state.dirRemain;
+      for (int i=0; i<%(dims)i;i++)
+      {
+       ((float*)state.test)[%(dims)i+i] = state.dirs[base+i];
+      }
+      ((float*)state.test)[2*%(dims)i] = bestSplit;
+     
+     return true;
+    }
+    """%{'name':name, 'channel':self.channel, 'channelName':exemplar_list[self.channel]['name'], 'channelType':exemplar_list[self.channel]['itype'], 'catChannel':self.catChannel, 'catChannelName':exemplar_list[self.catChannel]['name'], 'catChannelType':exemplar_list[self.catChannel]['itype'], 'dims':self.dims, 'dimCount':self.dimCount, 'dirCount':self.dirCount}
+    
+    return (code, 'State'+name)
+
+
 
 class DiscreteClassifyGen(Generator, DiscreteBucket):
   """Defines a generator for discrete data. It basically takes a single discrete feature and then greedily optimises to get the best classification performance, As it won't necesarilly converge to the global optimum multiple restarts are provided. The discrete values must form a contiguous set, starting at 0 and going upwards. When splitting it only uses values it can see - unseen values will fail the test, though it always arranges for the most informative half to be the one that passes the test."""
@@ -170,7 +554,7 @@ class DiscreteClassifyGen(Generator, DiscreteBucket):
       
       # Optimise from multiple starting points...
       for _ in xrange(self.initCount):
-        # Generate a ranodm greedy order...
+        # Generate a random greedy order...
         order = numpy.random.permutation(histos.keys())
         
         # Initialise by putting the first two entrys in different halfs...
