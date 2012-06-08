@@ -23,9 +23,10 @@ class Pruner:
 
 class PruneCap(Pruner):
   """A simple but effective Pruner implimentation - simply provides a set of thresholds on depth, number of training samples required to split and information gained - when any one of the thresholds is tripped it stops further branching."""
-  def __init__(self, maxDepth = 8, minTrain = 8, minGain = 1e-3):
-    """maxDepth is the maximum depth of a node in the tree, after which it stops - remember that the maximum node count based on this threshold increases dramatically as this number goes up, so don't go too crazy. minTrain is the smallest size node it will consider for further splitting. minGain is a lower limit on how much information gain a split must provide to be accepted."""
+  def __init__(self, maxDepth = 8, minTrain = 8, minGain = 1e-3, minDepth = 2):
+    """maxDepth is the maximum depth of a node in the tree, after which it stops - remember that the maximum node count based on this threshold increases dramatically as this number goes up, so don't go too crazy. minTrain is the smallest size node it will consider for further splitting. minGain is a lower limit on how much information gain a split must provide to be accepted. minDepth overrides the minimum node size - as long as the node count does not reach zero in either branch it will always split to the given depth - used to force it to at least learn something."""
     self.maxDepth = maxDepth
+    self.minDepth = minDepth
     self.minTrain = minTrain
     self.minGain = minGain
   
@@ -34,11 +35,15 @@ class PruneCap(Pruner):
     
   def keep(self, depth, trueCount, falseCount, infoGain, node):
     if depth>=self.maxDepth: return False
-    if (trueCount+falseCount)<self.minTrain: return False
+    if depth>=self.minDepth and (trueCount+falseCount)<self.minTrain: return False
     if infoGain<self.minGain: return False
     return True
   
   
+  def setMinDepth(self, minDepth):
+    """Sets the minimum tree growing depth - trees will be grown at least this deep, baring insurmountable issues."""
+    self.minDepth = minDepth
+    
   def setMaxDepth(self, maxDepth):
     """Sets the depth cap on the trees."""
     self.maxDepth = maxDepth

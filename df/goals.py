@@ -88,7 +88,7 @@ class Classification(Goal):
   
   
   def stats(self, es, index, weights = None):
-    if len(index)!=0: 
+    if len(index)!=0:
       ret = numpy.bincount(es[self.channel, index, 0], weights=weights[index] if weights!=None else None)
       ret = numpy.asarray(ret, dtype=numpy.float32)
     else:
