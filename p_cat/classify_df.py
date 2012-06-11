@@ -86,6 +86,10 @@ class ClassifyDF(ProbCat):
     for cat, c in self.cats.iteritems():
       ret[cat] = counts[c] if c<counts.shape[0] else 0
     return ret
+  
+  
+  def listMode(self):
+    return True
 
 
   def getDataProb(self, sample, state = None):
@@ -111,5 +115,40 @@ class ClassifyDF(ProbCat):
       ret[None] = eval_d
     else:
       ret[None] = 1.0
+
+    return ret
+  
+  
+  def getDataProbList(self, sample, state = None):
+    # Update the models as needed - this will potentially take some time...
+    if self.classifyTrain!=0 and self.classifyData.exemplars()!=0:
+      self.classify.learn(min(self.classifyTrain, self.treeCount), self.classifyData, clamp = self.treeCount, mp=False)
+      self.classifyTrain = 0
+      
+    if self.densityTrain!=0 and self.densityData.exemplars()!=0:
+      self.density.learn(min(self.densityTrain, self.treeCount), self.densityData, clamp = self.treeCount, mp=False)
+      self.densityTrain = 0
+    
+    # Fetch the required information...
+    if self.classify.size()!=0:
+      eval_c = self.classify.evaluate(MatrixES(sample), which = 'gen_list')[0]
+    else:
+      return [{None:1.0}]
+    
+    if self.density.size()!=0:
+      eval_d = self.density.evaluate(MatrixES(sample), which = 'best')[0]
+    else:
+      eval_d = 1.0
+    
+    # Construct and return the output...
+    ret = []
+
+    for ec in eval_c:
+      r = {None:eval_d}
+
+      for cat, c in self.cats.iteritems():
+        r[cat] = ec[c] if c<ec.shape[0] else 0.0
+
+      ret.append(r)
 
     return ret

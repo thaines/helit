@@ -36,11 +36,21 @@ class ProbCat:
   def getCatCounts(self):
     """Returns a dictionary indexable by each of the categories that goes to how many samples of that category have been provided. The returned dictionary must not be edited by the user."""
     raise NotImplementedError('getCatCounts has not been implimented.')
+  
+  
+  def listMode(self):
+    """Returns true if list mode is supported, False otherwise. List mode basically provides some of the same methods, with the 'List' postfix, where the return is a list of answers which the usual method would provide just one of. Used when there are multiple estimates, e.g. multiple draws from a posterior on the model."""
+    return False
 
 
   def getDataProb(self, sample, state = None):
     """Returns a dictionary indexed by the various categories, with the probabilities of the sample being drawn from the respective categories. Must also include an entry indexed by 'None' that represents the probability of the sample comming from the prior. Note that this is P(data|category,model) - you probably want it reversed, which requires Bayes rule be applied. state is an optional dictionary - if you are calling this repeatedly on the same sample, e.g. during incrimental learning, then state allows an algorithm to store data to accelerate future calls. There should be a dictionary for each sample, and it should be empty on the first call. The implimentation will presume that the sample is identical for each call but that the model will not be, though as it would typically be used for incrimental learning the speed up can be done under the assumption that the model has only changed a little bit."""
     raise NotImplementedError('getDataProb has not been implimented.')
+  
+  
+  def getDataProbList(self, sample, state = None):
+    """Is only implimented if listMode returns True. Does the same things as getDataProb, but returns a list of answers."""
+    raise NotImplementedError('getDataProbList has not been implimented.')
 
 
   def getProb(self, sample, weight = False, conc = None, state = None):
@@ -67,6 +77,31 @@ class ProbCat:
     for cat in ret.iterkeys():
       ret[cat] *= dprob[cat]
     return ret
+    
+    
+  def getProbList(self, sample, weight = False, conc = None, state = None):
+    """List version of getProb, will only work if listMode returns True. Same as getProb but it returns a list of answers, as samples of a possible answer."""
+    def work(dprob):
+      if weight==False: cprob = dict(map(lambda c: (c,1.0), self.getCatList()))
+      elif weight==True: cprob = dict(self.getCatCounts())
+      else: cprob = dict(weight)
+    
+      norm = float(sum(cprob.itervalues()))
+      if conc!=None: # Adjust norm so it all sums to 1.
+        conc = float(conc) / self.getSampleTotal()
+        norm /= 1.0 - conc
+
+      for cat in cprob.iterkeys(): cprob[cat] /= norm
+
+      if conc!=None: cprob[None] = conc
+
+      # Multiply it all out and return...
+      ret = dict(cprob)
+      for cat in ret.iterkeys():
+        ret[cat] *= dprob[cat]
+      return ret
+    
+    return map(work, self.getDataProbList(sample, state))
 
 
   def getCat(self, sample, weight = False, conc = None, state = None):
@@ -82,3 +117,19 @@ class ProbCat:
         ret = cat
 
     return ret
+  
+  
+  def getCatList(self, sample, weight = False, conc = None, state = None):
+    """List version of getCat, will only work if listMode returns True. Same as getCat but it returns a list of answers, as samples of a possible answer."""
+    def work(prob):
+      best = None
+      ret = None
+    
+      for cat, p in prob.iteritems():
+        if best==None or p>best:
+          best = p
+          ret = cat
+
+      return ret
+    
+    return map(work, self.getProbList(sample, weight, conc, state))

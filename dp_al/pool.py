@@ -33,7 +33,7 @@ Entity = collections.namedtuple('Entity', ['sample', 'prob', 'ident'])
 class Pool:
   """Represents a pool of entities that can be used for trainning with active learning. Simply contains the entities, their category probabilities and some arbitary identifier (For testing the identifier is often set to be the true category.). Provides active learning methods to extract the entities via various techneques based on the category probabilites. The category probabilites are a dictionary, indexed by category names, and includes 'None' as the probability of it being draw from the prior. Each term consists of P(data|category,model). The many select methods remove an item from the pool based on an active learning approach - the user is then responsible for querying the oracle for its category and updating the model accordingly. Before calling a select method you need to call update to update the probabilities associated with each entity, providing it with the current model, though you can batch things by calling update once before several select calls. The select methods return the named tuple Entity, which is (sample, prob, ident)."""
   def __init__(self):
-    self.entities = [] # Each entity is a 4-list, where the first entry is the thing being stored, the second the associated category probabilities dictionary, and the third the identifier of the thing, which for testing is often the true category. These are basically Entity objects, but left editable as lists. The 4th item is then the state, used to optimise repeated calls to update.
+    self.entities = [] # Each entity is a 5-list, where the first entry is the thing being stored, the second the associated category probabilities dictionary, and the third the identifier of the thing, which for testing is often the true category. These are basically Entity objects, but left editable as lists. The 4th item is then the state, used to optimise repeated calls to update, and the 5th is a list of probability dictionaries, for if the classifier supports that.
     
     self.prior = collections.defaultdict(lambda: 1.0)
     self.count = None
@@ -44,12 +44,15 @@ class Pool:
 
   def store(self, sample, ident=None):
     """Stores the provided sample into the pool, for later extraction. An arbitary identifier can optionally be provided for testing purposes. The probability distribution is left empty at this time - a call to update will fix that for all objects currently in the pool."""
-    self.entities.append([sample, None, ident, dict()])
+    self.entities.append([sample, None, ident, dict(), None])
 
 
-  def update(self, classifier, dp_ready = True):
-    """This is given an object that impliments the ProbCat interface from the p_cat module - it then uses that object to update the probabilities for all entities in the pool. Assumes the sample provided to store can be passed into the getProb method of the classifier. dp_ready should be left True if one of the select methods that involves dp's is going to be called, so it can update the concentration."""
-    for entity in self.entities: entity[1] = classifier.getDataProb(entity[0], entity[3])
+  def update(self, classifier, dp_ready = True, qbc = False):
+    """This is given an object that impliments the ProbCat interface from the p_cat module - it then uses that object to update the probabilities for all entities in the pool. Assumes the sample provided to store can be passed into the getProb method of the classifier. dp_ready should be left True if one of the select methods that involves dp's is going to be called, so it can update the concentration. qbc needs to be set True if methods based on query by comittee are to be used."""
+    for entity in self.entities:
+      entity[1] = classifier.getDataProb(entity[0], entity[3])
+      if classifier.listMode() and qbc:
+        entity[4] = classifier.getDataProbList(entity[0], entity[3])
 
     self.count = dict(classifier.getCatCounts())
 
@@ -224,6 +227,12 @@ class Pool:
         if cat!=None or dp:
           probIs[cat] = p * (self.count[cat] if cat!=None else self.conc.getConcentration())
           div += probIs[cat]
+          
+      if div<1e-5:
+        for cat in probIs.iterkeys():
+          probIs[cat] = self.prior[cat]
+          div += probIs[cat]
+
       for cat in probIs.iterkeys(): probIs[cat] /= div
 
       # Calculate the probability of getting it wrong...
@@ -253,12 +262,93 @@ class Pool:
     ret = self.entities[pos]
     self.entities = self.entities[:pos] + self.entities[pos+1:]
     return Entity._make(ret[:3])
+  
+  
+  def selectWrongQBC(self, softSelect = False, hardChoice = False, dp = True, dw = False):
+    """A query by comittee version of selectWrong - its parameters are equivalent. Requires that update is called with qbc set to True."""
+    if len(self.cats)==0 and dp==False: return self.selectRandom()
+    
+    wrong = numpy.ones(len(self.entities))
+    for i, entity in enumerate(self.entities):
+      # Calculate a list of estimates of the probability of selecting each of the known classes...
+      probSelList = []
+      for prob in entity[4]:
+        probSel = dict()
+        div = 0.0
+        for cat, p in prob.iteritems():
+          if cat!=None:
+            pp = p * self.prior[cat]
+            probSel[cat] = pp
+            div += pp
+
+        if div<1e-5:
+          for cat in probSel.iterkeys():
+            probSel[cat] = self.prior[cat]
+            div += probSel[cat]
+      
+        for cat in probSel.iterkeys(): probSel[cat] /= div
+        
+        probSelList.append(probSel)
+      
+      # Calculate a list of estimates of the probability of it being each of the options...
+      probIsList = []
+      for prob in entity[4]:
+        probIs = dict()
+        div = 0.0
+        for cat, p in prob.iteritems():
+          if cat!=None or dp:
+            probIs[cat] = p * (self.count[cat] if cat!=None else self.conc.getConcentration())
+            div += probIs[cat]
+
+        if div<1e-5:
+          for cat in probIs.iterkeys():
+            probIs[cat] = self.prior[cat]
+            div += probIs[cat]
+
+        for cat in probIs.iterkeys(): probIs[cat] /= div
+      
+      # Now do the combinatorics of the two lists to generate a P(wrong) estimate for each pair, for which the average is taken...
+      wrong[i] = 0.0
+      
+      for probSel in probSelList:
+        for probIs in probIsList:
+          if softSelect:
+            w = 1.0
+            for cat, p in probSel.iteritems():
+              w -= p * probIs[cat]
+          else:
+            best = -1.0
+            w = 0.0
+            for cat, p in probSel.iteritems():
+              if p>best:
+                best = p
+                w = 1.0 - probIs[cat]
+          wrong[i] += w
+      
+      wrong[i] /= len(probSelList) * len(probIsList)
+      
+      # If requested include a weighting by density...
+      if dw: wrong[i] *= entity[1][None]
+    
+    if hardChoice:
+      pos = numpy.argmax(wrong)
+    else:
+      r = random.random() * wrong.sum()
+      pos = 0
+      while pos<(wrong.shape[0]-1):
+        r -= wrong[pos]
+        if r<0.0: break
+        pos += 1
+
+    ret = self.entities[pos]
+    self.entities = self.entities[:pos] + self.entities[pos+1:]
+    return Entity._make(ret[:3])
 
 
   @staticmethod
-  def methods():
-    """Returns a list of the method names that can be passed to the select method. Read the select method to work out which they each are. p_wrong_soft is the published techneque."""
-    return ['random', 'outlier', 'entropy', 'p_new_hard', 'p_new_soft', 'p_wrong_hard', 'p_wrong_soft', 'p_wrong_hard_pcat', 'p_wrong_soft_pcat', 'p_wrong_hard_naive', 'p_wrong_soft_naive', 'p_wrong_hard_pcat_naive', 'p_wrong_soft_pcat_naive', 'dxp_wrong_hard', 'dxp_wrong_soft', 'dxp_wrong_hard_pcat', 'dxp_wrong_soft_pcat', 'dxp_wrong_hard_naive', 'dxp_wrong_soft_naive', 'dxp_wrong_hard_pcat_naive', 'dxp_wrong_soft_pcat_naive']
+  def methods(incQBC = False):
+    """Returns a list of the method names that can be passed to the select method. Read the select method to work out which they each are. p_wrong_soft is the published techneque. By default it does not include the query by comittee versions, which can be switched on using the relevent flag."""
+    return ['random', 'outlier', 'entropy', 'p_new_hard', 'p_new_soft', 'p_wrong_hard', 'p_wrong_soft', 'p_wrong_hard_pcat', 'p_wrong_soft_pcat', 'p_wrong_hard_naive', 'p_wrong_soft_naive', 'p_wrong_hard_pcat_naive', 'p_wrong_soft_pcat_naive', 'dxp_wrong_hard', 'dxp_wrong_soft', 'dxp_wrong_hard_pcat', 'dxp_wrong_soft_pcat', 'dxp_wrong_hard_naive', 'dxp_wrong_soft_naive', 'dxp_wrong_hard_pcat_naive', 'dxp_wrong_soft_pcat_naive'] + ([] if incQBC==False else ['qbc_p_wrong_hard', 'qbc_p_wrong_soft', 'qbc_p_wrong_hard_pcat', 'qbc_p_wrong_soft_pcat', 'qbc_p_wrong_hard_naive', 'qbc_p_wrong_soft_naive', 'qbc_p_wrong_hard_pcat_naive', 'qbc_p_wrong_soft_pcat_naive', 'qbc_dxp_wrong_hard', 'qbc_dxp_wrong_soft', 'qbc_dxp_wrong_hard_pcat', 'qbc_dxp_wrong_soft_pcat', 'qbc_dxp_wrong_hard_naive', 'qbc_dxp_wrong_soft_naive', 'qbc_dxp_wrong_hard_pcat_naive', 'qbc_dxp_wrong_soft_pcat_naive'])
 
   def select(self, method):
     """Pass through for all of the select methods that have no problamatic parameters - allows you to select the method using a string. You can get a list of all method strings from the methods() method."""
@@ -283,4 +373,20 @@ class Pool:
     elif method=='dxp_wrong_soft_naive': return self.selectWrong(False,False,False,True)
     elif method=='dxp_wrong_hard_pcat_naive': return self.selectWrong(True,True,False,True)
     elif method=='dxp_wrong_soft_pcat_naive': return self.selectWrong(True,False,False,True)
+    elif method=='qbc_p_wrong_hard': return self.selectWrongQBC(False,True,True,False)
+    elif method=='qbc_p_wrong_soft': return self.selectWrongQBC(False,False,True,False)
+    elif method=='qbc_p_wrong_hard_pcat': return self.selectWrongQBC(True,True,True,False)
+    elif method=='qbc_p_wrong_soft_pcat': return self.selectWrongQBC(True,False,True,False)
+    elif method=='qbc_p_wrong_hard_naive': return self.selectWrongQBC(False,True,False,False)
+    elif method=='qbc_p_wrong_soft_naive': return self.selectWrongQBC(False,False,False,False)
+    elif method=='qbc_p_wrong_hard_pcat_naive': return self.selectWrongQBC(True,True,False,False)
+    elif method=='qbc_p_wrong_soft_pcat_naive': return self.selectWrongQBC(True,False,False,False)
+    elif method=='qbc_dxp_wrong_hard': return self.selectWrongQBC(False,True,True,True)
+    elif method=='qbc_dxp_wrong_soft': return self.selectWrongQBC(False,False,True,True)
+    elif method=='qbc_dxp_wrong_hard_pcat': return self.selectWrongQBC(True,True,True,True)
+    elif method=='qbc_dxp_wrong_soft_pcat': return self.selectWrongQBC(True,False,True,True)
+    elif method=='qbc_dxp_wrong_hard_naive': return self.selectWrongQBC(False,True,False,True)
+    elif method=='qbc_dxp_wrong_soft_naive': return self.selectWrongQBC(False,False,False,True)
+    elif method=='qbc_dxp_wrong_hard_pcat_naive': return self.selectWrongQBC(True,True,False,True)
+    elif method=='qbc_dxp_wrong_soft_pcat_naive': return self.selectWrongQBC(True,False,False,True)
     else: raise Exception('Unknown selection method')
