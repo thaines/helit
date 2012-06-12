@@ -115,8 +115,10 @@ class GaussianPrior:
 
       newWeight = 0.0
       for i in xrange(samples.shape[0]):
-        newWeight += weight[i]
-        mean += (samples[i,:]-mean) * weight[i] / newWeight
+        if weight[i]>1e-9:
+          newWeight += weight[i]
+          mean += (samples[i,:]-mean) * weight[i] / newWeight
+          
       for i in xrange(samples.shape[0]):
         delta = samples[i,:]-mean
         scatter += weight[i] * numpy.outer(delta,delta)
