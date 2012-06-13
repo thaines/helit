@@ -94,14 +94,9 @@ class GaussianPrior:
       d = self.mu.shape[0]
       num = samples.shape[0]
     
-      mean = numpy.zeros(d, dtype=numpy.float32)
-      scatter = numpy.zeros((d,d), dtype=numpy.float32)
-
-      for i in xrange(num):
-        mean += (samples[i,:]-mean) / float(i+1)
-      for i in xrange(num):
-        delta = samples[i,:]-mean
-        scatter += numpy.outer(delta,delta)
+      mean = numpy.average(samples, axis=0)
+      
+      scatter = numpy.tensordot(delta, delta, ([0],[0]))
 
     else:
       # Weighted samples...
@@ -109,19 +104,11 @@ class GaussianPrior:
       # Calculate the mean and scatter matrix...
       d = self.mu.shape[0]
       num = weight.sum()
-
-      mean = numpy.zeros(d, dtype=numpy.float32)
-      scatter = numpy.zeros((d,d), dtype=numpy.float32)
-
-      newWeight = 0.0
-      for i in xrange(samples.shape[0]):
-        if weight[i]>1e-9:
-          newWeight += weight[i]
-          mean += (samples[i,:]-mean) * weight[i] / newWeight
-          
-      for i in xrange(samples.shape[0]):
-        delta = samples[i,:]-mean
-        scatter += weight[i] * numpy.outer(delta,delta)
+      
+      mean = numpy.average(samples, axis=0, weights=weight.reshape((-1,1)))
+      
+      delta = samples - mean.reshape((1,-1))
+      scatter = numpy.tensordot(weight.reshape((-1,1))*delta, delta, ([0],[0]))
 
     # Update parameters...
     delta = mean-self.mu
