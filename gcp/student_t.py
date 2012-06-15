@@ -117,7 +117,11 @@ class StudentT:
     d = self.loc.shape[0]
     delta = dm - self.loc.reshape((1,d))
 
-    val = ((self.getInvScale().reshape(1,d,d) * delta.reshape(dm.shape[0],1,d)).sum(axis=2) * delta).sum(axis=1)
+    if hasattr(numpy, 'einsum'): # Can go away when scipy older than 1.6 is no longer in use.
+      val = numpy.einsum('kj,ij,ik->i', self.getInvScale(), delta, delta)
+    else:
+      val = ((self.getInvScale().reshape(1,d,d) * delta.reshape(dm.shape[0],1,d)).sum(axis=2) * delta).sum(axis=1)
+      
     val = 1.0 + val/self.dof
     return numpy.exp(self.getLogNorm() + numpy.log(val)*(-0.5*(self.dof+d)))
 
@@ -126,7 +130,11 @@ class StudentT:
     d = self.loc.shape[0]
     delta = dm - self.loc.reshape((1,d))
 
-    val = ((self.getInvScale().reshape(1,d,d) * delta.reshape(dm.shape[0],1,d)).sum(axis=2) * delta).sum(axis=1)
+    if hasattr(numpy, 'einsum'): # Can go away when scipy older than 1.6 is no longer in use.
+      val = numpy.einsum('kj,ij,ik->i', self.getInvScale(), delta, delta)
+    else:
+      val = ((self.getInvScale().reshape(1,d,d) * delta.reshape(dm.shape[0],1,d)).sum(axis=2) * delta).sum(axis=1)
+      
     val = 1.0 + val/self.dof
     return self.getLogNorm() + numpy.log(val)*(-0.5*(self.dof+d))
 
