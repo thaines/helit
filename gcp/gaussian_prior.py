@@ -105,7 +105,7 @@ class GaussianPrior:
       d = self.mu.shape[0]
       num = weight.sum()
       
-      mean = numpy.average(samples, axis=0, weights=weight.reshape((-1,1)))
+      mean = numpy.average(samples, axis=0, weights=weight)
       
       delta = samples - mean.reshape((1,-1))
       scatter = numpy.tensordot(weight.reshape((-1,1))*delta, delta, ([0],[0]))
