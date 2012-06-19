@@ -53,6 +53,7 @@ ydir *= scales
 data = numpy.append(xdir.reshape((-1,1)), ydir.reshape((-1,1)), axis=1)
 
 es = MatrixES(data)
+doMP = False
 
 
 
@@ -80,7 +81,7 @@ def doTest(name, gen):
   
   global es
   pb = ProgBar()
-  df.learn(32, es, callback = pb.callback, mp=True) # 32 = number of trees to learn - you need a lot to get a good answer.
+  df.learn(32, es, callback = pb.callback, mp=doMP) # 32 = number of trees to learn - you need a lot to get a good answer.
   del pb
   
   # Drop some stats...
@@ -100,7 +101,7 @@ def doTest(name, gen):
       i += 1
     
     test = MatrixES(testSet)
-    res = df.evaluate(test, mp=True)
+    res = df.evaluate(test, mp=doMP)
     
     i = 0
     for x in xrange(pixel_width):
