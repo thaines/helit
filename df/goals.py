@@ -501,14 +501,12 @@ class DensityGaussian(Goal):
     mean = numpy.fromstring(stats[12:precStart], dtype=numpy.float32)
     prec = numpy.fromstring(stats[precStart:], dtype=numpy.float32).reshape((self.feats, self.feats))
     
-    # Go through and factor in each feature vector from the summary in turn...
-    err = 0.0
-    chunkSize = 4 * (self.feats + 1)
-    count = len(summary) / chunkSize
+    # Factor in each feature vector from the summary, by summing in its negative log liklihood...
+    summary = numpy.fromstring(summary, dtype=numpy.float32).reshape((-1, self.feats + 1))
     
-    for i in xrange(count):
-      fv = numpy.fromstring(summary[i*chunkSize:(i+1)*chunkSize], dtype=numpy.float32)
-      delta = fv[1:] - mean
-      err += fv[0] * (0.5 * numpy.dot(delta, numpy.dot(prec, delta)) - params[2])
+    delta = summary[:,1:] - mean.reshape((1,-1))
+    vmv = (delta * numpy.dot(prec, delta.T).T).sum(axis=1)
+    err = 0.5 * (summary[:,0] * vmv).sum()
+    err -= summary[:,0].sum() * params[2]
     
     return (err, None)
