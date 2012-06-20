@@ -78,7 +78,7 @@ class Gaussian:
   def getNorm(self):
     """Returns the normalising constant of the distribution. Typically for internal use only."""
     if self.norm==None:
-      self.norm = math.pow(math.pi,-0.5*self.mean.shape[0]) * math.sqrt(numpy.linalg.det(self.getPrecision()))
+      self.norm = math.pow(2.0*math.pi,-0.5*self.mean.shape[0]) * math.sqrt(numpy.linalg.det(self.getPrecision()))
     return self.norm
 
   def prob(self, x):
