@@ -296,7 +296,7 @@ class Classification(Goal):
 class DensityGaussian(Goal):
   """Provides the ability to construct a density estimate, using Gaussian distributions to represent the density at each node in the tree. A rather strange thing to be doing with a decision forest, and I am a little suspicious of it, but it does give usable results, at least for low enough dimensionalities where everything remains sane. Due to its nature it can be very memory consuming if your doing incrmental learning - the summary has to store all the provided samples. Requires a channel to contain all the features that are fed into the density estimate (It is to this that a Gaussian is fitted.), which is always in channel 0. Other features can not exist, so typically input data would only have 1 channel. Because the divisions between nodes are sharp (This is a mixture model only between trees, not between leaf nodes within each tree.) the normalisation constant for each Gaussian has to be adjusted to take this into account. This is acheived by sampling - sending samples from the Gaussian down the tree and counting what percentage make the node. Note that when calculating the Gaussian at each node a prior is used, to avoid degeneracies, with a default weight of 1, so if weights are provided they should be scaled accordingly. Using a decision tree for density estimation is a bit hit and miss based on my experiance - you need to pay very close attention to tuning the min train parameter of the pruner, as information gain is a terrible stopping metric in this case. You also need a lot of trees to get something smooth out, which means it is quite computationally expensive."""
   def __init__(self, feats, samples = 1024, prior_weight = 1.0):
-    """feats is the number of features to be found in channel 0 of the data, which it uses to fit a Gaussian at each node. samples is how many samples per node it sends down the tree, to weight that node according to the samples that can actually reach it. prior_weight is the weight assigned to a prior used on each node to avoid degeneracies - it defaults to 1, with 0 removing it entirly (Not recomended.)."""
+    """feats is the number of features to be found in channel 0 of the data, which are uses to fit a Gaussian at each node. samples is how many samples per node it sends down the tree, to weight that node according to the samples that can actually reach it. prior_weight is the weight assigned to a prior used on each node to avoid degeneracies - it defaults to 1, with 0 removing it entirly (Not recomended.)."""
     self.feats = feats
     self.samples = samples
     self.prior_weight = prior_weight
@@ -309,16 +309,10 @@ class DensityGaussian(Goal):
     # First calculate the weighted mean of the samples we have...
     data = es[0, index, :].copy()
     
-    mean = numpy.empty(self.feats, dtype=numpy.float32)
-    if weights==None:
-      mean[:] = data.mean(axis=0)
-      weight = float(data.shape[0])
-    else:
-      w = weights[index]
-      weight = w.sum()
-      mean[:] = (data * w.reshape((-1,1))).sum(axis=0)
-      mean /= weight
-    
+    w = weights[index] if weights!=None else None
+    weight = w.sum() if w!=None else float(data.shape[0])
+    mean = numpy.asarray(numpy.average(data, axis=0, weights=w), dtype=numpy.float32)
+   
     # Offset the data matrix by the mean...
     data -= mean.reshape((1,-1))
     
@@ -330,9 +324,13 @@ class DensityGaussian(Goal):
     covar = numpy.identity(self.feats, dtype=numpy.float32)
     covar *= sym_var * self.prior_weight
     
-    if weights!=None: data[:,:] *= w.reshape((-1,1))
-    covar += numpy.dot(data.T, data)
-    covar /= self.prior_weight + weight
+    if weights!=None:
+      covar += numpy.dot(data.T, data * w.reshape((-1,1)))
+      pw = self.prior_weight + weight
+      covar *= pw / (pw**2.0 - self.prior_weight**2.0 - numpy.square(w).sum())
+    else:
+      covar += numpy.dot(data.T, data)
+      covar /= self.prior_weight + weight
     
     prec = numpy.linalg.inv(covar)
     
@@ -381,8 +379,8 @@ class DensityGaussian(Goal):
     
     newPrec = numpy.linalg.inv(newCovar)
     
-    # Update the normalising constant...
-    params[2] = params[1] * numpy.sqrt(numpy.linalg.det(newPrec)) * numpy.pow(2.0*numpy.pi, -0.5*self.feats)
+    # Update the log of the normalising constant...
+    params[2] = numpy.log(params[1]) + 0.5*numpy.linalg.slogdet(prec)[1] - 0.5*self.feats*numpy.log(2.0*numpy.pi)
     
     # Encode what we have in the required format and return it...
     return params.tostring() + newMean.tostring() + newPrec.tostring()
@@ -393,9 +391,9 @@ class DensityGaussian(Goal):
     prec = numpy.fromstring(stats[precStart:], dtype=numpy.float32).reshape((self.feats, self.feats))
     
     # Calculate and return the distributions entropy...
-    return 0.5 * (numpy.log(2.0*numpy.pi*numpy.e) * self.feats - numpy.log(numpy.linalg.det(prec)))
-  
-  
+    return 0.5 * (numpy.log(2.0*numpy.pi*numpy.e) * self.feats - numpy.linalg.slogdet(prec)[1])
+
+
   def postTreeGrow(self, root, gen):
     # Count the total weight in the system, to weight the nodes by the percentage of trainning samples they see...
     def sumWeight(node):
@@ -437,11 +435,11 @@ class DensityGaussian(Goal):
       tsWeight *= float(self.samples) / max(index.shape[0], 1.0)
       
       # Calculate the normalising constant...
-      norm = tsWeight * numpy.sqrt(numpy.linalg.det(prec)) * numpy.power(2.0*numpy.pi, -0.5*self.feats)
+      logNorm = numpy.log(tsWeight) + 0.5*numpy.linalg.slogdet(prec)[1] - 0.5*self.feats*numpy.log(2.0*numpy.pi)
       
       # Rencode the nodes stats with the updates...
       params[1] = tsWeight
-      params[2] = norm
+      params[2] = logNorm
       
       node.stats = params.tostring() + node.stats[12:]
       
@@ -470,7 +468,7 @@ class DensityGaussian(Goal):
       
       # Calculate the probability and add it in...
       delta = es[0,index,:] - mean
-      p += params[2] * numpy.exp(-0.5 * numpy.dot(delta, numpy.dot(prec, delta)))
+      p += numpy.exp(params[2] - 0.5 * numpy.dot(delta, numpy.dot(prec, delta)))
     
     return p / len(stats_list)
 
@@ -503,16 +501,12 @@ class DensityGaussian(Goal):
     mean = numpy.fromstring(stats[12:precStart], dtype=numpy.float32)
     prec = numpy.fromstring(stats[precStart:], dtype=numpy.float32).reshape((self.feats, self.feats))
     
-    logNorm = numpy.log(params[2])
+    # Factor in each feature vector from the summary, by summing in its negative log liklihood...
+    summary = numpy.fromstring(summary, dtype=numpy.float32).reshape((-1, self.feats + 1))
     
-    # Go through and factor in each feature vector from the summary in turn...
-    err = 0.0
-    chunkSize = 4 * (self.feats + 1)
-    count = len(summary) / chunkSize
-    
-    for i in xrange(count):
-      fv = numpy.fromstring(summary[i*chunkSize:(i+1)*chunkSize], dtype=numpy.float32)
-      delta = fv[1:] - mean
-      err += fv[0] * (0.5 * numpy.dot(delta, numpy.dot(prec, delta)) - logNorm)
+    delta = summary[:,1:] - mean.reshape((1,-1))
+    vmv = (delta * numpy.dot(prec, delta.T).T).sum(axis=1)
+    err = 0.5 * (summary[:,0] * vmv).sum()
+    err -= summary[:,0].sum() * params[2]
     
     return (err, None)
