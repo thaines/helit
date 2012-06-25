@@ -51,6 +51,8 @@ class ClassifyDF(ProbCat):
     """Returns the decision forest used for density estimation, as a psuedo-prior."""
     return self.density
   
+  def setDensityMinTrain(self, count):
+    self.density.getPruner().setMinTrain(count)
 
   def priorAdd(self, sample):
     self.densityData.append(numpy.asarray(sample, dtype=numpy.float32))
