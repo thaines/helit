@@ -289,7 +289,7 @@ class Pool:
         for cat in probSel.iterkeys(): probSel[cat] /= div
         
         probSelList.append(probSel)
-      
+        
       # Calculate a list of estimates of the probability of it being each of the options...
       probIsList = []
       for prob in entity[4]:
@@ -306,6 +306,8 @@ class Pool:
             div += probIs[cat]
 
         for cat in probIs.iterkeys(): probIs[cat] /= div
+        
+        probIsList.append(probIs)
       
       # Now do the combinatorics of the two lists to generate a P(wrong) estimate for each pair, for which the average is taken...
       wrong[i] = 0.0
@@ -324,12 +326,11 @@ class Pool:
                 best = p
                 w = 1.0 - probIs[cat]
           wrong[i] += w
-      
       wrong[i] /= len(probSelList) * len(probIsList)
-      
+
       # If requested include a weighting by density...
       if dw: wrong[i] *= entity[1][None]
-    
+      
     if hardChoice:
       pos = numpy.argmax(wrong)
     else:
