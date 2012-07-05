@@ -39,8 +39,9 @@ class DF:
       self.goal = other.goal.clone() if other.goal!=None else None
       self.pruner = other.pruner.clone() if other.pruner!=None else None
       self.gen = other.gen.clone() if other.gen!=None else None
-      self.trees = map(lambda t: (t[0].clone(), t[1]), other.trees)
+      self.trees = map(lambda t: (t[0].clone(), t[1], t[2].copy() if t[2]!=None else None), other.trees)
       self.inc = other.inc
+      self.grow = other.grow
       self.trainCount = other.trainCount
       
       self.evaluateCodeC = dict(other.evaluateCodeC)
@@ -50,8 +51,9 @@ class DF:
       self.goal = None
       self.pruner = PruneCap()
       self.gen = None
-      self.trees = [] # A list of pairs: (root node, oob score)
+      self.trees = [] # A list of tuples: (root node, oob score, draw) Last entry is None if self.grow is False, otherwise a numpy array of repeat counts for trainning for the exemplars.
       self.inc = False # True to support incrimental learning, False to not.
+      self.grow = False # If true then during incrimental learning it checks pre-existing trees to see if they can grow some more each time.
       self.trainCount = 0 # Count of how many trainning examples were used to train with - this is so it knows how to split up the data when doing incrimental learning (between new and old exmeplars.). Also used to detect if trainning has occured.
       
       self.evaluateCodeC = dict()
@@ -90,14 +92,19 @@ class DF:
     """Returns the Generator object for the system."""
     return self.gen
   
-  def setInc(self, inc):
-    """Set this to True to support incrimental learning, False to not. Having incrimental learning on costs extra memory, but has little if any computational affect."""
+  def setInc(self, inc, grow = False):
+    """Set this to True to support incrimental learning, False to not. Having incrimental learning on costs extra memory, but has little if any computational affect. If incrimental learning is on you can also switch grow on, in which case as more data arrives it tries to split the leaf nodes of trees that have already been grown. Requires a bit more memory be used, as it needs to keep the indices of the training set for future growth. Note that the default pruner is entirly inappropriate for this mode - the pruner has to be set such that as more data arrives it will allow future growth."""
     assert(self.trainCount==0)
     self.inc = inc
+    self.grow = grow
   
   def getInc(self):
     """Returns the status of incrimental learning - True if its enabled, False if it is not."""
     return self.inc
+  
+  def getGrow(self):
+    """Returns True if the trees will be subject to further growth during incrimental learning, when they have gained enough data to subdivide further."""
+    return self.grow
   
   def allowC(self, allow):
     """By default the system will attempt to compile and use C code instead of running the (much slower) python code - this allows you to force it to not use C code, or switch C back on if you had previously switched it off. Typically only used for speed comparisons and debugging, but also useful if the use of C code doesn't work on your system. Just be aware that the speed difference is galactic."""
@@ -152,8 +159,9 @@ class DF:
       error = 1e100 # Can't calculate an error - record a high value so we lose the tree at the first avaliable opportunity, which is sensible behaviour given that we don't know how good it is.
     
     # Store it...
-    if ret: return (tree, error)
-    else: self.trees.append((tree, error))
+    if self.grow==False: draw = None
+    if ret: return (tree, error, draw)
+    else: self.trees.append((tree, error, draw))
 
   
   def lumberjack(self, count):
@@ -164,7 +172,7 @@ class DF:
   
 
   def learn(self, trees, es, weightChannel = None, clamp = None, mp = True, callback = None):
-    """This learns a model given data, and, when it is switched on, will also do incrimental learning. trees is how many new trees to create - for normal learning this is just how many to make, for incrimental learning it is how many to add to those that have already been made - more is always better, but it is these that cost you computation and memory. es is the ExemplarSet containing the data to train on. For incrimental learning you always provide the previous data, at the same indices, with the new exemplars appended to the end. weightChannel allows you to give a channel containing a single feature if you want to weight the importance of the exemplars. clamp is only relevent to incrimental learning - it is effectivly a maximum number of trees to allow, where it throws away the weakest trees first. This is how incrimental learning works, and so must be set for that - by constantly adding new trees as new data arrives and updating the error metrics of the older trees (The error will typically increase with new data.) the less-well trainned (and typically older) trees will be culled. mp indicates if multiprocessing should be used or not - True to do so, False to not. Will automatically switch itself off if not supported."""
+    """This learns a model given data, and, when it is switched on, will also do incrimental learning. trees is how many new trees to create - for normal learning this is just how many to make, for incrimental learning it is how many to add to those that have already been made - more is always better, within reason, but it is these that cost you computation and memory. es is the ExemplarSet containing the data to train on. For incrimental learning you always provide the previous data, at the same indices, with the new exemplars appended to the end. weightChannel allows you to give a channel containing a single feature if you want to weight the importance of the exemplars. clamp is only relevent to incrimental learning - it is effectivly a maximum number of trees to allow, where it throws away the weakest trees first. This is how incrimental learning works, and so must be set for that - by constantly adding new trees as new data arrives and updating the error metrics of the older trees (The error will typically increase with new data.) the less-well trainned (and typically older) trees will be culled. mp indicates if multiprocessing should be used or not - True to do so, False to not. Will automatically switch itself off if not supported."""
     
     # Prepare for multiprocessing...
     if Pool==None: mp = False
@@ -182,13 +190,15 @@ class DF:
       assert(self.inc)
       newCount = es.exemplars() - self.trainCount
       
+      code = self.addCodeC[es.key()] if es.key() in self.addCodeC else None
+      
       if mp:
-        result = pool.map_async(updateTree, map(lambda tree_error: (self.goal, self.gen, tree_error[0], tree_error[1], self.trainCount, newCount, es, weightChannel, treesDone, numpy.random.randint(1000000000)), self.trees))
+        result = pool.map_async(updateTree, map(lambda tree_tup: (self.goal, self.gen, self.pruner if self.grow else None, tree_tup, self.trainCount, newCount, es, weightChannel, code, treesDone, numpy.random.randint(1000000000)), self.trees))
       else:
         newTrees = []
-        for ti, (tree, error) in enumerate(self.trees):
+        for ti, tree_tup in enumerate(self.trees):
           if callback: callback(ti, totalTrees)
-          data = (self.goal, self.gen, tree, error, self.trainCount, newCount, es, weightChannel)
+          data = (self.goal, self.gen, self.pruner if self.grow else None, tree_tup, self.trainCount, newCount, es, weightChannel, code)
           newTrees.append(updateTree(data))
         self.trees = newTrees
     
@@ -196,29 +206,30 @@ class DF:
     self.trainCount = es.exemplars()
   
     # Create new trees...
-    if mp:
-      # There is a risk of a race condition caused by compilation - do a dummy run to make sure we compile in advance...
-      self.addTree(es, weightChannel, dummy=True)
+    if trees!=0:
+      if mp and trees>1:
+        # There is a risk of a race condition caused by compilation - do a dummy run to make sure we compile in advance...
+        self.addTree(es, weightChannel, dummy=True)
       
-      # Set the runs going...
-      newTreesResult = pool.map_async(mpGrowTree, map(lambda _: (self, es, weightChannel, treesDone, numpy.random.randint(1000000000)), xrange(trees)))
+        # Set the runs going...
+        newTreesResult = pool.map_async(mpGrowTree, map(lambda _: (self, es, weightChannel, treesDone, numpy.random.randint(1000000000)), xrange(trees)))
       
-      # Wait for the runs to complete...
-      while (not newTreesResult.ready()) and ((result==None) or (not result.ready())):
-        newTreesResult.wait(0.1)
-        if result: result.wait(0.1)
-        if callback: callback(treesDone.value, totalTrees)
+        # Wait for the runs to complete...
+        while (not newTreesResult.ready()) and ((result==None) or (not result.ready())):
+          newTreesResult.wait(0.1)
+          if result: result.wait(0.1)
+          if callback: callback(treesDone.value, totalTrees)
       
-      # Put the result into the dta structure...
-      if result: self.trees = result.get()
-      self.trees += filter(lambda tree: tree!=None, newTreesResult.get())
-    else:
-      for ti in xrange(trees):
-        if callback: callback(len(self.trees)+ti, totalTrees)
-        self.addTree(es, weightChannel)
+        # Put the result into the dta structure...
+        if result: self.trees = result.get()
+        self.trees += filter(lambda tree: tree!=None, newTreesResult.get())
+      else:
+        for ti in xrange(trees):
+          if callback: callback(len(self.trees)+ti, totalTrees)
+          self.addTree(es, weightChannel)
     
-    # Prune trees down to the right number of trees if needed...
-    if clamp!=None: self.lumberjack(clamp)
+      # Prune trees down to the right number of trees if needed...
+      if clamp!=None: self.lumberjack(clamp)
     
     # Clean up if we have been multiprocessing...
     if mp:
@@ -268,7 +279,7 @@ class DF:
 
       store += result.get()
     else:
-      for ti, (tree, _) in enumerate(self.trees):
+      for ti, (tree, _, _) in enumerate(self.trees):
         if callback: callback(ti, len(self.trees))
         res = [None] * es.exemplars()
         tree.evaluate(res, self.gen, es, index, code)
@@ -316,8 +327,8 @@ def mpGrowTree(data):
 
 def updateTree(data):
   """Updates a tree - kept external like this for the purpose of multiprocessing."""
-  goal, gen, tree, error, prevCount, newCount, es, weightChannel = data[:8]
-  if len(data)>9: numpy.random.seed(data[9])
+  goal, gen, pruner, (tree, error, old_draw), prevCount, newCount, es, weightChannel, code = data[:9]
+  if len(data)>10: numpy.random.seed(data[10])
   
   # Choose which of the new samples are train and which are test, prepare the relevent inputs...
   draw = numpy.random.poisson(size=newCount)
@@ -343,11 +354,20 @@ def updateTree(data):
   if test.shape[0]!=0:
     error = tree.error(goal, gen, es, test, testWeight, True)
   
+  # If we are growing its time to grow the tree...
+  draw = None if old_draw==None else numpy.append(old_draw, draw)
+  
+  if pruner!=None:
+    index = numpy.where(draw!=0)[0]
+    if weightChannel==None: weights = numpy.asarray(draw, dtype=numpy.float32)
+    else: weights = es[weightChannel,:,prevCount:] * numpy.asarray(draw, dtype=numpy.float32)
+    tree.grow(goal, gen, pruner, es, index, weights, 0, code)
+
   # If provided update the trees updated count...
-  if len(data)>8: data[8].value += 1
+  if len(data)>9: data[9].value += 1
     
-  # Return the modified tree in a pair with the updated error...
-  return (tree, error)
+  # Return the modified tree in a tuple with the updated error updated draw array...
+  return (tree, error, draw)
 
 
 

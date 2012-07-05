@@ -171,6 +171,10 @@ def doTest(df):
 incDF = createDF()
 incDF.setInc(True)
 
+growDF = createDF()
+growDF.setInc(True, True)
+growDF.setPruner(PruneCap(8, 8, 1e-3, 0))
+
 es = MatrixGrow()
 
 for i in xrange(64):
@@ -182,17 +186,21 @@ for i in xrange(64):
   incDF.learn(2, es, clamp = 8)
   incEnd = time.time()
   
+  # Update the incrimental model that does tree growth exclusivly...
+  growStart = time.time()
+  growDF.learn(8 if i==0 else 0, es, clamp = 8, mp=False)
+  growEnd = time.time()
+  
   # Batch train a model from scratch...
   batchDF = createDF()
   batchStart = time.time()
   batchDF.learn(8, es)
   batchEnd = time.time()
   
-  if incDF.size()==0 or batchDF.size()==0: continue
-  
   # Test them both...
   incRate = doTest(incDF) if incDF.size()!=0 else 0.0
+  growRate = doTest(growDF) if growDF.size()!=0 else 0.0
   batchRate = doTest(batchDF) if batchDF.size()!=0 else 0.0
   
   # Print out the stats...
-  print '% 3i: Batch = %.1f%% in %.2fs | Inc = %.1f%% in %.2fs (cat = %i)'%(i+1, 100.0*batchRate, batchEnd-batchStart, 100.0*incRate, incEnd-incStart, cats[i,0])
+  print '% 3i: {Batch,Inc,GrowInc} = {%.1f%%,%.1f%%,%.1f%%} in {%.2fs,%.2fs,%.2fs} (cat = %i)'%(i+1, 100.0*batchRate, 100.0*incRate, 100.0*growRate, batchEnd-batchStart, incEnd-incStart, growEnd-growStart, cats[i,0])
