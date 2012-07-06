@@ -44,15 +44,16 @@ class AxisSplit(Test):
   
   
   def testCodeC(self, name, exemplar_list):
-    ret = start_cpp()
-    ret += 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)\n'%name
-    ret += '{\n'
-    ret +=  'int feature = *(int*)test;\n'
-    ret +=  'float offset = *((float*)test + 1);\n'
-    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});\n'.format(exemplar_list[self.channel]['itype'], self.channel)
-    ret +=  'float value = (float)%s_get(channel, exemplar, feature);\n'%exemplar_list[self.channel]['name']
-    ret +=  'return (value-offset)>=0.0;\n'
-    ret += '}\n'
+    ret = start_cpp() + """
+    bool %(name)s(PyObject * data, void * test, size_t test_length, int exemplar)
+    {
+     int feature = *(int*)test;
+     float offset = *((float*)test + 1);
+     %(channelType)s channel = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+     float value = (float)%(channelName)s_get(channel, exemplar, feature);
+     return (value-offset)>=0.0;
+    }
+    """%{'name':name, 'channel':self.channel, 'channelName':exemplar_list[self.channel]['name'], 'channelType':exemplar_list[self.channel]['itype']}
     return ret
 
 
@@ -79,21 +80,23 @@ class LinearSplit(Test):
 
 
   def testCodeC(self, name, exemplar_list):
-    ret = start_cpp()
-    ret += 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)\n'%name
-    ret += '{\n'
-    ret +=  'int * feature = (int*)test;\n'
-    ret +=  'float * plane_axis = (float*)test + %i;\n'%self.dims
-    ret +=  'float offset = *((float*)test + %i);\n'%(self.dims*2)
-    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});\n'.format(exemplar_list[self.channel]['itype'], self.channel)
-    ret +=  'float value = 0.0;\n'
-    ret +=  'for (int i=0;i<%i;i++)\n'%self.dims
-    ret +=  '{'
-    ret +=   'float v = (float)%s_get(channel, exemplar, feature[i]);\n'%exemplar_list[self.channel]['name']
-    ret +=   'value += v*plane_axis[i];\n'
-    ret +=  '}\n'
-    ret +=  'return (value-offset)>=0.0;\n'
-    ret += '}\n'
+    ret = start_cpp() + """
+    bool %(name)s(PyObject * data, void * test, size_t test_length, int exemplar)
+    {
+     int * feature = (int*)test;
+     float * plane_axis = (float*)test + %(dims)i;
+     float offset = *((float*)test + %(dims)i*2);
+     %(channelType)s channel = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+     
+     float value = 0.0;
+     for (int i=0;i<%(dims)i;i++)
+     {
+      float v = (float)%(channelName)s_get(channel, exemplar, feature[i]);
+      value += v*plane_axis[i];
+     }
+     
+     return (value-offset)>=0.0;
+    }"""%{'name':name, 'channel':self.channel, 'channelName':exemplar_list[self.channel]['name'], 'channelType':exemplar_list[self.channel]['itype'], 'dims':self.dims}
     return ret
 
 
@@ -113,17 +116,19 @@ class DiscreteBucket(Test):
   
   
   def testCodeC(self, name, exemplar_list):
-    ret = start_cpp()
-    ret += 'bool %s(PyObject * data, void * test, size_t test_length, int exemplar)\n'%name
-    ret += '{\n'
-    ret +=  'size_t steps = test_length>>2;\n'
-    ret +=  'int * accept = (int*)test;\n'
-    ret +=  '{0} channel = ({0})PyTuple_GetItem(data, {1});\n'.format(exemplar_list[self.channel]['itype'], self.channel)
-    ret +=  'int value = (int)%s_get(channel, exemplar, accept[0]);\n'%exemplar_list[self.channel]['name']
-    ret +=  'for (size_t i=1; i<steps; i++)\n'
-    ret +=  '{\n'
-    ret +=   'if (accept[i]==value) return true;\n'
-    ret +=  '}\n'
-    ret +=  'return false;\n'
-    ret += '}\n'
+    ret = start_cpp() + """
+    bool %(name)s(PyObject * data, void * test, size_t test_length, int exemplar)
+    {
+     size_t steps = test_length>>2;
+     int * accept = (int*)test;
+     %(channelType)s channel = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+     int value = (int)%(channelName)s_get(channel, exemplar, accept[0]);
+    
+     for (size_t i=1; i<steps; i++)
+     {
+      if (accept[i]==value) return true;
+     }
+    
+     return false;
+    }"""%{'name':name, 'channel':self.channel, 'channelName':exemplar_list[self.channel]['name'], 'channelType':exemplar_list[self.channel]['itype']}
     return ret
