@@ -47,6 +47,7 @@ class DF:
       self.evaluateCodeC = dict(other.evaluateCodeC)
       self.addCodeC = dict(other.addCodeC)
       self.errorCodeC = dict(other.errorCodeC)
+      self.addTrainCodeC = dict(other.addTrainCodeC)
       self.useC = other.useC
     else:
       self.goal = None
@@ -61,6 +62,7 @@ class DF:
       self.evaluateCodeC = dict()
       self.addCodeC = dict()
       self.errorCodeC = dict()
+      self.addTrainCodeC = dict()
       
       self.useC = True
   
@@ -69,6 +71,8 @@ class DF:
     """Allows you to set a goal object, of type Goal - must be called before doing anything, and must not be changed after anything is done."""
     assert(self.trainCount==0)
     self.addCodeC = dict()
+    self.errorCodeC = dict()
+    self.addTrainCodeC = dict()
     self.goal = goal
     
   def getGoal(self):
@@ -89,6 +93,8 @@ class DF:
     assert(self.trainCount==0)
     self.evaluateCodeC = dict()
     self.addCodeC = dict()
+    self.errorCodeC = dict()
+    self.addTrainCodeC = dict()
     self.gen = gen
   
   def getGen(self):
@@ -207,13 +213,23 @@ class DF:
       code = self.addCodeC[key] if key in self.addCodeC else None
       errCode = self.errorCodeC[key] if key in self.errorCodeC else None
       
+      if key not in self.addTrainCodeC:
+        c = Node.addTrainC(self.goal, self.gen, es)
+        self.addTrainCodeC[key] = c
+        if c!=None:
+          # Do a dummy run, to avoid multiproccess race conditions...
+          i = numpy.zeros(0, dtype=numpy.int32)
+          w = numpy.ones(0, dtype=numpy.float32)
+          Node.addTrain.im_func(None, self.goal, self.gen, es, i, w, c)
+      addCode = self.addTrainCodeC[key]
+      
       if mp:
-        result = pool.map_async(updateTree, map(lambda tree_tup: (self.goal, self.gen, self.pruner if self.grow else None, tree_tup, self.trainCount, newCount, es, weightChannel, (code, errCode), treesDone, numpy.random.randint(1000000000)), self.trees))
+        result = pool.map_async(updateTree, map(lambda tree_tup: (self.goal, self.gen, self.pruner if self.grow else None, tree_tup, self.trainCount, newCount, es, weightChannel, (code, errCode, addCode), treesDone, numpy.random.randint(1000000000)), self.trees))
       else:
         newTrees = []
         for ti, tree_tup in enumerate(self.trees):
           if callback: callback(ti, totalTrees)
-          data = (self.goal, self.gen, self.pruner if self.grow else None, tree_tup, self.trainCount, newCount, es, weightChannel, (code, errCode))
+          data = (self.goal, self.gen, self.pruner if self.grow else None, tree_tup, self.trainCount, newCount, es, weightChannel, (code, errCode, addCode))
           newTrees.append(updateTree(data))
         self.trees = newTrees
     
@@ -342,7 +358,7 @@ def mpGrowTree(data):
 
 def updateTree(data):
   """Updates a tree - kept external like this for the purpose of multiprocessing."""
-  goal, gen, pruner, (tree, error, old_draw), prevCount, newCount, es, weightChannel, (code, errCode) = data[:9]
+  goal, gen, pruner, (tree, error, old_draw), prevCount, newCount, es, weightChannel, (code, errCode, addCode) = data[:9]
   if len(data)>10: numpy.random.seed(data[10])
   
   # Choose which of the new samples are train and which are test, prepare the relevent inputs...
@@ -365,9 +381,8 @@ def updateTree(data):
       
   # Update both test and train for the tree...
   if train.shape[0]!=0:
-    tree.addTrain(goal, gen, es, train, trainWeight)
-  if test.shape[0]!=0:
-    error = tree.error(goal, gen, es, test, testWeight, True)
+    tree.addTrain(goal, gen, es, train, trainWeight, addCode)
+  error = tree.error(goal, gen, es, test, testWeight, True, code=errCode)
   
   # If we are growing its time to grow the tree...
   draw = None if old_draw==None else numpy.append(old_draw, draw)
