@@ -67,7 +67,7 @@ class Goal:
     
     
   def codeC(self, name, escl):
-    """Returns a dictionary of strings containing C code, that impliment the Goal's methods in C - name is a prefix on the names used, escl the result of listCodeC on the exemplar set from which it will get its data. The contents of its return value must be: {'stats': 'void <name>_stats(PyObject * data, Exemplar * index, void *& out, size_t & outLen)' - data is the list of channels for the exemplar object, index the exemplars to use. The stats object is stuck into out, and the size updated accordingly. If the provided out object is too small it will be free-ed and then a large enough buffer malloc-ed; null is handled correctly if outLen is 0., 'entropy':'float <name>_entropy(void * stats, size_t statsLen) - Given a stats object returns its entropy.'}. Optional - if it throws the NotImplementedError (The default) everything will be done in python. The code can be dependent on the associated exempler code where applicable."""
+    """Returns a dictionary of strings containing C code, that impliment the Goal's methods in C - name is a prefix on the names used, escl the result of listCodeC on the exemplar set from which it will get its data. The contents of its return value must contain some of: {'stats': 'void <name>_stats(PyObject * data, Exemplar * index, void *& out, size_t & outLen)' - data is the list of channels for the exemplar object, index the exemplars to use. The stats object is stuck into out, and the size updated accordingly. If the provided out object is too small it will be free-ed and then a large enough buffer malloc-ed; null is handled correctly if outLen is 0., 'updateStats': 'void <name>_updateStats(PyObject * data, Exemplar * index, void *& inout, size_t & inoutLen)' - Same as stats, except the inout data arrives already containing a stats object, which is to be updated with the provided exemplars., 'entropy':'float <name>_entropy(void * stats, size_t statsLen) - Given a stats object returns its entropy.', 'summary': 'void <name>_summary(PyObject * data, Exemplar * index, void *& out, size_t & outLen)' - Basically the same as stats, except this time it is using the exemplars to calculate a summary. Interface works in the same way., 'updateSummary': 'void <name>_updateSummary(PyObject * data, Exemplar * index, void *& inout, size_t & inoutLen)' - Given a summary object, using the inout variables it updates it with the provided exemplars., 'error': 'void <name>_error(void * stats, size_t statsLen, void * summary, size_t summaryLen, float & error, float & weight)' - Given two buffers, representing the stats and the summary, this calculates the error, which is put into the reference error. This should be done incrimentally, such that errors from all nodes in a tree can be merged - error will be initialised at 0, and addtionally weight is provided which can be used as it wishes (Incremental mean is typical.), also initialised as 0.}. Optional - if it throws the NotImplementedError (The default) everything will be done in python, if some C code is dependent on a missing C method it will also be done in python. The code can be dependent on the associated exempler code where applicable."""
     raise NotImplementedError
   
   def key(self):
@@ -261,6 +261,39 @@ class Classification(Goal):
     }
     """%{'name':name, 'channel':self.channel, 'channelName':escl[self.channel]['name'], 'channelType':escl[self.channel]['itype'], 'classCount':self.classCount if self.classCount!=None else 1}
     
+    cUpdateStats = start_cpp() + """
+    void %(name)s_updateStats(PyObject * data, Exemplar * index, void *& inout, size_t & inoutLen)
+    {
+     // Iterate and play weighted histogram, growing out as needed...
+      %(channelType)s cData = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+      
+      int maxSeen = inoutLen / sizeof(float);
+      while (index)
+      {
+       int cls = %(channelName)s_get(cData, index->index, 0);
+       int cap = cls+1;
+       if (cap>maxSeen) maxSeen = cap;
+       
+       if ((cap*sizeof(float))>inoutLen)
+       {
+        int zero_start = inoutLen / sizeof(float);
+        
+        inoutLen = cap*sizeof(float);
+        inout = realloc(inout, inoutLen);
+        
+        for (int i=zero_start; i<cap; i++)
+        {
+         ((float*)inout)[i] = 0.0;
+        }
+       }
+       
+       ((float*)inout)[cls] += index->weight;
+       
+       index = index->next;
+      }
+    }
+    """%{'name':name, 'channel':self.channel, 'channelName':escl[self.channel]['name'], 'channelType':escl[self.channel]['itype']}
+    
     cEntropy = start_cpp() + """
     float %(name)s_entropy(void * stats, size_t statsLen)
     {
@@ -286,7 +319,112 @@ class Classification(Goal):
     }
     """%{'name':name}
     
-    return {'stats':cStats, 'entropy':cEntropy}
+    cSummary = start_cpp() + """
+    void %(name)s_summary(PyObject * data, Exemplar * index, void *& out, size_t & outLen)
+    {
+     // Make sure the output it at least as large as classCount, and zero it out...
+      if (outLen<(sizeof(float)*%(classCount)i))
+      {
+       outLen = sizeof(float) * %(classCount)i;
+       out = realloc(out, outLen);
+      }
+      
+      for (int i=0; i<(outLen/sizeof(float)); i++)
+      {
+       ((float*)out)[i] = 0.0;
+      }
+     
+     // Iterate and play weighted histogram, growing out as needed...
+      %(channelType)s cData = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+      
+      int maxSeen = %(classCount)i;
+      while (index)
+      {
+       int cls = %(channelName)s_get(cData, index->index, 0);
+       int cap = cls+1;
+       if (cap>maxSeen) maxSeen = cap;
+       
+       if ((cap*sizeof(float))>outLen)
+       {
+        int zero_start = outLen / sizeof(float);
+        
+        outLen = cap*sizeof(float);
+        out = realloc(out, outLen);
+        
+        for (int i=zero_start; i<cap; i++)
+        {
+         ((float*)out)[i] = 0.0;
+        }
+       }
+       
+       ((float*)out)[cls] += index->weight;
+       
+       index = index->next;
+      }
+      
+     // Correct the output size if needed (It could be too large)...
+      outLen = maxSeen * sizeof(float);
+    }
+    """%{'name':name, 'channel':self.channel, 'channelName':escl[self.channel]['name'], 'channelType':escl[self.channel]['itype'], 'classCount':self.classCount if self.classCount!=None else 1}
+    
+    cUpdateSummary = start_cpp() + """
+    void %(name)s_updateSummary(PyObject * data, Exemplar * index, void *& inout, size_t & inoutLen)
+    {
+     // Iterate and play weighted histogram, growing out as needed...
+      %(channelType)s cData = (%(channelType)s)PyTuple_GetItem(data, %(channel)i);
+      
+      int maxSeen = inoutLen / sizeof(float);
+      while (index)
+      {
+       int cls = %(channelName)s_get(cData, index->index, 0);
+       int cap = cls+1;
+       if (cap>maxSeen) maxSeen = cap;
+       
+       if ((cap*sizeof(float))>inoutLen)
+       {
+        int zero_start = inoutLen / sizeof(float);
+        
+        inoutLen = cap*sizeof(float);
+        inout = realloc(inout, inoutLen);
+        
+        for (int i=zero_start; i<cap; i++)
+        {
+         ((float*)inout)[i] = 0.0;
+        }
+       }
+       
+       ((float*)inout)[cls] += index->weight;
+       
+       index = index->next;
+      }
+    }
+    """%{'name':name, 'channel':self.channel, 'channelName':escl[self.channel]['name'], 'channelType':escl[self.channel]['itype']}
+    
+    cError = start_cpp() + """
+    void %(name)s_error(void * stats, size_t statsLen, void * summary, size_t summaryLen, float & error, float & weight)
+    {
+     // Sum the stuff in stats...
+      int statsSize = statsLen / sizeof(float);
+      float statsSum = 0.0;
+      for (int i=0; i<statsSize; i++) statsSum += ((float*)stats)[i];
+      
+     // Go through and factor in each class from the summary in turn, using an incrimental mean...
+      int summarySize = summaryLen / sizeof(float);
+      for (int c=0; c<summarySize; c++)
+      {
+       float avgErr = (c<statsSize)?(1.0 - ((float*)stats)[c]/statsSum):1.0;
+       float w = ((float*)summary)[c];
+       
+       weight += w;
+       if (weight>1e-3)
+       {
+        error += (avgErr-error) * w/weight;
+       }
+      }
+    }
+    """%{'name':name}
+    
+    return {'stats':cStats, 'updateStats':cUpdateStats, 'entropy':cEntropy, 'summary':cSummary, 'updateSummary':cUpdateSummary, 'error':cError}
   
   def key(self):
     return ('Classification|%i'%self.channel) + ('' if self.classCount==None else (':%i'%self.classCount))

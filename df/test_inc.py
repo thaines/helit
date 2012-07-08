@@ -18,6 +18,9 @@ import numpy.random
 from df import *
 
 
+doMP = False
+
+
 
 categories = ('undergrad', 'masters', 'phd', 'postdoc', 'lecturer')
 train_count = {'undergrad':32, 'masters':32, 'phd':32, 'postdoc':32, 'lecturer':32}
@@ -183,18 +186,18 @@ for i in xrange(64):
   
   # Update the incrimental model...
   incStart = time.time()
-  incDF.learn(2, es, clamp = 8)
+  incDF.learn(2, es, clamp = 8, mp=doMP)
   incEnd = time.time()
   
   # Update the incrimental model that does tree growth exclusivly...
   growStart = time.time()
-  growDF.learn(8 if i==0 else 0, es, clamp = 8, mp=False)
+  growDF.learn(8 if i==0 else 0, es, clamp = 8, mp=doMP)
   growEnd = time.time()
   
   # Batch train a model from scratch...
   batchDF = createDF()
   batchStart = time.time()
-  batchDF.learn(8, es)
+  batchDF.learn(8, es, mp=doMP)
   batchEnd = time.time()
   
   # Test them both...

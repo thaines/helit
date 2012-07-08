@@ -96,7 +96,8 @@ class LinearSplit(Test):
      }
      
      return (value-offset)>=0.0;
-    }"""%{'name':name, 'channel':self.channel, 'channelName':exemplar_list[self.channel]['name'], 'channelType':exemplar_list[self.channel]['itype'], 'dims':self.dims}
+    }
+    """%{'name':name, 'channel':self.channel, 'channelName':exemplar_list[self.channel]['name'], 'channelType':exemplar_list[self.channel]['itype'], 'dims':self.dims}
     return ret
 
 
@@ -130,5 +131,6 @@ class DiscreteBucket(Test):
      }
     
      return false;
-    }"""%{'name':name, 'channel':self.channel, 'channelName':exemplar_list[self.channel]['name'], 'channelType':exemplar_list[self.channel]['itype']}
+    }
+    """%{'name':name, 'channel':self.channel, 'channelName':exemplar_list[self.channel]['name'], 'channelType':exemplar_list[self.channel]['itype']}
     return ret

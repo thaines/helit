@@ -46,6 +46,7 @@ class DF:
       
       self.evaluateCodeC = dict(other.evaluateCodeC)
       self.addCodeC = dict(other.addCodeC)
+      self.errorCodeC = dict(other.errorCodeC)
       self.useC = other.useC
     else:
       self.goal = None
@@ -56,8 +57,10 @@ class DF:
       self.grow = False # If true then during incrimental learning it checks pre-existing trees to see if they can grow some more each time.
       self.trainCount = 0 # Count of how many trainning examples were used to train with - this is so it knows how to split up the data when doing incrimental learning (between new and old exmeplars.). Also used to detect if trainning has occured.
       
+      # Assorted code caches...
       self.evaluateCodeC = dict()
       self.addCodeC = dict()
+      self.errorCodeC = dict()
       
       self.useC = True
   
@@ -116,18 +119,28 @@ class DF:
 
     # Arrange for code...
     if self.useC:
-      if es.key() not in self.addCodeC:
-        self.addCodeC[es.key()] = Node.initC(self.goal, self.gen, es)
-      code = self.addCodeC[es.key()]
+      key = es.key()
+      
+      if key not in self.addCodeC:
+        self.addCodeC[key] = Node.initC(self.goal, self.gen, es)
+      code = self.addCodeC[key]
+      
+      if key not in self.errorCodeC:
+        self.errorCodeC[key] = Node.errorC(self.goal, self.gen, es)
+      errCode = self.errorCodeC[key]
     else:
       code = None
+      errCode = None
       
     # Special case code for a dummy run...
     if dummy:
-      if code!=None:
-        i = numpy.zeros(0, dtype=numpy.int32)
-        w = numpy.ones(0, dtype=numpy.float32)
+      i = numpy.zeros(0, dtype=numpy.int32)
+      w = numpy.ones(0, dtype=numpy.float32)
+      
+      if code!=None:  
         Node(self.goal, self.gen, self.pruner, es, i, w, code=code)
+      if errCode!=None:
+        Node.error.im_func(None, self.goal, self.gen, es, i, w, self.inc, code = errCode)
       return
     
     # First select which samples are to be used for trainning, and which for testing, calculating the relevant weights...
@@ -154,7 +167,7 @@ class DF:
     
     # Calculate the oob error for the tree...
     if test.shape[0]!=0:
-      error = tree.error(self.goal, self.gen, es, test, testWeight, self.inc)
+      error = tree.error(self.goal, self.gen, es, test, testWeight, self.inc, code=errCode)
     else:
       error = 1e100 # Can't calculate an error - record a high value so we lose the tree at the first avaliable opportunity, which is sensible behaviour given that we don't know how good it is.
     
@@ -190,15 +203,17 @@ class DF:
       assert(self.inc)
       newCount = es.exemplars() - self.trainCount
       
-      code = self.addCodeC[es.key()] if es.key() in self.addCodeC else None
+      key = es.key()
+      code = self.addCodeC[key] if key in self.addCodeC else None
+      errCode = self.errorCodeC[key] if key in self.errorCodeC else None
       
       if mp:
-        result = pool.map_async(updateTree, map(lambda tree_tup: (self.goal, self.gen, self.pruner if self.grow else None, tree_tup, self.trainCount, newCount, es, weightChannel, code, treesDone, numpy.random.randint(1000000000)), self.trees))
+        result = pool.map_async(updateTree, map(lambda tree_tup: (self.goal, self.gen, self.pruner if self.grow else None, tree_tup, self.trainCount, newCount, es, weightChannel, (code, errCode), treesDone, numpy.random.randint(1000000000)), self.trees))
       else:
         newTrees = []
         for ti, tree_tup in enumerate(self.trees):
           if callback: callback(ti, totalTrees)
-          data = (self.goal, self.gen, self.pruner if self.grow else None, tree_tup, self.trainCount, newCount, es, weightChannel, code)
+          data = (self.goal, self.gen, self.pruner if self.grow else None, tree_tup, self.trainCount, newCount, es, weightChannel, (code, errCode))
           newTrees.append(updateTree(data))
         self.trees = newTrees
     
@@ -327,7 +342,7 @@ def mpGrowTree(data):
 
 def updateTree(data):
   """Updates a tree - kept external like this for the purpose of multiprocessing."""
-  goal, gen, pruner, (tree, error, old_draw), prevCount, newCount, es, weightChannel, code = data[:9]
+  goal, gen, pruner, (tree, error, old_draw), prevCount, newCount, es, weightChannel, (code, errCode) = data[:9]
   if len(data)>10: numpy.random.seed(data[10])
   
   # Choose which of the new samples are train and which are test, prepare the relevent inputs...
