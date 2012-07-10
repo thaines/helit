@@ -14,6 +14,7 @@ import numpy.random
 
 from exemplars import MatrixFS
 
+import scipy.weave as weave
 from utils.start_cpp import start_cpp
 
 
@@ -51,6 +52,10 @@ class Goal:
   def answer(self, stats_list, which, es, index, trees):
     """Given a feature then using a forest a list of statistics entitys can be obtained from the leaf nodes that the feature ends up in, one for each tree (Could be as low as just one entity.). This converts that statistics entity list into an answer, to be passed to the user, possibly using the es with the index of the one entry that the stats list is for as well. As multiple answer types exist (As provided by the answer_types method.) you provide the one(s) you want to the which variable - if which is a string then that answer type is returned, if it is a list of strings then a tuple aligned with it is returned, containing multiple answers. If multiple types are needed then returning a list should hopefuly be optimised by this method to avoid duplicate calculation. Also requires the trees themselves, as a list aligned with stats_list."""
     raise NotImplementedError
+  
+  def answer_batch(self, stats_lists, which, es, indices, trees):
+    """A batch version of answer, that does multiple stat lists at once. The stats_list now consists of a list of lists, where the outer list matches tne entrys in index (A numpy array), and the inner list are the samples, aligned with the trees list. es is the exemplar object that matches up with index, and which gives the output(s) to provide. Return value is a list, matching index, that contains the answer for each, which can be a tuple if which is alist/tuple. A default implimentation is provided."""
+    return map(lambda (i, stats_list): self.answer(stats_list, which, es, indices[i], trees), enumerate(stats_lists))
   
   
   def summary(self, es, index, weights = None):
@@ -174,6 +179,192 @@ class Classification(Goal):
     # Make sure the correct thing is returned...
     if single: return ret[0]
     else: return tuple(ret)
+  
+  def answer_batch(self, stats_lists, which, es, indices, trees):
+    # As this version might be dealing with lots of data we include a scipy.weave based optimisation...
+    if weave!=None:
+      code = start_cpp() + """
+      // Find out what we need to calculate...
+       bool doProbList = false;
+       bool doGen = false;
+       bool doGenList = false;
+       
+       int wLength = PyList_Size(which);
+       int * wCodes = (int*)malloc(sizeof(int) * wLength);
+       for (int i=0; i<wLength; i++)
+       {
+        char * s = PyString_AsString(PyList_GetItem(which, i));
+        wCodes[i] = 0; // prob
+        if (strcmp(s,"best")==0) wCodes[i] = 1;
+        if (strcmp(s,"prob_samples")==0) {doProbList = true; wCodes[i] = 2;}
+        if (strcmp(s,"gen")==0) {doGen = true; wCodes[i] = 3;}
+        if (strcmp(s,"gen_list")==0) {doGenList = true; wCodes[i] = 4;}
+       }
+       
+      // Buffers that are needed...
+       float * probBuf = 0;
+       float * genBuf = 0;
+      
+      // Prep the return value...
+       int item_count = PyList_Size(stats_lists);
+       PyObject * ret = PyList_New(item_count);
+       
+      // Loop through and do each exemplar in turn, adding its result to the return list...       
+       for (int i=0; i<item_count; i++)
+       {
+        // Get the list of stats objects...
+         PyObject * stats = PyList_GetItem(stats_lists, i);
+         int statCount = PyList_Size(stats);
+       
+        // Iterate the list and calculate the size of the largest element...
+         npy_intp vecLength = 0;
+         for (int j=0; j<statCount; j++)
+         {
+          PyObject * s = PyList_GetItem(stats, j);
+          int len = PyString_Size(s) / sizeof(float);
+          if (len>vecLength) vecLength = len;
+         }
+        
+        // Resize the buffers accordingly, zero them...
+         probBuf = (float*)realloc(probBuf, sizeof(float)*vecLength);
+         for (int j=0; j<vecLength; j++) probBuf[j] = 0.0;
+         
+         if (doGen)
+         {
+          genBuf = (float*)realloc(genBuf, sizeof(float)*vecLength);
+          for (int j=0; j<vecLength; j++) genBuf[j] = 0.0;
+         }
+        
+        // Iterate the list and generate the various outputs we need (There are potentially 4 of them.)...
+         PyObject * probList = 0;
+         PyObject * genList = 0;
+         if (doProbList) probList = PyList_New(statCount);
+         if (doGenList) genList = PyList_New(statCount);
+         
+         for (int j=0; j<statCount; j++)
+         {
+          PyObject * s = PyList_GetItem(stats, j);
+          int len = PyString_Size(s) / sizeof(float);
+          float * dist = (float*)(void*)PyString_AsString(s);
+          
+          float sum = 0.0;
+          for (int k=0; k<len; k++) sum += dist[k];
+          
+          for (int k=0; k<len; k++) probBuf[k] += dist[k] / sum;
+          if (doProbList)
+          {
+           PyObject * arr = PyArray_ZEROS(1, &vecLength, NPY_FLOAT, 0);
+           for (int k=0; k<len; k++) *(float*)PyArray_GETPTR1(arr, k) = dist[k] / sum;
+           PyList_SetItem(probList, j, arr);
+          }
+          
+          if ((doGen)||(doGenList))
+          {
+           PyObject * t = PyList_GetItem(root_stats, j);
+           float * div =  (float*)(void*)PyString_AsString(t);
+           
+           if (doGen)
+           {
+            for (int k=0; k<len; k++) probBuf[k] += dist[k] / div[k];
+           }
+           if (doGenList)
+           {
+            PyObject * arr = PyArray_ZEROS(1, &vecLength, NPY_FLOAT, 0);
+            for (int k=0; k<len; k++) *(float*)PyArray_GETPTR1(arr, k) = dist[k] / div[k];
+            PyList_SetItem(genList, j, arr);
+           }
+          }
+         }
+         
+        // Normalise the buffers...
+         {
+          float sum = 0.0;
+          for (int j=0; j<vecLength; j++) sum += probBuf[j];
+          for (int j=0; j<vecLength; j++) probBuf[j] /= sum;
+         }
+         
+         if (doGen)
+         {
+          float sum = 0.0;
+          for (int j=0; j<vecLength; j++) sum += genBuf[j];
+          for (int j=0; j<vecLength; j++) genBuf[j] /= sum;
+         }
+        
+        // Iterate the proxy for which, and store the required items in the correct positions...
+         PyObject * ans = PyTuple_New(wLength);
+         
+         for (int j=0; j<wLength; j++)
+         {
+          PyObject * obj = 0;
+          switch(wCodes[j])
+          {
+           case 0: // prob
+           {
+            obj = PyArray_EMPTY(1, &vecLength, NPY_FLOAT, 0);
+            for (int k=0; k<vecLength; k++) *(float*)PyArray_GETPTR1(obj, k) = probBuf[k];
+           }
+           break;
+           case 1: // best
+           {
+            int best = 0;
+            for (int k=1; k<vecLength; k++)
+            {
+             if (probBuf[k]>probBuf[best]) best = k;
+            }
+            obj = PyInt_FromLong(best);
+           }
+           break;
+           case 2: // prob_samples
+           {
+            obj = probList;
+            Py_INCREF(obj);
+           }
+           break;
+           case 3: // gen
+           {
+            obj = PyArray_EMPTY(1, &vecLength, NPY_FLOAT, 0);
+            for (int k=0; k<vecLength; k++) *(float*)PyArray_GETPTR1(obj, k) = genBuf[k];
+           }
+           break;
+           case 4: // gen_list
+           {
+            obj = genList;
+            Py_INCREF(obj);
+           }
+           break;
+          }
+         
+          PyTuple_SetItem(ans, j, obj);
+         }
+       
+        // Store the answer tuple for this exemplar...
+         PyList_SetItem(ret, i, ans);
+         
+        // Some cleaning up...
+         Py_XDECREF(genList);
+         Py_XDECREF(probList);
+       }
+      
+      // Clean up...
+       free(probBuf);
+       free(genBuf);
+       free(wCodes);
+      
+      // Return the list of results...
+       return_val = ret;
+      """
+      
+      root_stats = map(lambda t: t.stats, trees)
+      
+      single = isinstance(which, str)
+      if single: which = [which]
+      ret = weave.inline(code, ['stats_lists', 'which', 'root_stats'])
+      if single: ret = map(lambda r: r[0], ret)
+      return ret
+      
+    else:
+      return map(lambda (i, stats_list): self.answer(stats_list, which, es, indices[i], trees), enumerate(stats_lists))
+    
 
 
   def summary(self, es, index, weights = None):
@@ -608,7 +799,10 @@ class DensityGaussian(Goal):
       delta = es[0,index,:] - mean
       p += numpy.exp(params[2] - 0.5 * numpy.dot(delta, numpy.dot(prec, delta)))
     
-    return p / len(stats_list)
+    if isinstance(which, str):
+      return p / len(stats_list)
+    else:
+      return tuple([p / len(stats_list)]*len(which))
 
 
   def summary(self, es, index, weights = None):

@@ -290,6 +290,7 @@ class DF:
     elif cpu_count()<2: mp = False
     if mp:
       pool = Pool()
+      pool_size = cpu_count()
       manager = Manager()
       treesDone = manager.Value('i',0)
 
@@ -317,11 +318,18 @@ class DF:
         store.append(res)
     
     # Merge and obtain answers for the output...
-    if mp:
-      ret = pool.map(getAnswer, map(lambda i: (self.goal, map(lambda s: s[i], store), which, es, i, map(lambda t: t[0], self.trees)), index))
+    if mp and index.shape[0]>1:
+      step = index.shape[0]//pool_size
+      excess = index.shape[0] - step*pool_size
+      starts = map(lambda i: i*(step+1), xrange(excess))
+      starts += map(lambda i: ranges[-1] + i*step, xrange(pool_size-excess))
+      starts += [index.shape[0]]
+      ranges = map(lambda a, b: slice(a, b), starts[:-1], starts[1:])
+      
+      ret = pool.map(getAnswer, map(lambda ran: (self.goal, map(lambda i: map(lambda s: s[i], store), index[ran]), which, es, index[ran], map(lambda t: t[0], self.trees)), ranges))
+      ret = reduce(lambda a,b: a+b, ret)
     else:
-      ret = []
-      for i in index: ret.append(self.goal.answer(map(lambda s: s[i], store), which, es, i, map(lambda t: t[0], self.trees)))
+      ret = self.goal.answer_batch(map(lambda i: map(lambda s: s[i], store), index), which, es, index, map(lambda t: t[0], self.trees))
     
     # Clean up if we have been multiprocessing...
     if mp:
@@ -414,6 +422,6 @@ def treeEval(data):
 
 def getAnswer(data):
   """Used for multiprocessing the calls to the answer method."""
-  goal, store, which, es, i, trees = data
+  goal, stores, which, es, indices, trees = data
   
-  return goal.answer(store, which, es, i, trees)
+  return goal.answer_batch(stores, which, es, indices, trees)
