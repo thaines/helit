@@ -249,6 +249,7 @@ class Classification(Goal):
           
           float sum = 0.0;
           for (int k=0; k<len; k++) sum += dist[k];
+          if (sum<1e-6) sum = 1e-6; // For safety against divide by zero.
           
           for (int k=0; k<len; k++) probBuf[k] += dist[k] / sum;
           if (doProbList)
@@ -261,11 +262,11 @@ class Classification(Goal):
           if ((doGen)||(doGenList))
           {
            PyObject * t = PyList_GetItem(root_stats, j);
-           float * div =  (float*)(void*)PyString_AsString(t);
+           float * div = (float*)(void*)PyString_AsString(t);
            
            if (doGen)
            {
-            for (int k=0; k<len; k++) probBuf[k] += dist[k] / div[k];
+            for (int k=0; k<len; k++) genBuf[k] += dist[k] / div[k];
            }
            if (doGenList)
            {
@@ -285,9 +286,7 @@ class Classification(Goal):
          
          if (doGen)
          {
-          float sum = 0.0;
-          for (int j=0; j<vecLength; j++) sum += genBuf[j];
-          for (int j=0; j<vecLength; j++) genBuf[j] /= sum;
+          for (int j=0; j<vecLength; j++) genBuf[j] /= statCount;
          }
         
         // Iterate the proxy for which, and store the required items in the correct positions...
