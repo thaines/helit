@@ -199,7 +199,7 @@ class Pool:
 
 
   def selectWrong(self, softSelect = False, hardChoice = False, dp = True, dw = False):
-    """Sixteen different selection strategies, all rolled into one. Bite me! All work on the basis of selecting the entity in the pool with the greatest chance of being misclassified by the current classifier. There are four binary flags that control the behaviour, and their defaults match up with the algorithm presented in the paper 'Active Learning using Dirichlet Processes for Rare Class Discovery and Classification'. softSelect indicates if the classifier selects the category with the highest probability (False) or selects the category probalistically from P(class|data) (True). hardChoice comes into play once P(wrong) has been calculated for each entity in the pool - when True the entity with the highest P(wrong) is selected, otherwise the P(wrong) are used as weights for a probabilistic selection. dp indicates if the Dirichlet process assumption is to be used, such that we consider the probability that the entity belongs to a new category in addition to the existing categories. Note that the classifier cannot select an unknown class, so an entity with a high probability of belonging to a new class has a high P(wrong) score when the dp assumption is True. dw indicates if it should weight the metric by a density estimate over the data set, and hence bias selection towards areas with lots of samples."""
+    """24 different selection strategies, all rolled into one. Bite me! All work on the basis of selecting the entity in the pool with the greatest chance of being misclassified by the current classifier. There are four binary flags that control the behaviour, and their defaults match up with the algorithm presented in the paper 'Active Learning using Dirichlet Processes for Rare Class Discovery and Classification'. softSelect indicates if the classifier selects the category with the highest probability (False) or selects the category probalistically from P(class|data) (True). hardChoice comes into play once P(wrong) has been calculated for each entity in the pool - when True the entity with the highest P(wrong) is selected, otherwise the P(wrong) are used as weights for a probabilistic selection. dp indicates if the Dirichlet process assumption is to be used, such that we consider the probability that the entity belongs to a new category in addition to the existing categories. Note that the classifier cannot select an unknown class, so an entity with a high probability of belonging to a new class has a high P(wrong) score when the dp assumption is True. dw indicates if it should weight the metric by a density estimate over the data set, and hence bias selection towards areas with lots of samples. Appendum: Also supports expected hinge loss, if you set softSelect to None (False is equivalent to expected 0-1 loss, True to something without a name.)."""
     if len(self.cats)==0 and dp==False: return self.selectRandom()
     
     wrong = numpy.ones(len(self.entities))
@@ -236,7 +236,13 @@ class Pool:
       for cat in probIs.iterkeys(): probIs[cat] /= div
 
       # Calculate the probability of getting it wrong...
-      if softSelect:
+      if softSelect==None: # 1 - Expected hinge loss, sort of.
+        if len(probSel)>0: maxSel = max(probSel.itervalues())
+        else: maxSel = 1.0
+        wrong[i] -= maxSel * probIs[None]
+        for cat, p in probSel.iteritems():
+          wrong[i] -= (maxSel - p) * probIs[cat]
+      elif softSelect:
         for cat, p in probSel.iteritems():
           wrong[i] -= p * probIs[cat]
       else:
@@ -268,7 +274,7 @@ class Pool:
     """A query by comittee version of selectWrong - its parameters are equivalent. Requires that update is called with qbc set to True."""
     if len(self.cats)==0 and dp==False: return self.selectRandom()
     
-    wrong = numpy.ones(len(self.entities))
+    wrong = numpy.zeros(len(self.entities))
     for i, entity in enumerate(self.entities):
       # Calculate a list of estimates of the probability of selecting each of the known classes...
       probSelList = []
@@ -310,11 +316,15 @@ class Pool:
         probIsList.append(probIs)
       
       # Now do the combinatorics of the two lists to generate a P(wrong) estimate for each pair, for which the average is taken...
-      wrong[i] = 0.0
-      
       for probSel in probSelList:
         for probIs in probIsList:
-          if softSelect:
+          if softSelect==None: # 1 - Expected hinge loss, sort of.
+            if len(probSel)>0: maxSel = max(probSel.itervalues())
+            else: maxSel = 1.0
+            w = 1.0 - maxSel * probIs[None]
+            for cat, p in probSel.iteritems():
+              w -= (maxSel - p) * probIs[cat]
+          elif softSelect:
             w = 1.0
             for cat, p in probSel.iteritems():
               w -= p * probIs[cat]
@@ -349,7 +359,7 @@ class Pool:
   @staticmethod
   def methods(incQBC = False):
     """Returns a list of the method names that can be passed to the select method. Read the select method to work out which they each are. p_wrong_soft is the published techneque. By default it does not include the query by comittee versions, which can be switched on using the relevent flag."""
-    return ['random', 'outlier', 'entropy', 'p_new_hard', 'p_new_soft', 'p_wrong_hard', 'p_wrong_soft', 'p_wrong_hard_pcat', 'p_wrong_soft_pcat', 'p_wrong_hard_naive', 'p_wrong_soft_naive', 'p_wrong_hard_pcat_naive', 'p_wrong_soft_pcat_naive', 'dxp_wrong_hard', 'dxp_wrong_soft', 'dxp_wrong_hard_pcat', 'dxp_wrong_soft_pcat', 'dxp_wrong_hard_naive', 'dxp_wrong_soft_naive', 'dxp_wrong_hard_pcat_naive', 'dxp_wrong_soft_pcat_naive'] + ([] if incQBC==False else ['qbc_p_wrong_hard', 'qbc_p_wrong_soft', 'qbc_p_wrong_hard_pcat', 'qbc_p_wrong_soft_pcat', 'qbc_p_wrong_hard_naive', 'qbc_p_wrong_soft_naive', 'qbc_p_wrong_hard_pcat_naive', 'qbc_p_wrong_soft_pcat_naive', 'qbc_dxp_wrong_hard', 'qbc_dxp_wrong_soft', 'qbc_dxp_wrong_hard_pcat', 'qbc_dxp_wrong_soft_pcat', 'qbc_dxp_wrong_hard_naive', 'qbc_dxp_wrong_soft_naive', 'qbc_dxp_wrong_hard_pcat_naive', 'qbc_dxp_wrong_soft_pcat_naive'])
+    return ['random', 'outlier', 'entropy', 'p_new_hard', 'p_new_soft', 'p_wrong_hard', 'p_wrong_soft', 'p_wrong_hard_pcat', 'p_wrong_soft_pcat', 'p_wrong_hard_naive', 'p_wrong_soft_naive', 'p_wrong_hard_pcat_naive', 'p_wrong_soft_pcat_naive', 'dxp_wrong_hard', 'dxp_wrong_soft', 'dxp_wrong_hard_pcat', 'dxp_wrong_soft_pcat', 'dxp_wrong_hard_naive', 'dxp_wrong_soft_naive', 'dxp_wrong_hard_pcat_naive', 'dxp_wrong_soft_pcat_naive', 'p_wrong_hard_hinge', 'p_wrong_soft_hinge', 'p_wrong_hard_hinge_naive', 'p_wrong_soft_hinge_naive', 'dxp_wrong_hard_hinge', 'dxp_wrong_soft_hinge', 'dxp_wrong_hard_hinge_naive', 'dxp_wrong_soft_hinge_naive'] + ([] if incQBC==False else ['qbc_p_wrong_hard', 'qbc_p_wrong_soft', 'qbc_p_wrong_hard_pcat', 'qbc_p_wrong_soft_pcat', 'qbc_p_wrong_hard_naive', 'qbc_p_wrong_soft_naive', 'qbc_p_wrong_hard_pcat_naive', 'qbc_p_wrong_soft_pcat_naive', 'qbc_dxp_wrong_hard', 'qbc_dxp_wrong_soft', 'qbc_dxp_wrong_hard_pcat', 'qbc_dxp_wrong_soft_pcat', 'qbc_dxp_wrong_hard_naive', 'qbc_dxp_wrong_soft_naive', 'qbc_dxp_wrong_hard_pcat_naive', 'qbc_dxp_wrong_soft_pcat_naive', 'qbc_p_wrong_hard_hinge', 'qbc_p_wrong_soft_hinge', 'qbc_p_wrong_hard_hinge_naive', 'qbc_p_wrong_soft_hinge_naive', 'qbc_dxp_wrong_hard_hinge', 'qbc_dxp_wrong_soft_hinge', 'qbc_dxp_wrong_hard_hinge_naive', 'qbc_dxp_wrong_soft_hinge_naive'])
 
   def select(self, method):
     """Pass through for all of the select methods that have no problamatic parameters - allows you to select the method using a string. You can get a list of all method strings from the methods() method."""
@@ -374,6 +384,14 @@ class Pool:
     elif method=='dxp_wrong_soft_naive': return self.selectWrong(False,False,False,True)
     elif method=='dxp_wrong_hard_pcat_naive': return self.selectWrong(True,True,False,True)
     elif method=='dxp_wrong_soft_pcat_naive': return self.selectWrong(True,False,False,True)
+    elif method=='p_wrong_hard_hinge': return self.selectWrong(None,True,True,False)
+    elif method=='p_wrong_soft_hinge': return self.selectWrong(None,False,True,False)
+    elif method=='p_wrong_hard_hinge_naive': return self.selectWrong(None,True,False,False)
+    elif method=='p_wrong_soft_hinge_naive': return self.selectWrong(None,False,False,False)
+    elif method=='dxp_wrong_hard_hinge': return self.selectWrong(None,True,True,True)
+    elif method=='dxp_wrong_soft_hinge': return self.selectWrong(None,False,True,True)
+    elif method=='dxp_wrong_hard_hinge_naive': return self.selectWrong(None,True,False,True)
+    elif method=='dxp_wrong_soft_hinge_naive': return self.selectWrong(None,False,False,True)
     elif method=='qbc_p_wrong_hard': return self.selectWrongQBC(False,True,True,False)
     elif method=='qbc_p_wrong_soft': return self.selectWrongQBC(False,False,True,False)
     elif method=='qbc_p_wrong_hard_pcat': return self.selectWrongQBC(True,True,True,False)
@@ -390,4 +408,12 @@ class Pool:
     elif method=='qbc_dxp_wrong_soft_naive': return self.selectWrongQBC(False,False,False,True)
     elif method=='qbc_dxp_wrong_hard_pcat_naive': return self.selectWrongQBC(True,True,False,True)
     elif method=='qbc_dxp_wrong_soft_pcat_naive': return self.selectWrongQBC(True,False,False,True)
+    elif method=='qbc_p_wrong_hard_hinge': return self.selectWrongQBC(None,True,True,False)
+    elif method=='qbc_p_wrong_soft_hinge': return self.selectWrongQBC(None,False,True,False)
+    elif method=='qbc_p_wrong_hard_hinge_naive': return self.selectWrongQBC(None,True,False,False)
+    elif method=='qbc_p_wrong_soft_hinge_naive': return self.selectWrongQBC(None,False,False,False)
+    elif method=='qbc_dxp_wrong_hard_hinge': return self.selectWrongQBC(None,True,True,True)
+    elif method=='qbc_dxp_wrong_soft_hinge': return self.selectWrongQBC(None,False,True,True)
+    elif method=='qbc_dxp_wrong_hard_hinge_naive': return self.selectWrongQBC(None,True,False,True)
+    elif method=='qbc_dxp_wrong_soft_hinge_naive': return self.selectWrongQBC(None,False,False,True)
     else: raise Exception('Unknown selection method')
