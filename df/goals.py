@@ -351,6 +351,7 @@ class Classification(Goal):
       
       // Return the list of results...
        return_val = ret;
+       Py_XDECREF(ret);
       """
       
       root_stats = map(lambda t: t.stats, trees)
