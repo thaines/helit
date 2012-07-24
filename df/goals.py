@@ -629,6 +629,8 @@ class DensityGaussian(Goal):
     self.feats = feats
     self.samples = samples
     self.prior_weight = prior_weight
+    
+    self.temp = numpy.empty((2, feats), dtype=numpy.float32)
 
   def clone(self):
     return DensityGaussian(self.feats, self.samples, self.prior_weight)
@@ -803,6 +805,83 @@ class DensityGaussian(Goal):
       return p / len(stats_list)
     else:
       return tuple([p / len(stats_list)]*len(which))
+  
+  def answer_batch(self, stats_lists, which, es, indices, trees):
+    if weave!=None:
+      esAccess = es.codeC(0, 'es')
+      
+      code = start_cpp() + """
+      // Prepare the access to the es...
+       %(itype)s es = (%(itype)s)PyList_GetItem(esData, 0);
+      
+      // Iterate and process each stat list in turn...
+       int item_count = PyList_Size(stats_lists);
+       PyObject * ret = PyList_New(item_count);
+       
+       for (int i=0; i<item_count; i++)
+       {
+        // Get the list of stats objects...
+         PyObject * stats = PyList_GetItem(stats_lists, i);
+         int statCount = PyList_Size(stats);
+         
+        // Iterate the list and handle each element in turn...
+         float p = 0.0;
+         
+         for (int j=0; j<statCount; j++)
+         {
+          // Extract the information regarding the specific stat object...
+           float * params = (float*)(void*)PyString_AsString(PyList_GetItem(stats, j));
+           float * mean = params + 3;
+           float * prec = mean + feats;
+           
+          // Put the delta into the temporary storage...
+           for (int k=0; k<feats; k++)
+           {
+            TEMP2(0, k) = es_get(es, indices[i], k) - mean[k];
+            TEMP2(1, k) = 0.0; // Preparation for the next bit.
+           }
+           
+          // Calculate the multiplication with the precision...
+           for (int k=0; k<feats; k++)
+           {
+            for (int l=0; l<feats; l++)
+            {
+             TEMP2(1, k) += prec[feats*k+l] * TEMP2(0, l);
+            }
+           }
+           
+           float d = 0.0;
+           for (int k=0; k<feats; k++)
+           {
+            d += TEMP2(0, k) * TEMP2(1, k);
+           }
+
+          // Do the final parts required...
+           p += exp(params[2] - 0.5 * d);
+         }
+         
+         p /= statCount;
+        
+        // Store the calculated probability...
+         PyObject * ans = PyFloat_FromDouble(p);
+         PyList_SetItem(ret, i, ans);
+       }
+      
+      // Return...
+       return_val = ret;
+       Py_XDECREF(ret);
+      """%{'itype':esAccess['itype']}
+      
+      feats = self.feats
+      esData = [esAccess['input']]
+      temp = self.temp
+      ret = weave.inline(code, ['stats_lists', 'indices', 'feats', 'esData', 'temp'], support_code = esAccess['get'])
+      
+      if isinstance(which, str): return ret
+      else:
+        return map(lambda p: tuple([p] * len(which)) , ret)
+    else:
+      return map(lambda (i, stats_list): self.answer(stats_list, which, es, indices[i], trees), enumerate(stats_lists))
 
 
   def summary(self, es, index, weights = None):
