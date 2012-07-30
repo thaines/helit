@@ -54,7 +54,7 @@ def pdfBeta(x, alpha, beta):
 def pdf(x):
   if x<0.0: return 0.0
   if x>1.0: return 0.0
-  
+
   ret = 0.0
   for i in xrange(len(weight)):
     ret += weight[i] * pdfBeta(x, alpha[i], beta[i])
@@ -102,7 +102,7 @@ def plot(filename, kde_inc):
 
   maxE = max(estimate)
   yE = map(lambda x: height-1-int(float(height-1)*x/maxE), estimate)
-  
+
   for i in xrange(width-1):
     cv.Line(img, (i,yGT[i]), (i+1,yGT[i+1]), cv.CV_RGB(0.0,255.0,0.0))
     cv.Line(img, (i,yE[i]), (i+1,yE[i+1]), cv.CV_RGB(255.0,0.0,0.0))

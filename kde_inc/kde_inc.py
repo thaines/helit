@@ -11,6 +11,10 @@
 import math
 import numpy
 
+from scipy import weave
+from utils.start_cpp import start_cpp
+from utils.matrix_cpp import matrix_code
+
 from loo_cov import PrecisionLOO, SubsetPrecisionLOO # Not used below, just for conveniance.
 from gmm import GMM
 
@@ -30,6 +34,9 @@ class KDE_INC:
     # For holding the temporary merge costs calculated when adding a sample...
     self.mergeT = numpy.empty(cap, dtype=numpy.float32)
 
+    # For the C code...
+    self.temp = numpy.empty((2, prec.shape[0], prec.shape[0]), dtype=numpy.float32)
+
   def setPrec(self, prec):
     """Changes the precision matrix - must be called before any samples are added, and must have the same dimensions as the current one."""
     self.prec = numpy.asarray(prec, dtype=numpy.float32)
@@ -45,127 +52,434 @@ class KDE_INC:
     else: return 1.0
 
 
+  def __merge(self, weightA, meanA, precA, weightB, meanB, precB):
+    """Merges two Gaussians and returns the merged result, as (weight, mean, prec)"""
+    newWeight = weightA + weightB
+    newMean = weightA/newWeight * meanA + weightB/newWeight * meanB
+
+    deltaA = meanA - newMean
+    covA = numpy.linalg.inv(precA) + numpy.outer(deltaA, deltaA)
+
+    deltaB = meanB - newMean
+    covB = numpy.linalg.inv(precB) + numpy.outer(deltaB, deltaB)
+
+    newCov = weightA/newWeight * covA + weightB/newWeight * covB
+    newPrec = numpy.linalg.inv(newCov)
+
+    return (newWeight, newMean, newPrec)
+
+
   def __calcMergeCost(self, weightA, meanA, precA, weightB, meanB, precB):
     """Calculates and returns the cost of merging two Gaussians."""
+    # (For anyone wondering about the fact we are comparing them against each other rather than against the result of merging them that is because this way tends to get better results.)
+
+    # The log determinants and delta...
     logDetA = math.log(numpy.linalg.det(precA))
     logDetB = math.log(numpy.linalg.det(precB))
     delta = meanA - meanB
-    
-    klAB = logDetA - logDetB
-    klAB += numpy.trace(numpy.dot(precB,numpy.linalg.inv(precA)))
-    klAB += numpy.dot(numpy.dot(delta,precB),delta)
-    klAB -= precA.shape[0]
-    klAB *= 0.5
-    
-    klBA = logDetB - logDetA
-    klBA += numpy.trace(numpy.dot(precA,numpy.linalg.inv(precB)))
-    klBA += numpy.dot(numpy.dot(delta,precA),delta)
-    klBA -= precA.shape[0]
-    klBA *= 0.5
-    
-    return weightA * klAB + weightB * klBA
+
+    # Kullback-Leibler of representing A using B...
+    klA = logDetB - logDetA
+    klA += numpy.trace(numpy.dot(precB, numpy.linalg.inv(precA)))
+    klA += numpy.dot(numpy.dot(delta, precB), delta)
+    klA -= precA.shape[0]
+    klA *= 0.5
+
+    # Kullback-Leibler of representing B using A...
+    klB = logDetA - logDetB
+    klB += numpy.trace(numpy.dot(precA, numpy.linalg.inv(precB)))
+    klB += numpy.dot(numpy.dot(delta, precA), delta)
+    klB -= precB.shape[0]
+    klB *= 0.5
+
+    # Return a weighted average...
+    return weightA * klA + weightB * klB
 
 
   def add(self, sample):
     """Adds a sample, updating the kde accordingly."""
-    if self.count<self.gmm.weight.shape[0]:
-      # Pure kde phase...
-      self.gmm.mean[self.count,:] = numpy.asarray(sample)
-      self.gmm.prec[self.count,:,:] = self.prec
-      self.gmm.calcNorm(self.count)
-      
+    global weave
+
+    try:
+      if weave==None: raise Exception()
+      support =  matrix_code + start_cpp() + """
+      // Note - designed so that A and Out pointers can be the same.
+       void doMerge(int size, float weightA, float * meanA, float * precA, float weightB, float * meanB, float * precB, float & weightOut, float * meanOut, float * precOut, float * tVec, float * tMat1, float * tMat2)
+       {
+        // Handle the weight, recording the ratios needed next...
+         float wOut = weightA + weightB;
+         float ratioA = weightA/wOut;
+         float ratioB = weightB/wOut;
+         weightOut = wOut;
+
+        // Do the mean - simply a weighted average - output into a temporary for now...
+         for (int i=0; i<size; i++)
+         {
+          tVec[i] = ratioA * meanA[i] + ratioB + meanB[i];
+         }
+
+        // Put the covariance of precision A into tMat2...
+         for (int i=0; i<size*size; i++) tMat1[i] = precA[i];
+         Inverse(tMat1, tMat2, size);
+
+        // Put the covariance of precision B into tMat1...
+         for (int i=0; i<size*size; i++) precOut[i] = precB[i];
+         Inverse(precOut, tMat1, size);
+
+        // Add the outer product of the A delta into tMat2...
+         for (int r=0; r<size; r++)
+         {
+          for (int c=0; c<size; c++)
+          {
+           tMat2[r*size + c] += (meanA[c] - tVec[c]) * (meanA[r] - tVec[r]);
+          }
+         }
+
+        // Add the outer product of the B delta into tMat1...
+         for (int r=0; r<size; r++)
+         {
+          for (int c=0; c<size; c++)
+          {
+           tMat1[r*size + c] += (meanB[c] - tVec[c]) * (meanB[r] - tVec[r]);
+          }
+         }
+
+        // Get the weighted average of the covariance matrices into tMat1...
+         for (int i=0; i<size*size; i++)
+         {
+          tMat1[i] = ratioA * tMat2[i] + ratioB * tMat1[i];
+         }
+
+        // Dump the inverse of tMat1 into the output precision...
+         Inverse(tMat1, precOut, size);
+
+        // Copy from the temporary mean into the output mean...
+         for (int i=0; i<size; i++) meanOut[i] = tVec[i];
+       }
+
+      float mergeCost(int size, float weightA, float * meanA, float * precA, float weightB, float * meanB, float * precB, float * tVec1, float * tVec2, float * tMat1, float * tMat2)
+      {
+       // Calculate some shared values...
+        float logDetA = log(Determinant(precA, size));
+        float logDetB = log(Determinant(precB, size));
+
+        for (int i=0; i<size; i++)
+        {
+         tVec1[i] = meanA[i] - meanB[i];
+        } // tVec1 now contains the delta.
+
+       // Calculate the Kullback-Leibler divergance of substituting B for A...
+        float klA = logDetB - logDetA;
+
+        for (int i=0; i<size*size; i++) tMat1[i] = precA[i];
+        if (Inverse(tMat1, tMat2, size)==false) return 0.0;
+        for (int i=0; i<size; i++)
+        {
+         for (int j=0; j<size; j++)
+         {
+          klA += precB[i*size + j] * tMat2[j*size + i];
+         }
+        }
+
+        for (int i=0; i<size; i++)
+        {
+         tVec2[i] = 0.0;
+         for (int j=0; j<size; j++)
+         {
+          tVec2[i] += precB[i*size + j] * tVec1[j];
+         }
+        }
+        for (int i=0; i<size; i++) klA += tVec1[i] * tVec2[i];
+        klA -= size;
+        klA *= 0.5;
+
+       // Calculate the Kullback-Leibler divergance of substituting A for B...
+        float klB = logDetA - logDetB;
+
+        for (int i=0; i<size*size; i++) tMat1[i] = precB[i];
+        if (Inverse(tMat1, tMat2, size)==false) return 0.0;
+        for (int i=0; i<size; i++)
+        {
+         for (int j=0; j<size; j++)
+         {
+          klB += precA[i*size + j] * tMat2[j*size + i];
+         }
+        }
+
+        for (int i=0; i<size; i++)
+        {
+         tVec2[i] = 0.0;
+         for (int j=0; j<size; j++)
+         {
+          tVec2[i] += precA[i*size + j] * tVec1[j];
+         }
+        }
+        for (int i=0; i<size; i++) klB += tVec1[i] * tVec2[i];
+        klB -= size;
+        klB *= 0.5;
+
+       // Return a weighted average of the divergances...
+        return weightA * klA + weightB * klB;
+      }
+      """
+
+      code = start_cpp(support) + """
+      if (count < Nweight[0])
+      {
+       // Pure KDE mode - just add the kernel...
+        for (int i=0; i<Nsample[0]; i++)
+        {
+         MEAN2(count, i) = sample[i];
+        }
+
+        for (int i=0; i<Nsample[0]; i++)
+        {
+         for (int j=0; j<Nsample[0]; j++)
+         {
+          PREC3(count, i, j) = BASEPREC2(i, j);
+         }
+        }
+
+        assert(Sprec[0]==sizeof(float));
+        assert(Sprec[1]==sizeof(float)*Nsample[0]);
+        norm[count] = sqrt(Determinant(&PREC3(count, 0, 0), Nsample[0]));
+        norm[count] *= pow(2.0*M_PI, -0.5*Nsample[0]);
+
+        float w = 1.0 / (count+1);
+        for (int i=0; i<=count; i++)
+        {
+         weight[i] = w;
+        }
+
+       // If the next sample will involve merging then we need to fill in the merging costs cache in preperation...
+        if (count+1==Nweight[0])
+        {
+         for (int i=0; i<Nweight[0]; i++)
+         {
+          for (int j=0; j<i; j++)
+          {
+           MERGE2(i, j) = mergeCost(Nsample[0], weight[i], &MEAN2(i,0), &PREC3(i,0,0), weight[j], &MEAN2(j,0), &PREC3(j,0,0), &TEMP2(0,0), &TEMP2(1,0), &TEMPPREC3(0,0,0), &TEMPPREC3(1,0,0));
+          }
+         }
+        }
+      }
+      else
+      {
+       // We have the maximum number of kernels - need to either merge the new kernel with an existing one, or merge two existing kernels and use the freed up slot for the new kernel...
+
+       // Update the weights, and calculate the weight of the new kernel...
+        float adjust = float(count) / float(count+1);
+
+        for (int i=0; i<Nweight[0]; i++) weight[i] *= adjust;
+        for (int i=0; i<Nweight[0]; i++)
+        {
+         for (int j=0; j<i; j++) MERGE2(i, j) *= adjust;
+        }
+
+        float w = 1.0 / float(count + 1.0);
+
+       // Calculate the costs of merging the new kernel with each of the old kernels...
+        for (int i=0; i<Nweight[0]; i++)
+        {
+         mergeT[i] = mergeCost(Nsample[0], w, sample, basePrec, weight[i], &MEAN2(i,0), &PREC3(i,0,0), &TEMP2(0,0), &TEMP2(1,0), &TEMPPREC3(0,0,0), &TEMPPREC3(1,0,0));
+        }
+
+       // Find the lowest merge cost and act accordingly - either we are merging the new kernel with an old one or merging two existing kernels and putting the new kernel in on its own...
+        int lowI = 0;
+        int lowJ = 0;
+
+        for (int i=0; i<Nweight[0]; i++)
+        {
+         for (int j=0; j<i; j++)
+         {
+          if (MERGE2(i, j) < MERGE2(lowI, lowJ))
+          {
+           lowI = i;
+           lowJ = j;
+          }
+         }
+        }
+
+        int lowN = 0;
+
+        for (int i=1; i<Nweight[0]; i++)
+        {
+         if (mergeT[i] < mergeT[lowN]) lowN = i;
+        }
+
+        if (mergeT[lowN] < MERGE2(lowI, lowJ))
+        {
+         // We are merging the new kernel with an existing kernel...
+
+         // Do the merge...
+          doMerge(Nsample[0], weight[lowN], &MEAN2(lowN,0), &PREC3(lowN,0,0), w, sample, basePrec, weight[lowN], &MEAN2(lowN,0), &PREC3(lowN,0,0), &TEMP2(0,0), &TEMPPREC3(0,0,0), &TEMPPREC3(1,0,0));
+
+         // Update the normalising constant...
+          norm[lowN] = sqrt(Determinant(&PREC3(lowN, 0, 0), Nsample[0]));
+          norm[lowN] *= pow(2.0*M_PI, -0.5*Nsample[0]);
+
+         // Update the array of merge costs...
+          for (int i=0; i<Nweight[0]; i++)
+          {
+           if (i!=lowN)
+           {
+            float mc = mergeCost(Nsample[0], weight[i], &MEAN2(i,0), &PREC3(i,0,0), weight[lowN], &MEAN2(lowN,0), &PREC3(lowN,0,0), &TEMP2(0,0), &TEMP2(1,0), &TEMPPREC3(0,0,0), &TEMPPREC3(1,0,0));
+
+            if (i<lowN) MERGE2(lowN, i) = mc;
+                   else MERGE2(i, lowN) = mc;
+           }
+          }
+        }
+        else
+        {
+         // We are merging two existing kernels then putting the new kernel into the freed up spot...
+
+         // Do the merge...
+          doMerge(Nsample[0], weight[lowI], &MEAN2(lowI,0), &PREC3(lowI,0,0), weight[lowJ], &MEAN2(lowJ,0), &PREC3(lowJ,0,0), weight[lowI], &MEAN2(lowI,0), &PREC3(lowI,0,0), &TEMP2(0,0), &TEMPPREC3(0,0,0), &TEMPPREC3(1,0,0));
+
+         // Copy in the new kernel...
+          weight[lowJ] = w;
+          for (int i=0; i<Nsample[0]; i++) MEAN2(lowJ,i) = sample[i];
+          for (int i=0; i<Nsample[0];i++)
+          {
+           for (int j=0; j<Nsample[0]; j++)
+           {
+            PREC3(lowJ,i,j) = basePrec[i*Nsample[0] + j];
+           }
+          }
+
+         // Update both normalising constants...
+          norm[lowI] = sqrt(Determinant(&PREC3(lowI, 0, 0), Nsample[0]));
+          norm[lowI] *= pow(2.0*M_PI, -0.5*Nsample[0]);
+
+          norm[lowJ] = sqrt(Determinant(&PREC3(lowJ, 0, 0), Nsample[0]));
+          norm[lowJ] *= pow(2.0*M_PI, -0.5*Nsample[0]);
+
+         // Update the array of merge costs...
+          for (int i=0; i<Nweight[0]; i++)
+          {
+           if (i!=lowI)
+           {
+            float mc = mergeCost(Nsample[0], weight[i], &MEAN2(i,0), &PREC3(i,0,0), weight[lowI], &MEAN2(lowI,0), &PREC3(lowI,0,0), &TEMP2(0,0), &TEMP2(1,0), &TEMPPREC3(0,0,0), &TEMPPREC3(1,0,0));
+
+            if (i<lowI) MERGE2(lowI, i) = mc;
+                   else MERGE2(i, lowI) = mc;
+           }
+          }
+
+          for (int i=0; i<Nweight[0]; i++)
+          {
+           if ((i!=lowI)&&(i!=lowJ))
+           {
+            float mc = mergeCost(Nsample[0], weight[i], &MEAN2(i,0), &PREC3(i,0,0), weight[lowJ], &MEAN2(lowJ,0), &PREC3(lowJ,0,0), &TEMP2(0,0), &TEMP2(1,0), &TEMPPREC3(0,0,0), &TEMPPREC3(1,0,0));
+
+            if (i<lowJ) MERGE2(lowJ, i) = mc;
+                   else MERGE2(i, lowJ) = mc;
+           }
+          }
+        }
+      }
+      """
+
+      sample = numpy.asarray(sample, dtype=numpy.float32).flatten()
+      basePrec = self.prec
+      count = self.count
+      merge = self.merge
+      mergeT = self.mergeT
+      tempPrec = self.temp
+
+      weight = self.gmm.weight
+      mean = self.gmm.mean
+      prec = self.gmm.prec
+      norm = self.gmm.norm
+      temp = self.gmm.temp
+
+      weave.inline(code, ['sample', 'basePrec', 'count', 'merge', 'mergeT', 'tempPrec', 'weight', 'mean', 'prec', 'norm', 'temp'], support_code = support)
       self.count += 1
-      self.gmm.weight[:self.count] = 1.0 / float(self.count)
 
-      if self.count==self.gmm.weight.shape[0]:
-        # Next sample starts merging - need to prepare by filling in the kl array...
-        # (Below is grossly inefficient - calculates the same things more times than is possibly funny. I'll optimise it if I ever decide that I care enough to do so.)
-        for i in xrange(self.merge.shape[0]):
-          for j in xrange(i):
-            self.merge[i,j] = self.__calcMergeCost(self.gmm.weight[i], self.gmm.mean[i,:], self.gmm.prec[i,:,:], self.gmm.weight[j], self.gmm.mean[j,:], self.gmm.prec[j,:,:])
-    else:
-      # Merging phase...
-      sample = numpy.asarray(sample, dtype=numpy.float32)
-      
-      # Adjust weights...
-      adjust = float(self.count) / float(self.count+1)
-      self.gmm.weight *= adjust
-      for i in xrange(self.merge.shape[0]): self.merge[i,:i] *= adjust
-      
-      weight = 1.0 / float(self.count+1)
-      self.count += 1
+    except Exception, e:
+      if weave!=None:
+        print e
+        weave = None
 
-      # Calculate the merging costs for the new kernel versus the old kernels...
-      for i in xrange(self.merge.shape[0]):
-        self.mergeT[i] = self.__calcMergeCost(weight, sample, self.prec, self.gmm.weight[i], self.gmm.mean[i,:], self.gmm.prec[i,:,:])
+      if self.count<self.gmm.weight.shape[0]:
+        # Pure kde phase...
+        self.gmm.mean[self.count,:] = numpy.asarray(sample, dtype=numpy.float32)
+        self.gmm.prec[self.count,:,:] = self.prec
+        self.gmm.calcNorm(self.count)
 
-      # Select the best merge - it either involves the new sample or it does not...
-      bestOld = numpy.unravel_index(numpy.argmin(self.merge), self.merge.shape)
-      bestNew = numpy.argmin(self.mergeT)
-      if self.mergeT[bestNew] < self.merge[bestOld]:
-        # Easy scenario - new kernel is being merged with an existing kernel - not too much fiddling involved...
+        self.count += 1
+        self.gmm.weight[:self.count] = 1.0 / float(self.count)
 
-        # Do the merge...
-        newWeight = weight + self.gmm.weight[bestNew]
-        newMean = (weight/newWeight) * sample + (self.gmm.weight[bestNew]/newWeight) * self.gmm.mean[bestNew,:]
-
-        delta1 = sample - newMean
-        cov1 = numpy.linalg.inv(self.prec) + numpy.outer(delta1, delta1)
-
-        delta2 = self.gmm.mean[bestNew,:] - newMean
-        cov2 = numpy.linalg.inv(self.gmm.prec[bestNew,:,:]) + numpy.outer(delta2, delta2)
-        
-        newPrec = (weight/newWeight) * cov1 + (self.gmm.weight[bestNew]/newWeight) * cov2
-        newPrec = numpy.linalg.inv(newPrec)
-
-        # Store the result...
-        self.gmm.weight[bestNew] = newWeight
-        self.gmm.mean[bestNew,:] = newMean
-        self.gmm.prec[bestNew,:,:] = newPrec
-        self.gmm.calcNorm(bestNew)
-
-        # Update the merge weights...
-        for i in xrange(self.merge.shape[0]):
-          if i!=bestNew:
-            cost = self.__calcMergeCost(self.gmm.weight[i], self.gmm.mean[i,:], self.gmm.prec[i,:,:], self.gmm.weight[bestNew], self.gmm.mean[bestNew,:], self.gmm.prec[bestNew,:,:])
-            if i<bestNew: self.merge[bestNew,i] = cost
-            else: self.merge[i,bestNew] = cost
-
+        if self.count==self.gmm.weight.shape[0]:
+          # Next sample starts merging - need to prepare by filling in the kl array...
+          # (Below is grossly inefficient - calculates the same things more times than is possibly funny. I'll optimise it if I ever decide that I care enough to do so.)
+          for i in xrange(self.merge.shape[0]):
+            for j in xrange(i):
+              self.merge[i,j] = self.__calcMergeCost(self.gmm.weight[i], self.gmm.mean[i,:], self.gmm.prec[i,:,:], self.gmm.weight[j], self.gmm.mean[j,:], self.gmm.prec[j,:,:])
       else:
-        # We are merging two old kernels, and then putting the new kernel into the slot freed up - this is extra fiddly...
-         # Do the merge...
-        newWeight = self.gmm.weight[bestOld[0]] + self.gmm.weight[bestOld[1]]
-        newMean = (self.gmm.weight[bestOld[0]]/newWeight) * self.gmm.mean[bestOld[1],:] + (self.gmm.weight[bestOld[1]]/newWeight) * self.gmm.mean[bestOld[1],:]
+        # Merging phase...
+        sample = numpy.asarray(sample, dtype=numpy.float32)
 
-        delta1 = self.gmm.mean[bestOld[0],:] - newMean
-        cov1 = numpy.linalg.inv(self.gmm.prec[bestOld[0],:,:]) + numpy.outer(delta1, delta1)
+        # Adjust weights...
+        adjust = float(self.count) / float(self.count+1)
+        self.gmm.weight *= adjust
+        for i in xrange(self.merge.shape[0]): self.merge[i,:i] *= adjust
 
-        delta2 = self.gmm.mean[bestOld[1],:] - newMean
-        cov2 = numpy.linalg.inv(self.gmm.prec[bestOld[1],:,:]) + numpy.outer(delta2, delta2)
+        self.count += 1
+        weight = 1.0 / float(self.count)
 
-        newPrec = (self.gmm.weight[bestOld[0]]/newWeight) * cov1 + (self.gmm.weight[bestOld[1]]/newWeight) * cov2
-        newPrec = numpy.linalg.inv(newPrec)
-
-        # Store the result, put the new component in the other slot...
-        self.gmm.weight[bestOld[0]] = newWeight
-        self.gmm.mean[bestOld[0],:] = newMean
-        self.gmm.prec[bestOld[0],:,:] = newPrec
-        self.gmm.calcNorm(bestOld[0])
-
-        self.gmm.weight[bestOld[1]] = weight
-        self.gmm.mean[bestOld[1],:] = sample
-        self.gmm.prec[bestOld[1],:,:] = self.prec
-        self.gmm.calcNorm(bestOld[1])
-
-        # Update the merge weights for both the merged and new kernels...
+        # Calculate the merging costs for the new kernel versus the old kernels...
         for i in xrange(self.merge.shape[0]):
-          if i!=bestOld[0]:
-            cost = self.__calcMergeCost(self.gmm.weight[i], self.gmm.mean[i,:], self.gmm.prec[i,:,:], self.gmm.weight[bestOld[0]], self.gmm.mean[bestOld[0],:], self.gmm.prec[bestOld[0],:,:])
-            if i<bestOld[0]: self.merge[bestOld[0],i] = cost
-            else: self.merge[i,bestOld[0]] = cost
+          self.mergeT[i] = self.__calcMergeCost(weight, sample, self.prec, self.gmm.weight[i], self.gmm.mean[i,:], self.gmm.prec[i,:,:])
 
-        for i in xrange(self.merge.shape[0]):
-          if i!=bestOld[0] and i!=bestOld[1]:
-            cost = self.__calcMergeCost(self.gmm.weight[i], self.gmm.mean[i,:], self.gmm.prec[i,:,:], self.gmm.weight[bestOld[1]], self.gmm.mean[bestOld[1],:], self.gmm.prec[bestOld[1],:,:])
-            if i<bestOld[1]: self.merge[bestOld[1],i] = cost
-            else: self.merge[i,bestOld[1]] = cost
+        # Select the best merge - it either involves the new sample or it does not...
+        bestOld = numpy.unravel_index(numpy.argmin(self.merge), self.merge.shape)
+        bestNew = numpy.argmin(self.mergeT)
+        if self.mergeT[bestNew] < self.merge[bestOld]:
+          # Easy scenario - new kernel is being merged with an existing kernel - not too much fiddling involved...
+
+          # Do the merge...
+          newWeight, newMean, newPrec = self.__merge(weight, sample, self.prec, self.gmm.weight[bestNew], self.gmm.mean[bestNew,:], self.gmm.prec[bestNew,:,:])
+
+          # Store the result...
+          self.gmm.weight[bestNew] = newWeight
+          self.gmm.mean[bestNew,:] = newMean
+          self.gmm.prec[bestNew,:,:] = newPrec
+          self.gmm.calcNorm(bestNew)
+
+          # Update the merge weights...
+          for i in xrange(self.merge.shape[0]):
+            if i!=bestNew:
+              cost = self.__calcMergeCost(self.gmm.weight[i], self.gmm.mean[i,:], self.gmm.prec[i,:,:], self.gmm.weight[bestNew], self.gmm.mean[bestNew,:], self.gmm.prec[bestNew,:,:])
+              if i<bestNew: self.merge[bestNew,i] = cost
+              else: self.merge[i,bestNew] = cost
+
+        else:
+          # We are merging two old kernels, and then putting the new kernel into the slot freed up - this is extra fiddly...
+          # Do the merge...
+          newWeight, newMean, newPrec = self.__merge(self.gmm.weight[bestOld[0]], self.gmm.mean[bestOld[0],:], self.gmm.prec[bestOld[0],:,:], self.gmm.weight[bestOld[1]], self.gmm.mean[bestOld[1],:], self.gmm.prec[bestOld[1],:,:])
+
+          # Store the result, put the new component in the other slot...
+          self.gmm.weight[bestOld[0]] = newWeight
+          self.gmm.mean[bestOld[0],:] = newMean
+          self.gmm.prec[bestOld[0],:,:] = newPrec
+          self.gmm.calcNorm(bestOld[0])
+
+          self.gmm.weight[bestOld[1]] = weight
+          self.gmm.mean[bestOld[1],:] = sample
+          self.gmm.prec[bestOld[1],:,:] = self.prec
+          self.gmm.calcNorm(bestOld[1])
+
+          # Update the merge weights for both the merged and new kernels...
+          for i in xrange(self.merge.shape[0]):
+            if i!=bestOld[0]:
+              cost = self.__calcMergeCost(self.gmm.weight[i], self.gmm.mean[i,:], self.gmm.prec[i,:,:], self.gmm.weight[bestOld[0]], self.gmm.mean[bestOld[0],:], self.gmm.prec[bestOld[0],:,:])
+              if i<bestOld[0]: self.merge[bestOld[0],i] = cost
+              else: self.merge[i,bestOld[0]] = cost
+
+          for i in xrange(self.merge.shape[0]):
+            if i!=bestOld[0] and i!=bestOld[1]:
+              cost = self.__calcMergeCost(self.gmm.weight[i], self.gmm.mean[i,:], self.gmm.prec[i,:,:], self.gmm.weight[bestOld[1]], self.gmm.mean[bestOld[1],:], self.gmm.prec[bestOld[1],:,:])
+              if i<bestOld[1]: self.merge[bestOld[1],i] = cost
+              else: self.merge[i,bestOld[1]] = cost
