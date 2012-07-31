@@ -1,6 +1,7 @@
 syntax: glob
 *.pyc
 *.kate-swp
+*.so
 
 lda_gibbs/lda_gibbs.html
 lda_var/lda_var.html
@@ -17,6 +18,9 @@ dp_utils/dp_utils.html
 dhdp/dhdp.html
 smp/smp.html
 ddhdp/ddhdp.html
+
 df/df.html
 df/*.png
 
+video/video.html
+video/profile.csv
