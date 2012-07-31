@@ -33,7 +33,7 @@ from kde_inc import KDE_INC
 weight = [0.4,0.6] # Must sum to one, obviously.
 alpha = [1.2,3.0]
 beta = [1.6,1.2]
-sigma = 0.05
+sigma = 0.01
 
 low  = 0.0 # range for graphing the functions.
 high = 1.0 # "

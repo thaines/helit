@@ -28,8 +28,8 @@ class KDE_INC:
     self.gmm = GMM(prec.shape[0], cap) # Current mixture model.
     self.count = 0 # Number of samples provided so far.
 
-    self.merge = numpy.ones((cap,cap), dtype=numpy.float32) # [i,j]; cost of merging two entrys, only valid when j<i, other values set high to avoid issues.
-    self.merge *= 1e100
+    self.merge = numpy.empty((cap,cap), dtype=numpy.float32) # [i,j]; cost of merging two entrys, only valid when j<i, other values set high to avoid issues.
+    self.merge[:,:] = 1e100
 
     # For holding the temporary merge costs calculated when adding a sample...
     self.mergeT = numpy.empty(cap, dtype=numpy.float32)
@@ -112,42 +112,42 @@ class KDE_INC:
          float ratioB = weightB/wOut;
          weightOut = wOut;
 
-        // Do the mean - simply a weighted average - output into a temporary for now...
+        // Do the mean - simply a weighted average - store in a temporary for now...
          for (int i=0; i<size; i++)
          {
-          tVec[i] = ratioA * meanA[i] + ratioB + meanB[i];
+          tVec[i] = ratioA * meanA[i] + ratioB * meanB[i];
          }
 
-        // Put the covariance of precision A into tMat2...
-         for (int i=0; i<size*size; i++) tMat1[i] = precA[i];
-         Inverse(tMat1, tMat2, size);
+        // Put the covariance of precision A into tMat1...
+         for (int i=0; i<size*size; i++) tMat2[i] = precA[i];
+         Inverse(tMat2, tMat1, size);
 
-        // Put the covariance of precision B into tMat1...
-         for (int i=0; i<size*size; i++) precOut[i] = precB[i];
-         Inverse(precOut, tMat1, size);
-
-        // Add the outer product of the A delta into tMat2...
+        // Add the outer product of the A delta into tMat1...
          for (int r=0; r<size; r++)
          {
           for (int c=0; c<size; c++)
           {
-           tMat2[r*size + c] += (meanA[c] - tVec[c]) * (meanA[r] - tVec[r]);
+           tMat1[r*size + c] += (meanA[c] - tVec[c]) * (meanA[r] - tVec[r]);
           }
          }
 
-        // Add the outer product of the B delta into tMat1...
+        // Put the covariance of precision B into tMat2...
+         for (int i=0; i<size*size; i++) precOut[i] = precB[i];
+         Inverse(precOut, tMat2, size);
+
+        // Add the outer product of the B delta into tMat2...
          for (int r=0; r<size; r++)
          {
           for (int c=0; c<size; c++)
           {
-           tMat1[r*size + c] += (meanB[c] - tVec[c]) * (meanB[r] - tVec[r]);
+           tMat2[r*size + c] += (meanB[c] - tVec[c]) * (meanB[r] - tVec[r]);
           }
          }
 
         // Get the weighted average of the covariance matrices into tMat1...
          for (int i=0; i<size*size; i++)
          {
-          tMat1[i] = ratioA * tMat2[i] + ratioB * tMat1[i];
+          tMat1[i] = ratioA * tMat1[i] + ratioB * tMat2[i];
          }
 
         // Dump the inverse of tMat1 into the output precision...
@@ -285,7 +285,7 @@ class KDE_INC:
         }
 
        // Find the lowest merge cost and act accordingly - either we are merging the new kernel with an old one or merging two existing kernels and putting the new kernel in on its own...
-        int lowI = 0;
+        int lowI = 1;
         int lowJ = 0;
 
         for (int i=0; i<Nweight[0]; i++)
