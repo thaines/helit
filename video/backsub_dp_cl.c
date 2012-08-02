@@ -15,15 +15,17 @@
 
 
 
-#include "Python.h"
-#include "structmember.h"
-#include "numpy/arrayobject.h"
+#include <Python.h>
+#include <structmember.h>
+#include <numpy/arrayobject.h>
 
 #include <fcntl.h>
 #include <string.h>
 #include <sys/time.h>
 
 #include <CL/cl.h>
+
+#include "manager_cl.h"
 
 
 
@@ -316,7 +318,6 @@ static void BackSubCoreDP_dealloc(BackSubCoreDP * self)
  clReleaseMemObject(self->mix);
  clReleaseMemObject(self->pixel_prob);
 
-
  clReleaseProgram(self->program);
  clReleaseCommandQueue(self->queue);
  clReleaseContext(self->context);
@@ -359,115 +360,23 @@ static PyMemberDef BackSubCoreDP_members[] =
 static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
 {
  // Extract the parameters...
+  ManagerCL * managerCL;
   int width, height, comp_cap;
   char * path;
-  if (!PyArg_ParseTuple(args, "iiis", &width, &height, &comp_cap, &path)) return NULL;
+  if (!PyArg_ParseTuple(args, "Oiiis", &managerCL, &width, &height, &comp_cap, &path)) return NULL;
 
   self->width = width;
   self->height = height;
   self->component_cap = comp_cap;
 
+  cl_int status;
 
- // We need to find out how many openCL platforms are avaliable on the current system...
-  cl_uint platformCount;
-  cl_int status = clGetPlatformIDs(0, NULL, &platformCount);
-  if (status!=CL_SUCCESS||platformCount==0) return NULL;
+ // Get the context and queue from the manager...
+  self->context = managerCL->context;
+  clRetainContext(self->context);
 
- // Iterate platforms, and the devices on those platforms, scoring each in turn to find the 'fastest' device...
-  float bestScore = -1.0;
-  cl_device_id bestDevice;
-  cl_device_type bestType = -1;
-
-  // Get an array of platform id-s...
-   cl_platform_id * platform = (cl_platform_id*)malloc(sizeof(cl_platform_id)*platformCount);
-   status = clGetPlatformIDs(platformCount, platform, NULL);
-   if (status!=CL_SUCCESS) return NULL;
-
-  // Loop and analyse each platform in turn...
-   int p;
-   for (p=0;p<platformCount;p++)
-   {
-    // Get the number of devices provided by the platform...
-     cl_uint deviceCount;
-     status = clGetDeviceIDs(platform[p], CL_DEVICE_TYPE_ALL, 0, NULL, &deviceCount);
-     if (status!=CL_SUCCESS)
-     {
-      free(platform);
-      return NULL;
-     }
-
-    // Get an array of device id's...
-     cl_device_id * device = (cl_device_id*)malloc(sizeof(cl_device_id)*deviceCount);
-     status = clGetDeviceIDs(platform[p], CL_DEVICE_TYPE_ALL, deviceCount, device, NULL);
-     if (status!=CL_SUCCESS)
-     {
-      free(device);
-      return NULL;
-     }
-
-    // Loop and have a close look at each device in sequence...
-     int d;
-     for (d=0;d<deviceCount;d++)
-     {
-      // Verify it has enough memory...
-       cl_ulong mem;
-       status = clGetDeviceInfo(device[d], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(mem), &mem, NULL);
-       if (status!=CL_SUCCESS) continue;
-
-       cl_ulong memReq = height*width*3*sizeof(cl_float); // The image being processed.
-       memReq += height*width*comp_cap*8*sizeof(cl_float); // The DP components.
-       memReq += height*width*sizeof(cl_float); // Model output probabilities.
-       memReq += height*width*9*sizeof(cl_float) * 2; // The BP stuff; actually considerably more than needed, but good to have some spare space.
-
-       if (memReq>mem) continue;
-
-      // Get some measure of how fast it is...
-       cl_uint freq;
-       status = clGetDeviceInfo(device[d], CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(freq), &freq, NULL);
-
-       cl_uint cores;
-       status |= clGetDeviceInfo(device[d], CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cores), &cores, NULL);
-
-       cl_uint samplers;
-       status |= clGetDeviceInfo(device[d], CL_DEVICE_MAX_SAMPLERS, sizeof(samplers), &samplers, NULL);
-
-       cl_device_type type;
-       status |= clGetDeviceInfo(device[d], CL_DEVICE_TYPE, sizeof(type), &type, NULL);
-
-       if (status!=CL_SUCCESS) continue;
-
-       float score = cores * samplers * freq;
-       if (type==CL_DEVICE_TYPE_GPU) score *= 64.0; // Yup, a fudge factor.
-
-      // If its faster than what we have already found then make it our top choice...
-       if (score>bestScore)
-       {
-        bestScore = score;
-        bestDevice = device[d];
-        bestType = type;
-       }
-     }
-
-    // Terminate device array...
-     free(device);
-   }
-
- // Clean up the memory that was used to find a good device, fail if a good device was not found...
-  free(platform);
-
-  if (bestScore<0.0) return NULL;
-  if (bestType!=CL_DEVICE_TYPE_GPU)
-  {
-   printf("Warning: Did not select a GPU for background subtraction.\n");
-  }
-
-
- // The device is selected - create the assorted objects needed - a context and a work queue...
-  self->context = clCreateContext(NULL, 1, &bestDevice, NULL, NULL, &status);
-  if (status!=CL_SUCCESS) return NULL;
-
-  self->queue = clCreateCommandQueue(self->context, bestDevice, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &status);
-  if (status!=CL_SUCCESS) return NULL;
+  self->queue = managerCL->queue;
+  clRetainCommandQueue(self->queue);
 
 
  // Load and compile the program...
@@ -513,10 +422,10 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    if (status!=CL_SUCCESS)
    {
     size_t errSize;
-    if (clGetProgramBuildInfo(self->program, bestDevice, CL_PROGRAM_BUILD_LOG, 0, NULL, &errSize)==CL_SUCCESS)
+    if (clGetProgramBuildInfo(self->program, managerCL->device, CL_PROGRAM_BUILD_LOG, 0, NULL, &errSize)==CL_SUCCESS)
     {
      char * errBuf = (char*)malloc(errSize);
-     if (clGetProgramBuildInfo(self->program, bestDevice, CL_PROGRAM_BUILD_LOG, errSize, errBuf, NULL)==CL_SUCCESS)
+     if (clGetProgramBuildInfo(self->program, managerCL->device, CL_PROGRAM_BUILD_LOG, errSize, errBuf, NULL)==CL_SUCCESS)
      {
       printf(errBuf);
      }
@@ -616,7 +525,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->reset, 1, sizeof(cl_int), &self->component_cap);
    status |= clSetKernelArg(self->reset, 2, sizeof(cl_mem), &self->mix);
 
-   status |= clGetKernelWorkGroupInfo(self->reset, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->reset_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->reset, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->reset_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -628,7 +537,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->prior_update_mix, 1, sizeof(cl_int), &self->component_cap);
    status |= clSetKernelArg(self->prior_update_mix, 4, sizeof(cl_mem), &self->mix);
 
-   status |= clGetKernelWorkGroupInfo(self->prior_update_mix, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->prior_update_mix_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->prior_update_mix, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->prior_update_mix_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -640,7 +549,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->light_update_mix, 1, sizeof(cl_int), &self->component_cap);
    status |= clSetKernelArg(self->light_update_mix, 4, sizeof(cl_mem), &self->mix);
 
-   status |= clGetKernelWorkGroupInfo(self->light_update_mix, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->light_update_mix_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->light_update_mix, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->light_update_mix_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -656,7 +565,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->comp_prob, 5, sizeof(cl_mem), &self->image);
    status |= clSetKernelArg(self->comp_prob, 6, sizeof(cl_mem), &self->mix);
 
-   status |= clGetKernelWorkGroupInfo(self->comp_prob, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->comp_prob_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->comp_prob, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->comp_prob_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -670,7 +579,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->new_comp_prob, 3, sizeof(cl_float4), self->prior_sigma2);
    status |= clSetKernelArg(self->new_comp_prob, 4, sizeof(cl_mem), &self->image);
 
-   status |= clGetKernelWorkGroupInfo(self->new_comp_prob, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->new_comp_prob_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->new_comp_prob, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->new_comp_prob_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -691,7 +600,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->update_pixel, 10, sizeof(cl_mem), &self->mix);
    status |= clSetKernelArg(self->update_pixel, 11, sizeof(cl_mem), &self->pixel_prob);
 
-   status |= clGetKernelWorkGroupInfo(self->update_pixel, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->update_pixel_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->update_pixel, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->update_pixel_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -705,7 +614,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->extract_mode, 3, sizeof(cl_mem), &self->image);
    status |= clSetKernelArg(self->extract_mode, 4, sizeof(cl_mem), &self->mix);
 
-   status |= clGetKernelWorkGroupInfo(self->extract_mode, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->extract_mode_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->extract_mode, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->extract_mode_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -717,7 +626,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->setup_model_bgCost, 3, sizeof(cl_mem), &self->pixel_prob);
    status |= clSetKernelArg(self->setup_model_bgCost, 4, sizeof(cl_mem), &self->bgCost[0]);
 
-   status |= clGetKernelWorkGroupInfo(self->setup_model_bgCost, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_bgCost_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->setup_model_bgCost, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_bgCost_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -729,7 +638,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->setup_model_dist_boundary, 2, sizeof(cl_mem), &self->image);
    status |= clSetKernelArg(self->setup_model_dist_boundary, 3, sizeof(cl_mem), &self->changeCost[0]);
 
-   status |= clGetKernelWorkGroupInfo(self->setup_model_dist_boundary, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_dist_boundary_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->setup_model_dist_boundary, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_dist_boundary_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -741,7 +650,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->setup_model_dist_pos_x, 1, sizeof(cl_mem), &self->image);
    status |= clSetKernelArg(self->setup_model_dist_pos_x, 2, sizeof(cl_mem), &self->changeCost[0]);
 
-   status |= clGetKernelWorkGroupInfo(self->setup_model_dist_pos_x, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_dist_pos_x_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->setup_model_dist_pos_x, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_dist_pos_x_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -753,7 +662,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->setup_model_dist_pos_y, 1, sizeof(cl_mem), &self->image);
    status |= clSetKernelArg(self->setup_model_dist_pos_y, 2, sizeof(cl_mem), &self->changeCost[0]);
 
-   status |= clGetKernelWorkGroupInfo(self->setup_model_dist_pos_y, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_dist_pos_y_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->setup_model_dist_pos_y, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_dist_pos_y_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -765,7 +674,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->setup_model_dist_neg_x, 1, sizeof(cl_mem), &self->image);
    status |= clSetKernelArg(self->setup_model_dist_neg_x, 2, sizeof(cl_mem), &self->changeCost[0]);
 
-   status |= clGetKernelWorkGroupInfo(self->setup_model_dist_neg_x, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_dist_neg_x_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->setup_model_dist_neg_x, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_dist_neg_x_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -777,7 +686,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->setup_model_dist_neg_y, 1, sizeof(cl_mem), &self->image);
    status |= clSetKernelArg(self->setup_model_dist_neg_y, 2, sizeof(cl_mem), &self->changeCost[0]);
 
-   status |= clGetKernelWorkGroupInfo(self->setup_model_dist_neg_y, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_dist_neg_y_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->setup_model_dist_neg_y, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_dist_neg_y_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -788,30 +697,30 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->setup_model_changeCost, 0, sizeof(cl_int), &self->width);
    status |= clSetKernelArg(self->setup_model_changeCost, 5, sizeof(cl_mem), &self->changeCost[0]);
 
-   status |= clGetKernelWorkGroupInfo(self->setup_model_changeCost, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_changeCost_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->setup_model_changeCost, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->setup_model_changeCost_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
   // For zeroing out the msgIn variables...
    self->reset_in = clCreateKernel(self->program, "reset_in", &status);
-   status |= clGetKernelWorkGroupInfo(self->reset_in, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->reset_in_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->reset_in, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->reset_in_size, NULL);
    if (status!=CL_SUCCESS) return NULL;
 
   // The 4 kernels for sending messages in the 4 compass directions...
    self->send_pos_x = clCreateKernel(self->program, "send_pos_x", &status);
-   status |= clGetKernelWorkGroupInfo(self->send_pos_x, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->send_pos_x_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->send_pos_x, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->send_pos_x_size, NULL);
    if (status!=CL_SUCCESS) return NULL;
 
    self->send_pos_y = clCreateKernel(self->program, "send_pos_y", &status);
-   status |= clGetKernelWorkGroupInfo(self->send_pos_y, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->send_pos_y_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->send_pos_y, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->send_pos_y_size, NULL);
    if (status!=CL_SUCCESS) return NULL;
 
    self->send_neg_x = clCreateKernel(self->program, "send_neg_x", &status);
-   status |= clGetKernelWorkGroupInfo(self->send_neg_x, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->send_neg_x_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->send_neg_x, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->send_neg_x_size, NULL);
    if (status!=CL_SUCCESS) return NULL;
 
    self->send_neg_y = clCreateKernel(self->program, "send_neg_y", &status);
-   status |= clGetKernelWorkGroupInfo(self->send_neg_y, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->send_neg_y_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->send_neg_y, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->send_neg_y_size, NULL);
    if (status!=CL_SUCCESS) return NULL;
 
   // When all the iterations are done, this generates the final mask, ready for transfer off the device for normal usage...
@@ -823,17 +732,17 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->calc_mask, 2, sizeof(cl_mem), &self->msgIn[0]);
    status |= clSetKernelArg(self->calc_mask, 3, sizeof(cl_mem), &self->mask);
 
-   status |= clGetKernelWorkGroupInfo(self->calc_mask, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->calc_mask_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->calc_mask, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->calc_mask_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
   // Kernels for convertiong data between layers of the BP hierarchy...
    self->downsample_model = clCreateKernel(self->program, "downsample_model", &status);
-   status |= clGetKernelWorkGroupInfo(self->downsample_model, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->downsample_model_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->downsample_model, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->downsample_model_size, NULL);
    if (status!=CL_SUCCESS) return NULL;
 
    self->upsample_messages = clCreateKernel(self->program, "upsample_messages", &status);
-   status |= clGetKernelWorkGroupInfo(self->upsample_messages, bestDevice, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->upsample_messages_size, NULL);
+   status |= clGetKernelWorkGroupInfo(self->upsample_messages, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->upsample_messages_size, NULL);
    if (status!=CL_SUCCESS) return NULL;
 
 

@@ -41,8 +41,8 @@ except:
 # The python wrapper around BackSubCore, to give it the right interface etc.
 class BackSubDP(VideoNode):
   """A background subtraction algorithm, implimented as a video reader interface that eats another video reader. Uses a per-pixel mixture model, specifically a Dirichlet process on Gaussian distributions - it uses Gibbs sampling with the Gaussians collapsed out. It is an implimentation of the paper 'Background Subtraction with Dirichlet Processes' by Tom SF Haines & Tao Xiang, ECCV 2012."""
-  def __init__(self):
-    """Initialises the background subtraction algoithm to eat video (with the optional channel), which it then runs background subtraction on to output a mask, plus the probability map and the video again if wanted. components can be also set, to set the maximum number of components for each pixels mixture model."""
+  def __init__(self, cl = None):
+    """Initialises the background subtraction algoithm to eat video (with the optional channel), which it then runs background subtraction on to output a mask, plus the probability map and the video again if wanted. components can be also set, to set the maximum number of components for each pixels mixture model. cl is the return value from getCL() on the manager object - if not provided OpenCL will not be used."""
     self.video = None
     self.channel = 0
     self.colour = None
@@ -72,6 +72,8 @@ class BackSubDP(VideoNode):
     self.param_iterations = 16
 
     self.param_con_comp_min = 0
+
+    self.cl = cl
 
 
   def setAutoPrior(self, mult = 1.0):
@@ -153,15 +155,16 @@ class BackSubDP(VideoNode):
   def nextFrame(self):
     # Intial setup...
     if self.core==None:
-      if backsub_dp_cl!=None:
+      if backsub_dp_cl!=None and self.cl!=None:
         try:
           self.core = backsub_dp_cl.BackSubCoreDP()
-          self.core.setup(self.width(), self.height(), self.param_components, os.path.abspath(os.path.dirname(__file__)))
+          self.core.setup(self.cl, self.width(), self.height(), self.param_components, os.path.abspath(os.path.dirname(__file__)))
         except:
           self.core = None
 
       if self.core==None:
-        print 'Warning: Did not use OpenCL implimentation, falling back to slow c implimentation.' ############################### Need better error mech.
+        if self.cl!=None:
+          print 'Warning: Did not use OpenCL implimentation, falling back to slow c implimentation.' ############################### Need better error mech.
         self.core = backsub_dp_c.BackSubCoreDP()
         self.core.setup(self.width(), self.height(), self.param_components)
 

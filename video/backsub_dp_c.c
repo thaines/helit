@@ -15,9 +15,9 @@
 
 
 
-#include "Python.h"
-#include "structmember.h"
-#include "numpy/arrayobject.h"
+#include <Python.h>
+#include <structmember.h>
+#include <numpy/arrayobject.h>
 
 #include <fcntl.h>
 #include <string.h>

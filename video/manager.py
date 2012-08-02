@@ -49,6 +49,15 @@ class Manager:
       except: pass
 
 
+  def haveCL(self):
+    """Returns True if OpenCL is avaliable, False otherwise."""
+    return self.cl!=None
+
+  def getCL(self):
+    """Returns the object that needs to be passed to OpenCL supporting nodes if you want them to dance quickly."""
+    return self.cl
+
+
   def add(self, videos):
     """Videos can be a list-like object of ReadVideo things or an actual ReadVideo object. Adds them to the manager."""
     if isinstance(videos,VideoNode):

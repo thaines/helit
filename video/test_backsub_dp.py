@@ -52,7 +52,7 @@ diff.source(0,vid)
 diff.source(1,ucb_lc,3)
 man.add(diff)
 
-bs = video.BackSubDP()
+bs = video.BackSubDP(man.getCL())
 bs.source(0,cb)
 bs.source(1,lc,0)
 man.add(bs)

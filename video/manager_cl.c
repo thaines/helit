@@ -27,6 +27,7 @@ static PyObject * ManagerCL_new(PyTypeObject * type, PyObject * args, PyObject *
  {
   self->context = NULL;
   self->queue = NULL;
+  self->device = NULL;
  }
 
  return (PyObject*)self;
@@ -134,6 +135,7 @@ static int ManagerCL_init(ManagerCL * self, PyObject * args, PyObject * kwds)
     // Terminate device array...
      free(device);
    }
+   self->device = bestDevice;
 
 
  // Clean up the memory that was used to find a good device, fail if a good device was not found...

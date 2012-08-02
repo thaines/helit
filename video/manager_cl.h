@@ -30,6 +30,7 @@ typedef struct
 
  cl_context context;
  cl_command_queue queue;
+ cl_device_id device;
 
 } ManagerCL;
 
