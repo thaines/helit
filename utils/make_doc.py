@@ -61,6 +61,7 @@ funcs += doc.docroutine(mp_map.repeat)
 funcs += doc.docroutine(mp_map.mp_map)
 funcs += doc.docroutine(setProcName.setProcName)
 funcs += doc.docroutine(start_cpp.start_cpp)
+funcs += doc.docroutine(make.make_mod)
 funcs = funcs.replace('&nbsp;',' ')
 out.write(doc.bigsection('Functions','#ffffff','#eeaa77',funcs))
 

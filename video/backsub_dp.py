@@ -15,97 +15,30 @@
 
 
 
-import os
 import os.path
 import numpy
 
+from utils.make import make_mod
 from video_node import *
 
 
 
-#
-# The C version =- we require that this be built, even if not used...
-#
-
-# Assorted constants...
-__name_c = 'backsub_dp_c'
-__base = os.path.dirname(__file__)
-__source_c = os.path.join(__base,'backsub_dp_c.c')
-__ext = '.pyd' if os.name=='nt' else '.so'
-__shared_obj_c = os.path.join(__base,'backsub_dp_c'+__ext)
-
-
-
-# This code detects if the c implimentation needs compiling - if it does then it is compiled...
-if not os.path.exists(__shared_obj_c) or os.path.getmtime(__source_c)>os.path.getmtime(__shared_obj_c):
-  import sys
-  import tempfile
-  import shutil
-  from distutils.core import setup, Extension
-
-  old_argv = sys.argv[:]
-  temp_dir = tempfile.mkdtemp()
-  sys.argv = ['','build_ext','--build-lib', __base, '--build-temp', temp_dir]
-
-  setup(name=__name_c, version='1.0.0', ext_modules=[Extension(__name_c, [__source_c])])
-
-  sys.argv = old_argv
-  del old_argv
-  shutil.rmtree(temp_dir, True)
-  del temp_dir
-
-
-
-# Import the compiled c-module into this namespace...
+# The C version - we require that this be built, even if not used...
+make_mod('backsub_dp_c', os.path.dirname(__file__), 'backsub_dp_c.c')
 import backsub_dp_c
 
 
 
-#
 # The OpenCL version - try to compile it, and use it if at all possible...
-#
-
-# Assorted constants...
-__name_cl = 'backsub_dp_cl'
-__source_cl = os.path.join(__base,'backsub_dp_cl.c')
-__shared_obj_cl = os.path.join(__base,'backsub_dp_cl'+__ext)
-
-
-
-# Similarly to the c implimentation, this detects if the openCL version needs compiling and, if so does so. On failure will not throw any errors however, such that the module can fall back to the c implimentation...
-if not os.path.exists(__shared_obj_cl) or os.path.getmtime(__source_cl)>os.path.getmtime(__shared_obj_cl):
-  import sys
-  import tempfile
-  import shutil
-  from distutils.core import setup, Extension
-
-  old_argv = sys.argv[:]
-  temp_dir = tempfile.mkdtemp()
-  sys.argv = ['','build_ext','--build-lib', __base, '--build-temp', temp_dir]
-
-  try:
-    ext = Extension(__name_cl, [__source_cl], include_dirs=['/usr/local/cuda/include', '/opt/AMDAPP/include'], libraries = ['OpenCL'], library_dirs = ['/usr/lib64/nvidia', '/opt/AMDAPP/lib/x86_64'])
-
-    setup(name=__name_cl, version='1.0.0', ext_modules=[ext])
-  except: pass
-
-  sys.argv = old_argv
-  del old_argv
-  shutil.rmtree(temp_dir, True)
-  del temp_dir
+try:
+  make_mod('backsub_dp_cl', os.path.dirname(__file__), 'backsub_dp_cl.c', openCL=True)
+  import backsub_dp_cl
+except:
+  backsub_dp_cl = None
 
 
 
-# Import the compiled module into this namespace...
-try: import backsub_dp_cl
-except: backsub_dp_cl = None
-
-
-
-#
 # The python wrapper around BackSubCore, to give it the right interface etc.
-#
-
 class BackSubDP(VideoNode):
   """A background subtraction algorithm, implimented as a video reader interface that eats another video reader. Uses a per-pixel mixture model, specifically a Dirichlet process on Gaussian distributions - it uses Gibbs sampling with the Gaussians collapsed out. It is an implimentation of the paper 'Background Subtraction with Dirichlet Processes' by Tom SF Haines & Tao Xiang, ECCV 2012."""
   def __init__(self):
