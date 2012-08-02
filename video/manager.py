@@ -14,22 +14,39 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-
+import os.path
 import time
-import cv
 from collections import defaultdict
 
+import cv
+
+from utils.make import make_mod
 from video_node import VideoNode
 
 
 
+# Arrange for the Python module that does iniail setup for the OpenCL content to be avaliable. incase we want some real speed...
+try:
+  make_mod('manager_cl', os.path.dirname(__file__), ['manager_cl.h', 'manager_cl.c'], openCL=True)
+  import manager_cl
+except:
+  manager_cl = None
+
+
+
 class Manager:
-  """Simple class that manages a bunch of objects of type VideoNode - is given a bunch of these objects and then provides a nextFrame method. This method calls the nextFrame method for each object, but does so in an order that satisfies the dependencies. For conveniance it also provides a run method for use with the ViewVideo objects - it calls the cv.WaitKey function as well as nextFrame, and optionally keeps the framerate correct - makes simple visualisations constructed with ReadVideo objects easy to do."""
-  def __init__(self):
+  """Simple class that manages a bunch of objects of type VideoNode - is given a bunch of these objects and then provides a nextFrame method. This method calls the nextFrame method for each object, but does so in an order that satisfies the dependencies. For conveniance it also provides a run method for use with the ViewVideo objects - it calls the cv.WaitKey function as well as nextFrame, and optionally keeps the framerate correct - makes simple visualisations constructed with ReadVideo objects easy to do. It also manages the OpenCL context and queue, in the event that you are optimising the video processing as such, so that frames can be passed between nodes without leaving the graphics card - the useCL parameter allows OpenCL optimisation to be switched off."""
+  def __init__(self, useCL = True):
     self.videos = []
     self.dirty = True
     self.profile = defaultdict(float)
     self.profileRuncount = defaultdict(int)
+
+    self.cl = None
+    if useCL and manager_cl!=None:
+      try:
+        self.cl = manager_cl.ManagerCL()
+      except: pass
 
 
   def add(self, videos):
@@ -91,6 +108,9 @@ class Manager:
     lastTime = time.clock()
     i = 0
     delay = 0
+
+    if not quiet and self.cl!=None:
+      print 'OpenCL is enabled'
 
     while True:
       if self.nextFrame()==False: break

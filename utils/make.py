@@ -29,15 +29,16 @@ except:
 
 
 def make_mod(name, base, source, openCL = False):
-  """Uses distutils to compile a python module - really just a set of hacks to allow this to be done 'on demand', so it only compiles if the module does not exist or is older than the current source, and after compilation the program can continue on its merry way, and immediatly import the just compiled module. Note that on failure erros can be thrown - its your choice to catch them or not. name is the modules name, i.e. what you want to use with the import statement. base is the base directory for the module, which contains the source file - often you would want to set this to 'os.path.dirname(__file__)', assuming the .py file that imports the module is in the same directory as the code. It is this directory that the module is output to. source is the filename of the source code to compile. openCL indicates if OpenCL is used by the module, in which case it does all the necesary setup - done like this so these setting can be kept centralised, so when they need to be different for a new platform they only have to be changed in one place."""
+  """Uses distutils to compile a python module - really just a set of hacks to allow this to be done 'on demand', so it only compiles if the module does not exist or is older than the current source, and after compilation the program can continue on its merry way, and immediatly import the just compiled module. Note that on failure erros can be thrown - its your choice to catch them or not. name is the modules name, i.e. what you want to use with the import statement. base is the base directory for the module, which contains the source file - often you would want to set this to 'os.path.dirname(__file__)', assuming the .py file that imports the module is in the same directory as the code. It is this directory that the module is output to. source is the filename of the source code to compile, or alternativly a list of filenames. openCL indicates if OpenCL is used by the module, in which case it does all the necesary setup - done like this so these setting can be kept centralised, so when they need to be different for a new platform they only have to be changed in one place."""
 
   if __default_compiler==None: raise Exception('No compiler!')
 
   # Work out the various file names - check if we actually need to do anything...
-  source_path = os.path.join(base, source)
+  if not isinstance(source, list): source = [source]
+  source_path = map(lambda s: os.path.join(base, s), source)
   library_path = os.path.join(base, __default_compiler.shared_object_filename(name))
 
-  if distutils.dep_util.newer(source_path, library_path):
+  if reduce(lambda a,b: a or b, map(lambda s: distutils.dep_util.newer(s, library_path), source_path)):
     try:
       # Backup the argv variable and create a temporary directory to do all work in...
       old_argv = sys.argv[:]
@@ -46,10 +47,11 @@ def make_mod(name, base, source, openCL = False):
       # Prepare the extension...
       sys.argv = ['','build_ext','--build-lib', base, '--build-temp', temp_dir]
 
+      comp_path = filter(lambda s: not s.endswith('.h'), source_path)
       if openCL:
-        ext = Extension(name, [source_path], include_dirs=['/usr/local/cuda/include', '/opt/AMDAPP/include'], libraries = ['OpenCL'], library_dirs = ['/usr/lib64/nvidia', '/opt/AMDAPP/lib/x86_64'])
+        ext = Extension(name, comp_path, include_dirs=['/usr/local/cuda/include', '/opt/AMDAPP/include'], libraries = ['OpenCL'], library_dirs = ['/usr/lib64/nvidia', '/opt/AMDAPP/lib/x86_64'])
       else:
-        ext = Extension(name, [source_path])
+        ext = Extension(name, comp_path)
 
       # Compile...
       setup(name=name, version='1.0.0', ext_modules=[ext])
