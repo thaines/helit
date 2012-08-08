@@ -26,53 +26,7 @@
 #include <CL/cl.h>
 
 #include "manager_cl.h"
-
-
-
-// Little helper function - given a block size and a width it returns the width increased so it is a multplie of the block size...
-int make_multiple(int width, int block_size)
-{
- if ((width%block_size)==0) return width;
- int mult = width/block_size;
- mult += 1;
- return mult*block_size;
-}
-
-// Helper function - given the number of dimensions and two pointers, to the global problem size, which is filled in, and to the local block size, it attempts to fill in the latter so the multiplication of terms equals scale (Which must be 2^n), following the rules of OpenCL. It has a preference towards earlier entrys for memory coherance. Additionally if one of the dimensions in the global size can be increased without problem that can be indicated by overrun_safe being set to the relevant index...
-void calc_block_size(int scale, int dims, size_t * global, size_t * local, int overrun_safe)
-{
- int i;
- // Set all entrys in local to 1...
-  for (i=0;i<dims;i++) local[i] = 1;
-
- // Find out how high we are going in the next step...
-  int cap = dims;
-  if (overrun_safe>=0) cap = overrun_safe;
-
- // For each dimension set their local value to the largest 2^n value which divides through...
-  for (i=0;i<cap;i++)
-  {
-   while ((local[i]&global[i])==0) local[i] *= 2;
-  }
-
- // Eat up the scale...
-  for (i=0;i<cap;i++)
-  {
-   if (scale>local[i]) scale /= local[i];
-   else
-   {
-    local[i] = scale;
-    scale = 1;
-   }
-  }
-
- // If there is any left and we are at the overun use it to acheive scale...
-  if ((scale>1)&&(overrun_safe>=0))
-  {
-   local[overrun_safe] = scale;
-   global[overrun_safe] = make_multiple(global[overrun_safe], scale);
-  }
-}
+#include "open_cl_help.h"
 
 
 
@@ -95,7 +49,7 @@ typedef struct
  cl_mem mix; // The mixture components for the DP model.
  cl_mem pixel_prob; // The probabilities output by the DP model/used by BP.
 
- cl_float * image_temp; // Temporary for transfering into and out of image.
+ cl_float * image_temp; // Temporary for transfering into and out of images.
  cl_float * pixel_prob_temp; // As above, but for pixel_prob.
  cl_char * mask_temp; // Temporary, for transfering the mask back from the graphics card when it has been calculated.
 
@@ -380,61 +334,9 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
 
 
  // Load and compile the program...
-  // Generate full filename...
-   const char * file = "backsub_dp_cl.cl";
-   char * fn = malloc(strlen(path)+strlen(file)+2);
-   strcpy(fn, path);
-   strcat(fn, "/");
-   strcat(fn, file);
-
-  // Open file...
-   int fin = open(fn, O_RDONLY);
-   free(fn);
-   if (fin<0) return NULL;
-
-  // Get its length...
-   int cl_size = lseek(fin, 0, SEEK_END);
-   lseek(fin, 0, SEEK_SET);
-   if (cl_size<1)
-   {
-    close(fin);
-    return NULL;
-   }
-
-  // Load the data...
-   char * cl_code = malloc((cl_size+1) * sizeof(char));
-   if (read(fin, cl_code, cl_size)!=cl_size)
-   {
-    close(fin);
-    free(cl_code);
-    return NULL;
-   }
-   cl_code[cl_size] = 0; // Null terminator.
-   close(fin);
-
-  // Create the program...
-   self->program = clCreateProgramWithSource(self->context, 1, (const char**)&cl_code, NULL, &status);
-   free(cl_code);
-   if (status!=CL_SUCCESS) return NULL;
-
-  // Build...
-   status = clBuildProgram(self->program, 0, NULL, NULL, NULL, NULL);
-   if (status!=CL_SUCCESS)
-   {
-    size_t errSize;
-    if (clGetProgramBuildInfo(self->program, managerCL->device, CL_PROGRAM_BUILD_LOG, 0, NULL, &errSize)==CL_SUCCESS)
-    {
-     char * errBuf = (char*)malloc(errSize);
-     if (clGetProgramBuildInfo(self->program, managerCL->device, CL_PROGRAM_BUILD_LOG, errSize, errBuf, NULL)==CL_SUCCESS)
-     {
-      printf(errBuf);
-     }
-     free(errBuf);
-    }
-
-
-    if (status!=CL_SUCCESS) return NULL;
-   }
+  const char * file = "backsub_dp_cl.cl";
+  self->program = prep_program(path, file, self->context, managerCL->device);
+  if (self->program==NULL) return NULL;
 
 
  // Create the memory blocks needed on the device...
@@ -1072,7 +974,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   status |= clSetKernelArg(self->setup_model_changeCost, 3, sizeof(cl_float), &self->change_limit);
   status |= clSetKernelArg(self->setup_model_changeCost, 4, sizeof(cl_float), &self->change_mult);
 
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
  // First copy the image and pixProb onto the graphics card - included for completeness, but currently commented out as this data should remain from the immediatly proceding call to calculate the probability map anyway...
@@ -1094,13 +996,13 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
 //   }
 //
 //   status = clEnqueueWriteBuffer(self->queue, self->image, CL_FALSE, 0, self->height*self->width*4*sizeof(cl_float), self->image_temp, 0, NULL, NULL);
-//   if (status!=CL_SUCCESS) return NULL;
+//   if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 //
 //   status = clEnqueueWriteBuffer(self->queue, self->pixel_prob, CL_FALSE, 0, self->height*self->width*sizeof(cl_float), self->pixel_prob_temp, 0, NULL, NULL);
-//   if (status!=CL_SUCCESS) return NULL;
+//   if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 //
 //   status = clEnqueueBarrier(self->queue);
-//   if (status!=CL_SUCCESS) return NULL;
+//   if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
  // Fill in the costs at the lowest level, plus also zero out some stuff - two steps - bgCost and distances, followed by converting the distances into costs...
@@ -1115,7 +1017,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   work_size[1] = self->height;
   calc_block_size(self->setup_model_bgCost_size, 2, work_size, block_size, 0);
   status = clEnqueueNDRangeKernel(self->queue, self->setup_model_bgCost, 2, work_offset, work_size, block_size, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
   work_offset[0] = 0;
@@ -1124,7 +1026,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   work_size[1] = self->height;
   calc_block_size(self->setup_model_dist_pos_x_size, 2, work_size, block_size, 0);
   status = clEnqueueNDRangeKernel(self->queue, self->setup_model_dist_pos_x, 2, work_offset, work_size, block_size, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
   work_offset[0] = 0;
   work_offset[1] = 0;
@@ -1132,7 +1034,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   work_size[1] = self->height - 1;
   calc_block_size(self->setup_model_dist_pos_y_size, 2, work_size, block_size, 0);
   status = clEnqueueNDRangeKernel(self->queue, self->setup_model_dist_pos_y, 2, work_offset, work_size, block_size, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
   work_offset[0] = 1;
   work_offset[1] = 0;
@@ -1140,7 +1042,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   work_size[1] = self->height;
   calc_block_size(self->setup_model_dist_neg_x_size, 2, work_size, block_size, 0);
   status = clEnqueueNDRangeKernel(self->queue, self->setup_model_dist_neg_x, 2, work_offset, work_size, block_size, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
   work_offset[0] = 0;
   work_offset[1] = 1;
@@ -1148,7 +1050,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   work_size[1] = self->height - 1;
   calc_block_size(self->setup_model_dist_neg_y_size, 2, work_size, block_size, 0);
   status = clEnqueueNDRangeKernel(self->queue, self->setup_model_dist_neg_y, 2, work_offset, work_size, block_size, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
   int d = 0;
@@ -1159,48 +1061,48 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   work_size[0] = 1;
   work_size[1] = self->height;
   status = clEnqueueNDRangeKernel(self->queue, self->setup_model_dist_boundary, 2, work_offset, work_size, NULL, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
   d = 1;
   status = clSetKernelArg(self->setup_model_dist_boundary, 1, sizeof(cl_float), &d);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
   work_offset[0] = 0;
   work_offset[1] = self->height - 1;
   work_size[0] = self->width;
   work_size[1] = 1;
   status = clEnqueueNDRangeKernel(self->queue, self->setup_model_dist_boundary, 2, work_offset, work_size, NULL, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
   d = 2;
   status = clSetKernelArg(self->setup_model_dist_boundary, 1, sizeof(cl_float), &d);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
   work_offset[0] = 0;
   work_offset[1] = 0;
   work_size[0] = 1;
   work_size[1] = self->height;
   status = clEnqueueNDRangeKernel(self->queue, self->setup_model_dist_boundary, 2, work_offset, work_size, NULL, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
   d = 3;
   status = clSetKernelArg(self->setup_model_dist_boundary, 1, sizeof(cl_float), &d);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
   work_offset[0] = 0;
   work_offset[1] = 0;
   work_size[0] = self->width;
   work_size[1] = 1;
   status = clEnqueueNDRangeKernel(self->queue, self->setup_model_dist_boundary, 2, work_offset, work_size, NULL, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
   status = clEnqueueBarrier(self->queue);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
   work_size[0] = self->width;
   work_size[1] = self->height;
   calc_block_size(self->setup_model_changeCost_size, 2, work_size, block_size, 0);
   status = clEnqueueNDRangeKernel(self->queue, self->setup_model_changeCost, 2, NULL, work_size, block_size, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
   int l;
@@ -1214,16 +1116,16 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->reset_in, 0, sizeof(cl_int), &self->widthBL[l]);
    status |= clSetKernelArg(self->reset_in, 1, sizeof(cl_mem), &self->msgIn[l]);
 
-   if (status!=CL_SUCCESS) return NULL;
+   if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
    calc_block_size(self->reset_in_size, 2, work_size, block_size, 0);
    status = clEnqueueNDRangeKernel(self->queue, self->reset_in, 2, work_offset, work_size, block_size, 0, NULL, NULL);
-   if (status!=CL_SUCCESS) return NULL;
+   if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
   }
 
 
   status = clEnqueueBarrier(self->queue);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
  // Downsample the costs to the highest level of the processing hierarchy...
@@ -1236,16 +1138,16 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->downsample_model, 4, sizeof(cl_mem), &self->bgCost[l]);
    status |= clSetKernelArg(self->downsample_model, 5, sizeof(cl_mem), &self->changeCost[l]);
 
-   if (status!=CL_SUCCESS) return NULL;
+   if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
    work_size[0] = self->widthBL[l];
    work_size[1] = self->heightBL[l];
    calc_block_size(self->downsample_model_size, 2, work_size, block_size, 0);
    status = clEnqueueNDRangeKernel(self->queue, self->downsample_model, 2, NULL, work_size, block_size, 0, NULL, NULL);
-   if (status!=CL_SUCCESS) return NULL;
+   if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
    status = clEnqueueBarrier(self->queue);
-   if (status!=CL_SUCCESS) return NULL;
+   if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
   }
 
 
@@ -1273,7 +1175,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
     status |= clSetKernelArg(self->send_neg_y, 2, sizeof(cl_mem), &self->changeCost[l]);
     status |= clSetKernelArg(self->send_neg_y, 3, sizeof(cl_mem), &self->msgIn[l]);
 
-    if (status!=CL_SUCCESS) return NULL;
+    if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
    // Do the iterations...
     for (i=0;i<self->itersPerLevel;i++)
@@ -1284,7 +1186,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
      work_size[1] = self->height;
      calc_block_size(self->send_pos_x_size, 2, work_size, block_size, 0);
      status = clEnqueueNDRangeKernel(self->queue, self->send_pos_x, 2, work_offset, work_size, block_size, 0, NULL, NULL);
-     if (status!=CL_SUCCESS) return NULL;
+     if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
      work_offset[0] = 0;
      work_offset[1] = 0;
@@ -1292,7 +1194,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
      work_size[1] = self->height - 1;
      calc_block_size(self->send_pos_y_size, 2, work_size, block_size, 0);
      status = clEnqueueNDRangeKernel(self->queue, self->send_pos_y, 2, work_offset, work_size, block_size, 0, NULL, NULL);
-     if (status!=CL_SUCCESS) return NULL;
+     if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
      work_offset[0] = 1;
      work_offset[1] = 0;
@@ -1300,7 +1202,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
      work_size[1] = self->height;
      calc_block_size(self->send_neg_x_size, 2, work_size, block_size, 0);
      status = clEnqueueNDRangeKernel(self->queue, self->send_neg_x, 2, work_offset, work_size, block_size, 0, NULL, NULL);
-     if (status!=CL_SUCCESS) return NULL;
+     if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
      work_offset[0] = 0;
      work_offset[1] = 1;
@@ -1308,11 +1210,11 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
      work_size[1] = self->height - 1;
      calc_block_size(self->send_neg_y_size, 2, work_size, block_size, 0);
      status = clEnqueueNDRangeKernel(self->queue, self->send_neg_y, 2, work_offset, work_size, block_size, 0, NULL, NULL);
-     if (status!=CL_SUCCESS) return NULL;
+     if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
      status = clEnqueueBarrier(self->queue);
-     if (status!=CL_SUCCESS) return NULL;
+     if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
     }
 
    // Upsample the messages to the higher resolution...
@@ -1323,7 +1225,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
      status |= clSetKernelArg(self->upsample_messages, 2, sizeof(cl_int), &self->widthBL[l-1]);
      status |= clSetKernelArg(self->upsample_messages, 3, sizeof(cl_mem), &self->msgIn[l-1]);
 
-     if (status!=CL_SUCCESS) return NULL;
+     if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
      work_size[0] = self->widthBL[l-1];
      work_size[1] = self->heightBL[l-1];
@@ -1332,7 +1234,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
      if (status!=CL_SUCCESS) return NULL;
 
      status = clEnqueueBarrier(self->queue);
-     if (status!=CL_SUCCESS) return NULL;
+     if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
     }
   }
 
@@ -1344,19 +1246,19 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   work_size[1] = self->height;
   calc_block_size(self->calc_mask_size, 2, work_size, block_size, 0);
   status = clEnqueueNDRangeKernel(self->queue, self->calc_mask, 2, work_offset, work_size, block_size, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
   status = clEnqueueBarrier(self->queue);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
   status = clEnqueueReadBuffer(self->queue, self->mask, CL_FALSE, 0, self->height*self->width*sizeof(cl_char), self->mask_temp, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
   status = clFinish(self->queue);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
 
   for (y=0;y<self->height;y++)

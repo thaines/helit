@@ -48,6 +48,8 @@ class Manager:
         self.cl = manager_cl.ManagerCL()
       except: pass
 
+    self.fps = 0.0
+
 
   def haveCL(self):
     """Returns True if OpenCL is avaliable, False otherwise."""
@@ -126,7 +128,8 @@ class Manager:
       i += 1
 
       now = time.clock()
-      if not quiet: print 'Frame %i, time %.3f, sync delay %.3f'%(i, now-lastTime, max(delay,3)/1000.0)
+      self.fps = self.fps*0.9 + 0.1/max(now-lastTime,1e-6)
+      if not quiet: print 'Frame %i, time %.3f, sync delay %.3f, fps %.2f'%(i, now-lastTime, max(delay,3)/1000.0, self.fps)
       if callback!=None: callback()
 
       if real_time:

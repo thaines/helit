@@ -31,7 +31,7 @@ import backsub_dp_c
 
 # The OpenCL version - try to compile it, and use it if at all possible...
 try:
-  make_mod('backsub_dp_cl', os.path.dirname(__file__), 'backsub_dp_cl.c', openCL=True)
+  make_mod('backsub_dp_cl', os.path.dirname(__file__), ['manager_cl.h', 'open_cl_help.h', 'backsub_dp_cl.c'], openCL=True)
   import backsub_dp_cl
 except:
   backsub_dp_cl = None

@@ -24,6 +24,7 @@ import video
 
 lumScale = 0.5
 noiseFloor = 0.2
+use_rgb = False
 
 
 man = video.Manager()
@@ -31,21 +32,21 @@ man = video.Manager()
 vid = video.ReadCV('test.avi')
 man.add(vid)
 
-cb = video.ColourBias(lumScale, noiseFloor)
+cb = video.ColourBias(lumScale, noiseFloor, man.getCL())
 cb.source(0,vid)
 man.add(cb)
 
-cb = vid # Uncoment to switch off the colour model.
+if use_rgb: cb = vid
 
 lc = video.LightCorrectMS()
 lc.source(0,cb)
 man.add(lc)
 
-ucb_lc = video.ColourUnBias(lumScale, noiseFloor)
+ucb_lc = video.ColourUnBias(lumScale, noiseFloor, man.getCL())
 ucb_lc.source(0,lc,3)
 man.add(ucb_lc)
 
-ucb_lc = lc # Uncoment to switch off the colour model.
+if use_rgb: ucb_lc = lc
 
 diff = video.RenderDiff(128.0)
 diff.source(0,vid)
@@ -73,11 +74,11 @@ mr.source(1,vid)
 man.add(mr)
 
 
-ucb_bg = video.ColourUnBias(lumScale, noiseFloor)
+ucb_bg = video.ColourUnBias(lumScale, noiseFloor, man.getCL())
 ucb_bg.source(0,bs,2)
 man.add(ucb_bg)
 
-ucb_bg = bs # Uncoment to switch off the colour model.
+if use_rgb: ucb_bg = bs
 
 
 winIn = video.ViewCV('Input')
