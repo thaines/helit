@@ -483,3 +483,10 @@ class KDE_INC:
               cost = self.__calcMergeCost(self.gmm.weight[i], self.gmm.mean[i,:], self.gmm.prec[i,:,:], self.gmm.weight[bestOld[1]], self.gmm.mean[bestOld[1],:], self.gmm.prec[bestOld[1],:,:])
               if i<bestOld[1]: self.merge[bestOld[1],i] = cost
               else: self.merge[i,bestOld[1]] = cost
+
+
+  def marginalise(self, dims):
+    """Returns an object on which you can call prob(), but with only a subset of the dimensions. The set of dimensions is given as something that can be interpreted as a numpy array of integers - it is the dimensions to keep, it marginalises away everything else. The indexing of the returned object will match up with that in dims. Note that you must not have any repetitions in dims - that would create absurdity."""
+    ret = self.gmm.clone()
+    ret.marginalise(dims)
+    return ret

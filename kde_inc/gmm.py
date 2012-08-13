@@ -26,6 +26,17 @@ class GMM:
     self.norm = numpy.zeros(count, dtype=numpy.float32) # Normalising multiplicative constant.
     
     self.temp = numpy.empty((2, dims), dtype=numpy.float32) # To save memory chugging in the inline code.
+  
+  def clone(self):
+    """Returns a clone of this object."""
+    ret = GMM(self.mean.shape[1], self.mean.shape[0])
+    
+    ret.weight[:] = self.weight
+    ret.mean[:,:] = self.mean
+    ret.prec[:,:,:] = self.prec
+    ret.norm[:] = self.norm
+    
+    return ret
 
 
   def normWeights(self):
@@ -44,7 +55,7 @@ class GMM:
     
     for ii in xrange(nzi.shape[0]):
       self.norm[nzi[ii]] = numpy.linalg.det(self.prec[nzi[ii],:,:])
-    self.norm[nzi] = math.sqrt(self.norm[nzi])
+    self.norm[nzi] = numpy.sqrt(self.norm[nzi])
 
     self.norm[nzi] *= math.pow(2.0*math.pi, -0.5*self.mean.shape[1])
   
@@ -94,7 +105,7 @@ class GMM:
       sample = numpy.asarray(sample, dtype=numpy.float32)
       weight = self.weight
       mean = self.mean
-      prec = self.norm
+      prec = self.prec
       norm = self.norm
       temp = self.temp
       
@@ -116,3 +127,19 @@ class GMM:
       core *= self.norm[nzi]
       core *= self.weight[nzi]
       return core[numpy.isfinite(core)].sum() # Little bit of safety.
+
+
+  def marginalise(self, dims):
+    """Given a list of dimensions this keeps those dimensions and drops the rest, i.e. marginalises them out. New object will have the old indices remapped as indicated by dims."""
+    dims = numpy.asarray(dims)
+    self.mean = self.mean[:, dims]
+    
+    for i in xrange(self.prec.shape[0]):
+      if self.weight[i]>1e-6:
+        self.prec[i,:,:] = numpy.linalg.inv(self.prec[i,:,:])
+    self.prec = self.prec[numpy.ix_(numpy.arange(self.prec.shape[0]), dims, dims)]
+    for i in xrange(self.prec.shape[0]):
+      if self.weight[i]>1e-6:
+        self.prec[i,:,:] = numpy.linalg.inv(self.prec[i,:,:])
+    
+    self.calcNorms()
