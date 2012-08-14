@@ -101,6 +101,7 @@ class KDE_INC:
     global weave
 
     try:
+      raise Exception() # Below code is actually slowing things down. Am disabling for now.
       if weave==None: raise Exception()
       support =  matrix_code + start_cpp() + """
       // Note - designed so that A and Out pointers can be the same.
