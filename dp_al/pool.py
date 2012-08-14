@@ -213,7 +213,7 @@ class Pool:
           probSel[cat] = pp
           div += pp
 
-      if div<1e-5:
+      if div<1e-64:
         for cat in probSel.iterkeys():
           probSel[cat] = self.prior[cat]
           div += probSel[cat]
@@ -227,8 +227,8 @@ class Pool:
         if cat!=None or dp:
           probIs[cat] = p * (self.count[cat] if cat!=None else self.conc.getConcentration())
           div += probIs[cat]
-          
-      if div<1e-5:
+      
+      if div<1e-64:
         for cat in probIs.iterkeys():
           probIs[cat] = self.prior[cat]
           div += probIs[cat]
@@ -254,7 +254,7 @@ class Pool:
       
       # If requested include a weighting by density...
       if dw: wrong[i] *= entity[1][None]
-
+    
     if hardChoice:
       pos = numpy.argmax(wrong)
     else:
@@ -287,7 +287,7 @@ class Pool:
             probSel[cat] = pp
             div += pp
 
-        if div<1e-5:
+        if div<1e-64:
           for cat in probSel.iterkeys():
             probSel[cat] = self.prior[cat]
             div += probSel[cat]
@@ -306,7 +306,7 @@ class Pool:
             probIs[cat] = p * (self.count[cat] if cat!=None else self.conc.getConcentration())
             div += probIs[cat]
 
-        if div<1e-5:
+        if div<1e-64:
           for cat in probIs.iterkeys():
             probIs[cat] = self.prior[cat]
             div += probIs[cat]

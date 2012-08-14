@@ -21,3 +21,6 @@ except: pass
 
 try: from classify_df import ClassifyDF
 except: pass
+
+try: from classify_df_kde import ClassifyDF_KDE
+except: pass
