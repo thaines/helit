@@ -107,8 +107,8 @@ class SubsetPrecisionLOO(PrecisionLOO):
   """This class performs the same task as PrecisionLOO, except it runs on a subset of data points, and in effect tunes the precision matrix for a kernel density estimate constructed using less samples than are provided to the class. Takes the mean of multiple runs with different subsets."""
 
   def solve(self, runs, size, callback=None):
-    """Trys all the options, and selects the one that provides the best nll. runs is the number of runs to do, with it taking the avergae score for each run, whilst size is how many samples to have in each run, i.e. the size to tune for."""
-    # First generate all the subsets of the datmatrix...
+    """Trys all the options, and selects the one that provides the best nll. runs is the number of runs to do, with it taking the average score for each run, whilst size is how many samples to have in each run, i.e. the size to tune for."""
+    # First generate all the subsets of the datamatrix...
     dm = self.dataMatrix()
     subset = []
     for _ in xrange(runs): subset.append(numpy.random.permutation(dm.shape[0])[:size])

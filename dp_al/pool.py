@@ -26,14 +26,14 @@ from concentration_dp import ConcentrationDP
 
 
 
-Entity = collections.namedtuple('Entity', ['sample', 'prob', 'ident'])
+Entity = collections.namedtuple('Entity', ['sample', 'nll', 'ident'])
 
 
 
 class Pool:
   """Represents a pool of entities that can be used for trainning with active learning. Simply contains the entities, their category probabilities and some arbitary identifier (For testing the identifier is often set to be the true category.). Provides active learning methods to extract the entities via various techneques based on the category probabilites. The category probabilites are a dictionary, indexed by category names, and includes 'None' as the probability of it being draw from the prior. Each term consists of P(data|category,model). The many select methods remove an item from the pool based on an active learning approach - the user is then responsible for querying the oracle for its category and updating the model accordingly. Before calling a select method you need to call update to update the probabilities associated with each entity, providing it with the current model, though you can batch things by calling update once before several select calls. The select methods return the named tuple Entity, which is (sample, prob, ident)."""
   def __init__(self):
-    self.entities = [] # Each entity is a 5-list, where the first entry is the thing being stored, the second the associated category probabilities dictionary, and the third the identifier of the thing, which for testing is often the true category. These are basically Entity objects, but left editable as lists. The 4th item is then the state, used to optimise repeated calls to update, and the 5th is a list of probability dictionaries, for if the classifier supports that.
+    self.entities = [] # Each entity is a 5-list, where the first entry is the thing being stored, the second the associated category nll dictionary, and the third the identifier of the thing, which for testing is often the true category. These are basically Entity objects, but left editable as lists. The 4th item is then the state, used to optimise repeated calls to update, and the 5th is a list of nll dictionaries, for if the classifier supports that.
     
     self.prior = collections.defaultdict(lambda: 1.0)
     self.count = None
@@ -50,9 +50,9 @@ class Pool:
   def update(self, classifier, dp_ready = True, qbc = False):
     """This is given an object that impliments the ProbCat interface from the p_cat module - it then uses that object to update the probabilities for all entities in the pool. Assumes the sample provided to store can be passed into the getProb method of the classifier. dp_ready should be left True if one of the select methods that involves dp's is going to be called, so it can update the concentration. qbc needs to be set True if methods based on query by comittee are to be used."""
     for entity in self.entities:
-      entity[1] = classifier.getDataProb(entity[0], entity[3])
+      entity[1] = classifier.getDataNLL(entity[0], entity[3])
       if classifier.listMode() and qbc:
-        entity[4] = classifier.getDataProbList(entity[0], entity[3])
+        entity[4] = classifier.getDataNLLList(entity[0], entity[3])
 
     self.count = dict(classifier.getCatCounts())
 
@@ -115,15 +115,19 @@ class Pool:
     """Returns the least likelly member. You can also make it probalistic by providing a beta value - it then weights the samples by exp(-beta * outlier) for random selection."""
     if len(self.cats)==0: return self.selectRandom()
     
-    prob = numpy.zeros(len(self.entities), dtype=numpy.float32)
+    ll = numpy.empty(len(self.entities), dtype=numpy.float32)
+    ll[:] = -1e64
+    
     for i, entity in enumerate(self.entities):
-      for cat, p in entity[1].iteritems():
-        if cat!=None:
-          prob[i] += p * self.prior[cat]
+      llbc = numpy.array([numpy.log(self.prior[x[0]])-x[1] for x in entity[1].iteritems() if x[0]!=None], dtype=numpy.float32)
+      
+      high = llbc.max()
+      ll[i] = high + numpy.log(numpy.exp(llbc-high).sum())
 
     if beta==None:
-      pos = numpy.argmin(prob)
+      pos = numpy.argmin(ll)
     else:
+      prob = numpy.exp(ll)
       prob *= -beta
       prob = numpy.exp(prob)
 
@@ -138,19 +142,19 @@ class Pool:
     self.entities = self.entities[:pos] + self.entities[pos+1:]
     return Entity._make(ret[:3])
 
+
   def selectEntropy(self, beta = None):
     """Selects the sample with the greatest entropy - the most common uncertainty-based sampling method. If beta is provided instead of selecting the maximum it makes a random selection by weighting each sample by exp(-beta * entropy)."""
     if len(self.cats)==0: return self.selectRandom()
     
     ent = numpy.empty(len(self.entities), dtype=numpy.float32)
     for i, entity in enumerate(self.entities):
-      vals = []
-      for cat, p in entity[1].iteritems():
-        if cat!=None:
-          pp = p * self.prior[cat]
-          if pp>1e-6: vals.append(pp)
-      div = sum(vals)
-      ent[i] = -sum(map(lambda pp: (pp/div) * math.log(pp/div), vals))
+      llbc = numpy.array([numpy.log(self.prior[x[0]])-x[1] for x in entity[1].iteritems() if x[0]!=None], dtype=numpy.float32)
+      
+      high = llbc.max()
+      log_div = high + numpy.log(numpy.exp(llbc-high).sum())
+      
+      ent[i] = -(numpy.exp(llbc - log_div) * (llbc - log_div)).sum()
 
     if beta==None:
       pos = numpy.argmax(ent)
@@ -176,15 +180,21 @@ class Pool:
     # Calculate the P(new) probabilities...
     prob = numpy.empty(len(self.entities))
     for i, entity in enumerate(self.entities):
-      new = entity[1][None] * self.conc.getConcentration()
-      div = new
-      for cat, p in entity[1].iteritems():
-        if cat!=None: div += p * self.count[cat]
-      prob[i] = new / div
+      new = numpy.log(self.conc.getConcentration()) - entity[1][None]
+      
+      lla = numpy.array([new] + [numpy.log(self.prior[x[0]])-x[1] for x in entity[1].iteritems() if x[0]!=None], dtype=numpy.float32)
+      
+      high = llbc.max()
+      lla_sum = high + numpy.log(numpy.exp(llbc-high).sum())
+      
+      prob[i] = new - div
 
     # Select an entry...
     if hardChoice: pos = numpy.argmax(prob)
     else:
+      prob -= prob.max()
+      prob = numpy.exp(prob)
+      
       r = random.random() * prob.sum()
       pos = 0
       while pos<(prob.shape[0]-1):
@@ -205,55 +215,50 @@ class Pool:
     wrong = numpy.ones(len(self.entities))
     for i, entity in enumerate(self.entities):
       # Calculate the probability of selecting each of the known classes...
-      probSel = dict()
-      div = 0.0
+      llSel = dict()
       for cat, p in entity[1].iteritems():
         if cat!=None:
-          pp = p * self.prior[cat]
-          probSel[cat] = pp
-          div += pp
-
-      if div<1e-64:
-        for cat in probSel.iterkeys():
-          probSel[cat] = self.prior[cat]
-          div += probSel[cat]
+          llSel[cat] = numpy.log(self.prior[cat]) - p
       
-      for cat in probSel.iterkeys(): probSel[cat] /= div
-
+      if len(llSel)>0:
+        vals = numpy.array(llSel.values())
+        high = vals.max()
+        div = high + numpy.log(numpy.exp(vals-high).sum())
+      
+        for cat in llSel.iterkeys(): llSel[cat] -= div
+      
       # Calculate the probability of it being each of the options...
-      probIs = dict()
-      div = 0.0
+      llIs = dict()
       for cat, p in entity[1].iteritems():
         if cat!=None or dp:
-          probIs[cat] = p * (self.count[cat] if cat!=None else self.conc.getConcentration())
-          div += probIs[cat]
+          w = self.count[cat] if cat!=None else self.conc.getConcentration()
+          llIs[cat] = numpy.log(w) - p
       
-      if div<1e-64:
-        for cat in probIs.iterkeys():
-          probIs[cat] = self.prior[cat]
-          div += probIs[cat]
-
-      for cat in probIs.iterkeys(): probIs[cat] /= div
+      vals = numpy.array(llIs.values())
+      high = vals.max()
+      div = high + numpy.log(numpy.exp(vals-high).sum())
+      
+      for cat in llIs.iterkeys(): llIs[cat] -= div
 
       # Calculate the probability of getting it wrong...
       if softSelect==None: # 1 - Expected hinge loss, sort of.
-        if len(probSel)>0: maxSel = max(probSel.itervalues())
-        else: maxSel = 1.0
-        wrong[i] -= maxSel * probIs[None]
-        for cat, p in probSel.iteritems():
-          wrong[i] -= (maxSel - p) * probIs[cat]
+        if len(llSel)>0: maxSel = max(llSel.itervalues())
+        else: maxSel = 0.0
+        wrong[i] -= numpy.exp(maxSel + llIs[None])
+        for cat, p in llSel.iteritems():
+          wrong[i] -= numpy.exp(maxSel + llIs[cat]) - numpy.exp(p + llIs[cat])
       elif softSelect:
         for cat, p in probSel.iteritems():
-          wrong[i] -= p * probIs[cat]
+          wrong[i] -= numpy.exp(p + llIs[cat])
       else:
         best = -1.0
-        for cat, p in probSel.iteritems():
+        for cat, p in llSel.iteritems():
           if p>best:
             best = p
-            wrong[i] = 1.0 - probIs[cat]
+            wrong[i] = 1.0 - numpy.exp(llIs[cat])
       
       # If requested include a weighting by density...
-      if dw: wrong[i] *= entity[1][None]
+      if dw: wrong[i] *= numpy.log(-entity[1][None])
     
     if hardChoice:
       pos = numpy.argmax(wrong)
@@ -277,69 +282,64 @@ class Pool:
     wrong = numpy.zeros(len(self.entities))
     for i, entity in enumerate(self.entities):
       # Calculate a list of estimates of the probability of selecting each of the known classes...
-      probSelList = []
-      for prob in entity[4]:
-        probSel = dict()
-        div = 0.0
-        for cat, p in prob.iteritems():
+      llSelList = []
+      for ll in entity[4]:
+        llSel = dict()
+        for cat, p in ll.iteritems():
           if cat!=None:
-            pp = p * self.prior[cat]
-            probSel[cat] = pp
-            div += pp
-
-        if div<1e-64:
-          for cat in probSel.iterkeys():
-            probSel[cat] = self.prior[cat]
-            div += probSel[cat]
-      
-        for cat in probSel.iterkeys(): probSel[cat] /= div
+            llSel[cat] = numpy.log(self.prior[cat]) - p
         
-        probSelList.append(probSel)
+        if len(llSel)>0:
+          vals = numpy.array(llSel.values())
+          high = vals.max()
+          div = high + numpy.log(numpy.exp(vals-high).sum())
+      
+          for cat in llSel.iterkeys(): llSel[cat] -= div
+        
+        llSelList.append(llSel)
         
       # Calculate a list of estimates of the probability of it being each of the options...
-      probIsList = []
-      for prob in entity[4]:
-        probIs = dict()
-        div = 0.0
-        for cat, p in prob.iteritems():
+      llIsList = []
+      for ll in entity[4]:
+        llIs = dict()
+        for cat, p in ll.iteritems():
           if cat!=None or dp:
-            probIs[cat] = p * (self.count[cat] if cat!=None else self.conc.getConcentration())
-            div += probIs[cat]
-
-        if div<1e-64:
-          for cat in probIs.iterkeys():
-            probIs[cat] = self.prior[cat]
-            div += probIs[cat]
-
-        for cat in probIs.iterkeys(): probIs[cat] /= div
+            w = self.count[cat] if cat!=None else self.conc.getConcentration()
+            llIs[cat] = numpy.log(w) - p
+      
+        vals = numpy.array(llIs.values())
+        high = vals.max()
+        div = high + numpy.log(numpy.exp(vals-high).sum())
+      
+        for cat in llIs.iterkeys(): llIs[cat] -= div
         
-        probIsList.append(probIs)
+        llIsList.append(llIs)
       
       # Now do the combinatorics of the two lists to generate a P(wrong) estimate for each pair, for which the average is taken...
-      for probSel in probSelList:
-        for probIs in probIsList:
+      for llSel in llSelList:
+        for llIs in llIsList:
           if softSelect==None: # 1 - Expected hinge loss, sort of.
-            if len(probSel)>0: maxSel = max(probSel.itervalues())
-            else: maxSel = 1.0
-            w = 1.0 - maxSel * probIs[None]
-            for cat, p in probSel.iteritems():
-              w -= (maxSel - p) * probIs[cat]
+            if len(llSel)>0: maxSel = max(llSel.itervalues())
+            else: maxSel = 0.0
+            w = 1.0 - numpy.exp(maxSel + llIs[None])
+            for cat, p in llSel.iteritems():
+              w -= numpy.exp(maxSel + llIs[cat]) - numpy.exp(p + llIs[cat])
           elif softSelect:
             w = 1.0
             for cat, p in probSel.iteritems():
-              w -= p * probIs[cat]
+              w -= numpy.exp(p + llIs[cat])
           else:
             best = -1.0
             w = 0.0
-            for cat, p in probSel.iteritems():
+            for cat, p in llSel.iteritems():
               if p>best:
                 best = p
-                w = 1.0 - probIs[cat]
+                w = 1.0 - numpy.exp(llIs[cat])
           wrong[i] += w
-      wrong[i] /= len(probSelList) * len(probIsList)
+      wrong[i] /= len(llSelList) * len(llIsList)
 
       # If requested include a weighting by density...
-      if dw: wrong[i] *= entity[1][None]
+      if dw: wrong[i] *= numpy.log(-entity[1][None])
       
     if hardChoice:
       pos = numpy.argmax(wrong)

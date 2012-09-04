@@ -51,6 +51,11 @@ class KDE_INC:
     if self.count!=0: return self.gmm.prob(sample)
     else: return 1.0
 
+  def nll(self, sample):
+    """Returns the negative log liklihood of the given sample - must not be called until at least one sample has been added, though it will return a positive constant if called with no samples provided."""
+    if self.count!=0: return self.gmm.nll(sample)
+    else: return 0.0
+
 
   def __merge(self, weightA, meanA, precA, weightB, meanB, precB):
     """Merges two Gaussians and returns the merged result, as (weight, mean, prec)"""
@@ -243,8 +248,8 @@ class KDE_INC:
 
         assert(Sprec[0]==sizeof(float));
         assert(Sprec[1]==sizeof(float)*Nsample[0]);
-        norm[count] = sqrt(Determinant(&PREC3(count, 0, 0), Nsample[0]));
-        norm[count] *= pow(2.0*M_PI, -0.5*Nsample[0]);
+        log_norm[count]  = 0.5 * log(Determinant(&PREC3(count, 0, 0), Nsample[0]));
+        log_norm[count] -= 0.5 * Nsample[0] * log(2.0*M_PI);
 
         float w = 1.0 / (count+1);
         for (int i=0; i<=count; i++)
@@ -316,8 +321,8 @@ class KDE_INC:
           doMerge(Nsample[0], weight[lowN], &MEAN2(lowN,0), &PREC3(lowN,0,0), w, sample, basePrec, weight[lowN], &MEAN2(lowN,0), &PREC3(lowN,0,0), &TEMP2(0,0), &TEMPPREC3(0,0,0), &TEMPPREC3(1,0,0));
 
          // Update the normalising constant...
-          norm[lowN] = sqrt(Determinant(&PREC3(lowN, 0, 0), Nsample[0]));
-          norm[lowN] *= pow(2.0*M_PI, -0.5*Nsample[0]);
+          log_norm[lowN]  = 0.5 * log(Determinant(&PREC3(lowN, 0, 0), Nsample[0]));
+          log_norm[lowN] -= 0.5 * Nsample[0] * log(2.0*M_PI);
 
          // Update the array of merge costs...
           for (int i=0; i<Nweight[0]; i++)
@@ -350,11 +355,11 @@ class KDE_INC:
           }
 
          // Update both normalising constants...
-          norm[lowI] = sqrt(Determinant(&PREC3(lowI, 0, 0), Nsample[0]));
-          norm[lowI] *= pow(2.0*M_PI, -0.5*Nsample[0]);
+          log_norm[lowI]  = 0.5 * log(Determinant(&PREC3(lowI, 0, 0), Nsample[0]));
+          log_norm[lowI] -= 0.5 * Nsample[0] * log(2.0*M_PI);
 
-          norm[lowJ] = sqrt(Determinant(&PREC3(lowJ, 0, 0), Nsample[0]));
-          norm[lowJ] *= pow(2.0*M_PI, -0.5*Nsample[0]);
+          log_norm[lowJ]  = 0.5 * log(Determinant(&PREC3(lowJ, 0, 0), Nsample[0]));
+          log_norm[lowJ] -= 0.5 * Nsample[0] * log(2.0*M_PI);
 
          // Update the array of merge costs...
           for (int i=0; i<Nweight[0]; i++)
@@ -392,10 +397,10 @@ class KDE_INC:
       weight = self.gmm.weight
       mean = self.gmm.mean
       prec = self.gmm.prec
-      norm = self.gmm.norm
+      log_norm = self.gmm.log_norm
       temp = self.gmm.temp
 
-      weave.inline(code, ['sample', 'basePrec', 'count', 'merge', 'mergeT', 'tempPrec', 'weight', 'mean', 'prec', 'norm', 'temp'], support_code = support)
+      weave.inline(code, ['sample', 'basePrec', 'count', 'merge', 'mergeT', 'tempPrec', 'weight', 'mean', 'prec', 'log_norm', 'temp'], support_code = support)
       self.count += 1
 
     except Exception, e:

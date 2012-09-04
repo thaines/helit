@@ -67,3 +67,9 @@ class ClassifyKDE(ProbCat):
     ret[None] = self.prior.prob(sample)
     for cat, mm in self.cats.iteritems(): ret[cat] = mm.prob(sample)
     return ret
+
+  def getDataNLL(self, sample, state = None):
+    ret = dict()
+    ret[None] = self.prior.nll(sample)
+    for cat, mm in self.cats.iteritems(): ret[cat] = mm.nll(sample)
+    return ret

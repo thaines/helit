@@ -6,6 +6,8 @@
 
 # Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 
+import math
+
 
 
 class ProbCat:
@@ -45,16 +47,42 @@ class ProbCat:
 
   def getDataProb(self, sample, state = None):
     """Returns a dictionary indexed by the various categories, with the probabilities of the sample being drawn from the respective categories. Must also include an entry indexed by 'None' that represents the probability of the sample comming from the prior. Note that this is P(data|category,model) - you probably want it reversed, which requires Bayes rule be applied. state is an optional dictionary - if you are calling this repeatedly on the same sample, e.g. during incrimental learning, then state allows an algorithm to store data to accelerate future calls. There should be a dictionary for each sample, and it should be empty on the first call. The implimentation will presume that the sample is identical for each call but that the model will not be, though as it would typically be used for incrimental learning the speed up can be done under the assumption that the model has only changed a little bit."""
-    raise NotImplementedError('getDataProb has not been implimented.')
+    ret = dict()
+    for key, value in self.getDataNLL(sample, state).iteritems():
+      ret[key] = math.exp(-value)
+    return ret
   
-  
+  def getDataNLL(self, sample, state = None):
+    """Identical to getDataProb, except it returns negative log liklihood instead of probabilities. Default implimentation converts the return value of getDataProb, so either that or this needs to be overriden."""
+    ret = dict()
+    for key, value in self.getDataProb(sample, state).iteritems():
+      ret[key] = -math.log(max(value,1e-64))
+    return ret
+
+
   def getDataProbList(self, sample, state = None):
     """Is only implimented if listMode returns True. Does the same things as getDataProb, but returns a list of answers."""
-    raise NotImplementedError('getDataProbList has not been implimented.')
+    def convert(dic):
+      ret = dict()
+      for key, value in dic.iteritems():
+        ret[key] = math.exp(-value)
+      return ret
+
+    return map(convert, self.getDataNLLList(sample, state))
+
+  def getDataNllList(self, sample, state = None):
+    """The negative log liklihood version of getDataProbList."""
+    def convert(dic):
+      ret = dict()
+      for key, value in dic.iteritems():
+        ret[key] = -math.log(max(value,1e-64))
+      return ret
+
+    return map(convert, self.getDataProbList(sample, state))
 
 
   def getProb(self, sample, weight = False, conc = None, state = None):
-    """This calls through to getDataProb and then applies Bayes rule to return a dictionary of values representing P(data,category|model) = P(data|category,model)*P(category). Note that whilst the two terms going into the return value will be normalised the actual return value will not - you will typically normalise to get P(category|data,model). The weight parameter indicates the source of P(class) - False (The default) indicates to use a uniform prior, True to weight by the number of instances of each category that have been provided to the classifier. Alternativly a dictionary indexed by the categories can be provided of weights, which will be normalised and used. By default the prior probability is ignored, but if a concentration (conc) value is provided it assumes a Dirichlet process, and you will have an entry in the return value, indexed by None, indicating the probability that it belongs to a previously unhandled category. For normalisation purposes conc is always assumed to be in ratio to the number of samples that have been provided to the classifier, regardless of weight. state is passed through to the getDataProb call."""
+    """This calls through to getDataProb and then applies Bayes rule to return a dictionary of values representing P(data,category|model) = P(data|category,model)*P(category). Note that whilst the two terms going into the return value will be normalised the actual return value will not - you will typically normalise to get P(category|data,model). The weight parameter indicates the source of P(class) - False (The default) indicates to use a uniform prior, True to weight by the number of instances of each category that have been provided to the classifier. Alternativly a dictionary indexed by the categories can be provided of weights, which will be normalised and used. By default the prior probability is ignored, but if a concentration (conc) value is provided it assumes a Dirichlet process, and you will have an entry in the return value, indexed by None, indicating the probability that it belongs to a previously unhandled category. For normalisation purposes conc is always assumed to be in relation to the number of samples that have been provided to the classifier, regardless of weight. state is passed through to the getDataProb call."""
     # Get the data probabilities...
     dprob = self.getDataProb(sample, state)
 
@@ -65,11 +93,10 @@ class ProbCat:
     
     norm = float(sum(cprob.itervalues()))
     if conc!=None: # Adjust norm so it all sums to 1.
-      conc = float(conc) / self.getSampleTotal()
+      conc = float(conc) / (self.getSampleTotal() + conc)
       norm /= 1.0 - conc
 
     for cat in cprob.iterkeys(): cprob[cat] /= norm
-
     if conc!=None: cprob[None] = conc
 
     # Multiply it all out and return...
@@ -78,7 +105,32 @@ class ProbCat:
       ret[cat] *= dprob[cat]
     return ret
     
+  def getNLL(self, sample, weight = False, conc = None, state = None):
+    """Negative log liklihood equivalent of getProb."""
+    # Get the data nll...
+    dprob = self.getDataNLL(sample, state)
+
+    # Calculate the class probabilities, including normalisation and the inclusion of conc if need be...
+    if weight==False: cprob = dict(map(lambda c: (c,1.0), self.getCatList()))
+    elif weight==True: cprob = dict(self.getCatCounts())
+    else: cprob = dict(weight)
     
+    norm = float(sum(cprob.itervalues()))
+    if conc!=None: # Adjust norm so it all sums to 1.
+      conc = float(conc) / (self.getSampleTotal() + conc)
+      norm /= 1.0 - conc
+    norm = math.log(max(norm,1e-64))
+
+    for cat in cprob.iterkeys(): cprob[cat] = norm - math.log(cprob[cat])
+    if conc!=None: cprob[None] = -math.log(max(conc,1e-64))
+
+    # Multiply it all out and return...
+    ret = dict(cprob)
+    for cat in ret.iterkeys():
+      ret[cat] += dprob[cat]
+    return ret
+
+
   def getProbList(self, sample, weight = False, conc = None, state = None):
     """List version of getProb, will only work if listMode returns True. Same as getProb but it returns a list of answers, as samples of a possible answer."""
     def work(dprob):
@@ -88,11 +140,10 @@ class ProbCat:
     
       norm = float(sum(cprob.itervalues()))
       if conc!=None: # Adjust norm so it all sums to 1.
-        conc = float(conc) / self.getSampleTotal()
+        conc = float(conc) / (self.getSampleTotal() + conc)
         norm /= 1.0 - conc
 
       for cat in cprob.iterkeys(): cprob[cat] /= norm
-
       if conc!=None: cprob[None] = conc
 
       # Multiply it all out and return...
@@ -102,17 +153,41 @@ class ProbCat:
       return ret
     
     return map(work, self.getDataProbList(sample, state))
+    
+  def getNLLList(self, sample, weight = False, conc = None, state = None):
+    """Negative log liklihood version of getProbList"""
+    def work(dprob):
+      if weight==False: cprob = dict(map(lambda c: (c,1.0), self.getCatList()))
+      elif weight==True: cprob = dict(self.getCatCounts())
+      else: cprob = dict(weight)
+    
+      norm = float(sum(cprob.itervalues()))
+      if conc!=None: # Adjust norm so it all sums to 1.
+        conc = float(conc) / (self.getSampleTotal() + conc)
+        norm /= 1.0 - conc
+      norm = math.log(max(norm,1e-64))
+
+      for cat in cprob.iterkeys(): cprob[cat] = norm - math.log(cprob[cat])
+      if conc!=None: cprob[None] = -math.log(max(conc,1e-64))
+
+      # Multiply it all out and return...
+      ret = dict(cprob)
+      for cat in ret.iterkeys():
+        ret[cat] += dprob[cat]
+      return ret
+    
+    return map(work, self.getDataNLLList(sample, state))
 
 
   def getCat(self, sample, weight = False, conc = None, state = None):
-    """Simply calls through to getProb and returns the category with the highest probability. If conc is provided it can be None, to indicate a new category is more likelly than any of the existing ones. A simple conveniance method. state is passed through to the getDataProb call."""
-    prob = self.getProb(sample, weight, conc, state)
+    """Simply calls through to getNLL and returns the category with the highest probability. If conc is provided it can be None, to indicate a new category is more likelly than any of the existing ones. A simple conveniance method. state is passed through to the getDataProb call."""
+    nll = self.getNLL(sample, weight, conc, state)
     
     best = None
     ret = None
     
-    for cat, p in prob.iteritems():
-      if best==None or p>best:
+    for cat, p in nll.iteritems():
+      if best==None or p<best:
         best = p
         ret = cat
 
@@ -121,15 +196,15 @@ class ProbCat:
   
   def getCatList(self, sample, weight = False, conc = None, state = None):
     """List version of getCat, will only work if listMode returns True. Same as getCat but it returns a list of answers, as samples of a possible answer."""
-    def work(prob):
+    def work(nll):
       best = None
       ret = None
     
       for cat, p in prob.iteritems():
-        if best==None or p>best:
+        if best==None or p<best:
           best = p
           ret = cat
 
       return ret
     
-    return map(work, self.getProbList(sample, weight, conc, state))
+    return map(work, self.getNLLList(sample, weight, conc, state))

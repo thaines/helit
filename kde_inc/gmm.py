@@ -16,6 +16,10 @@ from utils.start_cpp import start_cpp
 
 
 
+log_2_pi = math.log(2.0*math.pi)
+
+
+
 class GMM:
   """Contains a Gaussian mixture model - just a list of weights, means and precision matrices. List is of fixed size, and it has functions to determine the probability of a point in space. Components with a weight of zero are often computationally ignored. Initialises empty, which is not good for normalisation of weights - don't do it until data is avaliable! Designed to be used directly by any entity that is filling it in - interface is mostly user only."""
   def __init__(self, dims, count):
@@ -23,7 +27,7 @@ class GMM:
     self.weight = numpy.zeros(count, dtype=numpy.float32)
     self.mean = numpy.zeros((count, dims), dtype=numpy.float32)
     self.prec = numpy.zeros((count, dims, dims), dtype=numpy.float32) # Precision, i.e. inverse covariance.
-    self.norm = numpy.zeros(count, dtype=numpy.float32) # Normalising multiplicative constant.
+    self.log_norm = numpy.zeros(count, dtype=numpy.float32) # Logarithm of the normalising multiplicative constant.
     
     self.temp = numpy.empty((2, dims), dtype=numpy.float32) # To save memory chugging in the inline code.
   
@@ -34,7 +38,7 @@ class GMM:
     ret.weight[:] = self.weight
     ret.mean[:,:] = self.mean
     ret.prec[:,:,:] = self.prec
-    ret.norm[:] = self.norm
+    ret.log_norm[:] = self.log_norm
     
     return ret
 
@@ -45,20 +49,18 @@ class GMM:
 
   def calcNorm(self, i):
     """Sets the normalising constant for a specific entry."""
-    self.norm[i] = numpy.linalg.det(self.prec[i,:,:])
-    self.norm[i] = math.sqrt(self.norm[i])
-    self.norm[i] *= math.pow(2.0*math.pi, -0.5*self.mean.shape[1])
+    self.log_norm[i] = 0.5 * math.log(numpy.linalg.det(self.prec[i,:,:]))
+    self.log_norm[i] -= 0.5 * self.mean.shape[1] * log_2_pi
     
   def calcNorms(self):
     """Fills in the normalising constants for all components with weight."""
     nzi = numpy.nonzero(self.weight)[0]
     
     for ii in xrange(nzi.shape[0]):
-      self.norm[nzi[ii]] = numpy.linalg.det(self.prec[nzi[ii],:,:])
-    self.norm[nzi] = numpy.sqrt(self.norm[nzi])
+      self.log_norm[nzi[ii]] = 0.5 * math.log(numpy.linalg.det(self.prec[nzi[ii],:,:]))
 
-    self.norm[nzi] *= math.pow(2.0*math.pi, -0.5*self.mean.shape[1])
-  
+    self.log_norm[nzi] -= 0.5*self.mean.shape[1] * log_2_pi
+
 
   def prob(self, sample):
     """Given a sample vector, as something that numpy.asarray can interpret, return the normalised probability of the sample. All values must be correct for this to work. Has inline C, but if that isn't working the implimentation is fully vectorised, so should be quite fast despite being in python."""
@@ -94,7 +96,7 @@ class GMM:
          }
          
         // Factor in the rest, add it to the return...
-         float val = weight[i] * norm[i] * exp(-0.5 * core);
+         float val = weight[i] *  exp(-0.5 * core + log_norm[i]);
          if (std::isfinite(val)) ret += val;
        }
       }
@@ -106,10 +108,10 @@ class GMM:
       weight = self.weight
       mean = self.mean
       prec = self.prec
-      norm = self.norm
+      log_norm = self.log_norm
       temp = self.temp
       
-      return weave.inline(code, ['sample', 'weight', 'mean', 'prec', 'norm', 'temp'])
+      return weave.inline(code, ['sample', 'weight', 'mean', 'prec', 'log_norm', 'temp'])
     except Exception, e:
       print e
       
@@ -123,14 +125,95 @@ class GMM:
       core = (core * delta).sum(axis=1)
       core *= -0.5
 
+      core += self.log_norm[nzi]
       core = numpy.exp(core)
-      core *= self.norm[nzi]
       core *= self.weight[nzi]
       return core[numpy.isfinite(core)].sum() # Little bit of safety.
 
 
+  def nll(self, sample):
+    """Given a sample vector, as something that numpy.asarray can interpret, return the negative log liklihood of the sample. All values must be correct for this to work. Has inline C, but if that isn't working the implimentation is fully vectorised, so should be quite fast despite being in python."""
+    try:
+      code = start_cpp() + """
+      float ret = -1e64;
+      
+      for (int i=0; i<Nweight[0]; i++)
+      {
+       if (weight[i]>1e-6)
+       {
+        // Calculate the delta...
+         for (int j=0; j<Nmean[1]; j++)
+         {
+          TEMP2(0, j) = sample[j] - MEAN2(i, j);
+          TEMP2(1, j) = 0.0;
+         }
+         
+        // Multiply the precision with the delta and put it into TEMP2(1, ...)...
+         for (int j=0; j<Nmean[1]; j++)
+         {
+          for (int k=0; k<Nmean[1]; k++)
+          {
+           TEMP2(1, j) += PREC3(i, j, k) * TEMP2(0, k);
+          }
+         }
+         
+        // Dot product TEMP2(0, ...) and TEMP2(1, ...) to get the core of the distribution...
+         float core = 0.0;
+         for (int j=0; j<Nmean[1]; j++)
+         {
+          core += TEMP2(0, j) * TEMP2(1, j);
+         }
+         
+        // Factor in the rest, add it to the return...
+         float val = log(weight[i]) + log_norm[i] - 0.5 * core;
+         if (std::isfinite(val))
+         {
+          if (ret>val)
+          {
+           ret = ret + log(1.0 + exp(val - ret));
+          }
+          else
+          {
+           ret = val + log(1.0 + exp(ret - val));
+          }
+         }
+       }
+      }
+      
+      return_val = -ret;
+      """
+      
+      sample = numpy.asarray(sample, dtype=numpy.float32)
+      weight = self.weight
+      mean = self.mean
+      prec = self.prec
+      log_norm = self.log_norm
+      temp = self.temp
+      
+      return weave.inline(code, ['sample', 'weight', 'mean', 'prec', 'log_norm', 'temp'])
+    except Exception, e:
+      print e
+      
+      nzi = numpy.nonzero(self.weight)[0]
+    
+      sample = numpy.asarray(sample)
+      delta = numpy.reshape(sample, (1,self.mean.shape[1])) - self.mean[nzi,:]
+
+      nds = (nzi.shape[0], delta.shape[1], 1)
+      core = (numpy.reshape(delta, nds) * self.prec[nzi,:,:]).sum(axis=1)
+      core = (core * delta).sum(axis=1)
+      core *= -0.5
+
+      core += self.log_norm[nzi]
+      core += numpy.log(self.weight[nzi])
+      
+      high = core.max()
+      ret = high + numpy.log(numpy.exp(core-high).sum())
+      return -ret
+
+
   def marginalise(self, dims):
-    """Given a list of dimensions this keeps those dimensions and drops the rest, i.e. marginalises them out. New object will have the old indices remapped as indicated by dims."""
+    """Given a list of dimensions this keeps those dimensions and drops the rest, i.e. marginalises them out. New version of this object will have the old indices remapped as indicated by dims."""
     dims = numpy.asarray(dims)
     self.mean = self.mean[:, dims]
     
@@ -142,4 +225,5 @@ class GMM:
       if self.weight[i]>1e-6:
         self.prec[i,:,:] = numpy.linalg.inv(self.prec[i,:,:])
     
+    self.weight = self.weight[dims]
     self.calcNorms()
