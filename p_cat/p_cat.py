@@ -16,6 +16,9 @@ except: pass
 try: from classify_kde import ClassifyKDE
 except: pass
 
+try: from classify_bag_kde import ClassifyBagKDE
+except: pass
+
 try: from classify_dpgmm import ClassifyDPGMM
 except: pass
 

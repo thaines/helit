@@ -70,7 +70,7 @@ class ProbCat:
 
     return map(convert, self.getDataNLLList(sample, state))
 
-  def getDataNllList(self, sample, state = None):
+  def getDataNLLList(self, sample, state = None):
     """The negative log liklihood version of getDataProbList."""
     def convert(dic):
       ret = dict()

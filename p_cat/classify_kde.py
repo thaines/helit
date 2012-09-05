@@ -16,7 +16,7 @@ from prob_cat import ProbCat
 
 
 class ClassifyKDE(ProbCat):
-  """A classifier that uses the incrimental kernel density estimate model for each category. It keeps a 'psuedo-prior', a KDE_IDE with an (optionally) larger variance that contains all the samples. Uses entities that can index a dictionary for categories. Implimentation is rather inefficient, despite some caching."""
+  """A classifier that uses the incrimental kernel density estimate model for each category. It keeps a 'psuedo-prior', a KDE_INC with an (optionally) larger variance that contains all the samples. Uses entities that can index a dictionary for categories."""
   def __init__(self, prec, cap = 32, mult = 1.0):
     """You provide the precision that is to be used (As a 2D numpy array, so it implicitly provides the number of dimensions.), the cap on the number of components in the KDE_INC objects and the multiplier for the standard deviation of the components in the 'psuedo-prior'."""
     self.prec = numpy.array(prec, dtype=numpy.float32)
