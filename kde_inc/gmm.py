@@ -79,7 +79,7 @@ class GMM:
         // Calculate the delta...
          for (int j=0; j<Nmean[1]; j++)
          {
-          TEMP2(0, j) = sample[j] - MEAN2(i, j);
+          TEMP2(0, j) = SAMPLE1(j) - MEAN2(i, j);
           TEMP2(1, j) = 0.0;
          }
          
@@ -154,7 +154,7 @@ class GMM:
         // Calculate the delta...
          for (int j=0; j<Nmean[1]; j++)
          {
-          TEMP2(0, j) = sample[j] - MEAN2(i, j);
+          TEMP2(0, j) = SAMPLE1(j) - MEAN2(i, j);
           TEMP2(1, j) = 0.0;
          }
          
