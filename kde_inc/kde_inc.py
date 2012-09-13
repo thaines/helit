@@ -29,7 +29,7 @@ class KDE_INC:
     self.count = 0 # Number of samples provided so far.
 
     self.merge = numpy.empty((cap,cap), dtype=numpy.float32) # [i,j]; cost of merging two entrys, only valid when j<i, other values set high to avoid issues.
-    self.merge[:,:] = 1e100
+    self.merge[:,:] = 1e64
 
     # For holding the temporary merge costs calculated when adding a sample...
     self.mergeT = numpy.empty(cap, dtype=numpy.float32)
@@ -106,7 +106,7 @@ class KDE_INC:
     global weave
 
     try:
-      raise Exception() # Below code is actually slowing things down. Am disabling for now.
+      weave = None # Below code is actually slowing things down. Am disabling for now.
       if weave==None: raise Exception()
       support =  matrix_code + start_cpp() + """
       // Note - designed so that A and Out pointers can be the same.

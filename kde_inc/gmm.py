@@ -64,7 +64,11 @@ class GMM:
 
   def prob(self, sample):
     """Given a sample vector, as something that numpy.asarray can interpret, return the normalised probability of the sample. All values must be correct for this to work. Has inline C, but if that isn't working the implimentation is fully vectorised, so should be quite fast despite being in python."""
+    global weave
+    
     try:
+      if weave==None: raise Exception()
+      
       code = start_cpp() + """
       float ret = 0.0;
       
@@ -113,7 +117,9 @@ class GMM:
       
       return weave.inline(code, ['sample', 'weight', 'mean', 'prec', 'log_norm', 'temp'])
     except Exception, e:
-      print e
+      if weave!=None:
+        print e
+        weave = None
       
       nzi = numpy.nonzero(self.weight)[0]
     
@@ -133,7 +139,11 @@ class GMM:
 
   def nll(self, sample):
     """Given a sample vector, as something that numpy.asarray can interpret, return the negative log liklihood of the sample. All values must be correct for this to work. Has inline C, but if that isn't working the implimentation is fully vectorised, so should be quite fast despite being in python."""
+    global weave
+    
     try:
+      if weave==None: raise Exception()
+      
       code = start_cpp() + """
       float ret = -1e64;
       
@@ -192,7 +202,9 @@ class GMM:
       
       return weave.inline(code, ['sample', 'weight', 'mean', 'prec', 'log_norm', 'temp'])
     except Exception, e:
-      print e
+      if weave!=None:
+        print e
+        weave = None
       
       nzi = numpy.nonzero(self.weight)[0]
     
@@ -225,5 +237,4 @@ class GMM:
       if self.weight[i]>1e-6:
         self.prec[i,:,:] = numpy.linalg.inv(self.prec[i,:,:])
     
-    self.weight = self.weight[dims]
     self.calcNorms()
