@@ -18,6 +18,7 @@
 import math
 import random
 import numpy
+import scipy.spatial
 import collections
 
 from p_cat.p_cat import ProbCat
@@ -208,8 +209,8 @@ class Pool:
     return Entity._make(ret[:3])
 
 
-  def selectWrong(self, softSelect = False, hardChoice = False, dp = True, dw = False):
-    """24 different selection strategies, all rolled into one. Bite me! All work on the basis of selecting the entity in the pool with the greatest chance of being misclassified by the current classifier. There are four binary flags that control the behaviour, and their defaults match up with the algorithm presented in the paper 'Active Learning using Dirichlet Processes for Rare Class Discovery and Classification'. softSelect indicates if the classifier selects the category with the highest probability (False) or selects the category probalistically from P(class|data) (True). hardChoice comes into play once P(wrong) has been calculated for each entity in the pool - when True the entity with the highest P(wrong) is selected, otherwise the P(wrong) are used as weights for a probabilistic selection. dp indicates if the Dirichlet process assumption is to be used, such that we consider the probability that the entity belongs to a new category in addition to the existing categories. Note that the classifier cannot select an unknown class, so an entity with a high probability of belonging to a new class has a high P(wrong) score when the dp assumption is True. dw indicates if it should weight the metric by a density estimate over the data set, and hence bias selection towards areas with lots of samples. Appendum: Also supports expected hinge loss, if you set softSelect to None (False is equivalent to expected 0-1 loss, True to something without a name.)."""
+  def selectWrong(self, softSelect = False, hardChoice = False, dp = True, dw = False, sd = None):
+    """24 different selection strategies, all rolled into one. Bite me! All work on the basis of selecting the entity in the pool with the greatest chance of being misclassified by the current classifier. There are four binary flags that control the behaviour, and their defaults match up with the algorithm presented in the paper 'Active Learning using Dirichlet Processes for Rare Class Discovery and Classification'. softSelect indicates if the classifier selects the category with the highest probability (False) or selects the category probalistically from P(class|data) (True). hardChoice comes into play once P(wrong) has been calculated for each entity in the pool - when True the entity with the highest P(wrong) is selected, otherwise the P(wrong) are used as weights for a probabilistic selection. dp indicates if the Dirichlet process assumption is to be used, such that we consider the probability that the entity belongs to a new category in addition to the existing categories. Note that the classifier cannot select an unknown class, so an entity with a high probability of belonging to a new class has a high P(wrong) score when the dp assumption is True. dw indicates if it should weight the metric by a density estimate over the data set, and hence bias selection towards areas with lots of samples. Appendum: Also supports expected hinge loss, if you set softSelect to None (False is equivalent to expected 0-1 loss, True to something without a name.). If sd is not None then the wrong score for each entity is boosted by neighbours, on the grounds that knowing about an entity will affect its neighbours classification - its uses the unnormalised weighting of a Gaussian (The centre carries a weight of 1.) with the given sd."""
     if len(self.cats)==0 and dp==False: return self.selectRandom()
     
     wrong = numpy.ones(len(self.entities))
@@ -260,6 +261,15 @@ class Pool:
       # If requested include a weighting by density...
       if dw: wrong[i] *= numpy.log(-entity[1][None])
     
+    # If requested weight nodes by their neighbours...
+    if sd!=None:
+      feats = numpy.array(map(lambda e: e[0], self.entities), dtype=numpy.float32)
+      dm = scipy.spatial.distance.squareform(scipy.spatial.distance.pdist(feats))
+      dm = numpy.exp((-0.5/(sd*sd))*numpy.square(dm))
+      dm *= wrong.reshape((1,-1))
+      wrong[:] = dm.sum(axis=1)
+    
+    # Choose which entitiy from the pool is to be the choosen one...
     if hardChoice:
       pos = numpy.argmax(wrong)
     else:
@@ -269,7 +279,8 @@ class Pool:
         r -= wrong[pos]
         if r<0.0: break
         pos += 1
-
+    
+    # Return the choosen one...
     ret = self.entities[pos]
     self.entities = self.entities[:pos] + self.entities[pos+1:]
     return Entity._make(ret[:3])
@@ -361,37 +372,37 @@ class Pool:
     """Returns a list of the method names that can be passed to the select method. Read the select method to work out which they each are. p_wrong_soft is the published techneque. By default it does not include the query by comittee versions, which can be switched on using the relevent flag."""
     return ['random', 'outlier', 'entropy', 'p_new_hard', 'p_new_soft', 'p_wrong_hard', 'p_wrong_soft', 'p_wrong_hard_pcat', 'p_wrong_soft_pcat', 'p_wrong_hard_naive', 'p_wrong_soft_naive', 'p_wrong_hard_pcat_naive', 'p_wrong_soft_pcat_naive', 'dxp_wrong_hard', 'dxp_wrong_soft', 'dxp_wrong_hard_pcat', 'dxp_wrong_soft_pcat', 'dxp_wrong_hard_naive', 'dxp_wrong_soft_naive', 'dxp_wrong_hard_pcat_naive', 'dxp_wrong_soft_pcat_naive', 'p_wrong_hard_hinge', 'p_wrong_soft_hinge', 'p_wrong_hard_hinge_naive', 'p_wrong_soft_hinge_naive', 'dxp_wrong_hard_hinge', 'dxp_wrong_soft_hinge', 'dxp_wrong_hard_hinge_naive', 'dxp_wrong_soft_hinge_naive'] + ([] if incQBC==False else ['qbc_p_wrong_hard', 'qbc_p_wrong_soft', 'qbc_p_wrong_hard_pcat', 'qbc_p_wrong_soft_pcat', 'qbc_p_wrong_hard_naive', 'qbc_p_wrong_soft_naive', 'qbc_p_wrong_hard_pcat_naive', 'qbc_p_wrong_soft_pcat_naive', 'qbc_dxp_wrong_hard', 'qbc_dxp_wrong_soft', 'qbc_dxp_wrong_hard_pcat', 'qbc_dxp_wrong_soft_pcat', 'qbc_dxp_wrong_hard_naive', 'qbc_dxp_wrong_soft_naive', 'qbc_dxp_wrong_hard_pcat_naive', 'qbc_dxp_wrong_soft_pcat_naive', 'qbc_p_wrong_hard_hinge', 'qbc_p_wrong_soft_hinge', 'qbc_p_wrong_hard_hinge_naive', 'qbc_p_wrong_soft_hinge_naive', 'qbc_dxp_wrong_hard_hinge', 'qbc_dxp_wrong_soft_hinge', 'qbc_dxp_wrong_hard_hinge_naive', 'qbc_dxp_wrong_soft_hinge_naive'])
 
-  def select(self, method):
-    """Pass through for all of the select methods that have no problamatic parameters - allows you to select the method using a string. You can get a list of all method strings from the methods() method."""
+  def select(self, method, sd = None):
+    """Pass through for all of the select methods that have no problamatic parameters - allows you to select the method using a string. You can get a list of all method strings from the methods() method. Actually, allows you to provide a sd parameter for the P(wrong) methods that support it."""
     if method=='random': return self.selectRandom()
     elif method=='outlier': return self.selectOutlier()
     elif method=='entropy': return self.selectEntropy()
     elif method=='p_new_hard': return self.selectDP(True)
     elif method=='p_new_soft': return self.selectDP(False)
-    elif method=='p_wrong_hard': return self.selectWrong(False,True,True,False)
-    elif method=='p_wrong_soft': return self.selectWrong(False,False,True,False)
-    elif method=='p_wrong_hard_pcat': return self.selectWrong(True,True,True,False)
-    elif method=='p_wrong_soft_pcat': return self.selectWrong(True,False,True,False)
-    elif method=='p_wrong_hard_naive': return self.selectWrong(False,True,False,False)
-    elif method=='p_wrong_soft_naive': return self.selectWrong(False,False,False,False)
-    elif method=='p_wrong_hard_pcat_naive': return self.selectWrong(True,True,False,False)
-    elif method=='p_wrong_soft_pcat_naive': return self.selectWrong(True,False,False,False)
-    elif method=='dxp_wrong_hard': return self.selectWrong(False,True,True,True)
-    elif method=='dxp_wrong_soft': return self.selectWrong(False,False,True,True)
-    elif method=='dxp_wrong_hard_pcat': return self.selectWrong(True,True,True,True)
-    elif method=='dxp_wrong_soft_pcat': return self.selectWrong(True,False,True,True)
-    elif method=='dxp_wrong_hard_naive': return self.selectWrong(False,True,False,True)
-    elif method=='dxp_wrong_soft_naive': return self.selectWrong(False,False,False,True)
-    elif method=='dxp_wrong_hard_pcat_naive': return self.selectWrong(True,True,False,True)
-    elif method=='dxp_wrong_soft_pcat_naive': return self.selectWrong(True,False,False,True)
-    elif method=='p_wrong_hard_hinge': return self.selectWrong(None,True,True,False)
-    elif method=='p_wrong_soft_hinge': return self.selectWrong(None,False,True,False)
-    elif method=='p_wrong_hard_hinge_naive': return self.selectWrong(None,True,False,False)
-    elif method=='p_wrong_soft_hinge_naive': return self.selectWrong(None,False,False,False)
-    elif method=='dxp_wrong_hard_hinge': return self.selectWrong(None,True,True,True)
-    elif method=='dxp_wrong_soft_hinge': return self.selectWrong(None,False,True,True)
-    elif method=='dxp_wrong_hard_hinge_naive': return self.selectWrong(None,True,False,True)
-    elif method=='dxp_wrong_soft_hinge_naive': return self.selectWrong(None,False,False,True)
+    elif method=='p_wrong_hard': return self.selectWrong(False,True,True,False,sd)
+    elif method=='p_wrong_soft': return self.selectWrong(False,False,True,False,sd)
+    elif method=='p_wrong_hard_pcat': return self.selectWrong(True,True,True,False,sd)
+    elif method=='p_wrong_soft_pcat': return self.selectWrong(True,False,True,False,sd)
+    elif method=='p_wrong_hard_naive': return self.selectWrong(False,True,False,False,sd)
+    elif method=='p_wrong_soft_naive': return self.selectWrong(False,False,False,False,sd)
+    elif method=='p_wrong_hard_pcat_naive': return self.selectWrong(True,True,False,False,sd)
+    elif method=='p_wrong_soft_pcat_naive': return self.selectWrong(True,False,False,False,sd)
+    elif method=='dxp_wrong_hard': return self.selectWrong(False,True,True,True,sd)
+    elif method=='dxp_wrong_soft': return self.selectWrong(False,False,True,True,sd)
+    elif method=='dxp_wrong_hard_pcat': return self.selectWrong(True,True,True,True,sd)
+    elif method=='dxp_wrong_soft_pcat': return self.selectWrong(True,False,True,True,sd)
+    elif method=='dxp_wrong_hard_naive': return self.selectWrong(False,True,False,True,sd)
+    elif method=='dxp_wrong_soft_naive': return self.selectWrong(False,False,False,True,sd)
+    elif method=='dxp_wrong_hard_pcat_naive': return self.selectWrong(True,True,False,True,sd)
+    elif method=='dxp_wrong_soft_pcat_naive': return self.selectWrong(True,False,False,True,sd)
+    elif method=='p_wrong_hard_hinge': return self.selectWrong(None,True,True,False,sd)
+    elif method=='p_wrong_soft_hinge': return self.selectWrong(None,False,True,False,sd)
+    elif method=='p_wrong_hard_hinge_naive': return self.selectWrong(None,True,False,False,sd)
+    elif method=='p_wrong_soft_hinge_naive': return self.selectWrong(None,False,False,False,sd)
+    elif method=='dxp_wrong_hard_hinge': return self.selectWrong(None,True,True,True,sd)
+    elif method=='dxp_wrong_soft_hinge': return self.selectWrong(None,False,True,True,sd)
+    elif method=='dxp_wrong_hard_hinge_naive': return self.selectWrong(None,True,False,True,sd)
+    elif method=='dxp_wrong_soft_hinge_naive': return self.selectWrong(None,False,False,True,sd)
     elif method=='qbc_p_wrong_hard': return self.selectWrongQBC(False,True,True,False)
     elif method=='qbc_p_wrong_soft': return self.selectWrongQBC(False,False,True,False)
     elif method=='qbc_p_wrong_hard_pcat': return self.selectWrongQBC(True,True,True,False)
