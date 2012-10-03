@@ -22,6 +22,7 @@ from manager import Manager
 from read_cv import ReadCV
 from read_cv_is import ReadCV_IS
 from write_cv import WriteCV
+from write_frames_cv import WriteFramesCV
 from write_frame_cv import WriteFrameCV
 from view_cv import ViewCV
 

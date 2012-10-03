@@ -742,8 +742,8 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
   if (!PyArg_ParseTuple(args, "O!O!", &PyArray_Type, &image, &PyArray_Type, &pixProb)) return NULL;
 
 
- struct timeval start, end; // ********************************************
- gettimeofday(&start, 0); // **********************************************
+ //struct timeval start, end; // ********************************************
+ //gettimeofday(&start, 0); // **********************************************
 
 
  // Update the kernel values as needed...
@@ -841,9 +841,9 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
   }
 
 
- gettimeofday(&end, 0); // ************************************************************
- double diff = (end.tv_sec + 1e-6*end.tv_usec) - (start.tv_sec + 1e-6*start.tv_usec);
- printf("time for model = %.6f\n", diff); // ***********************************
+ //gettimeofday(&end, 0); // ************************************************************
+ //double diff = (end.tv_sec + 1e-6*end.tv_usec) - (start.tv_sec + 1e-6*start.tv_usec);
+ //printf("time for model = %.6f\n", diff); // ***********************************
 
 
  Py_INCREF(Py_None);
@@ -894,8 +894,8 @@ static PyObject * BackSubCoreDP_background(BackSubCoreDP * self, PyObject * args
   if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &image)) return NULL;
 
 
- struct timeval start, end; // ********************************************
- gettimeofday(&start, 0); // **********************************************
+ //struct timeval start, end; // ********************************************
+ //gettimeofday(&start, 0); // **********************************************
 
 
  // Enqueue a task to put the background into the image field...
@@ -937,9 +937,9 @@ static PyObject * BackSubCoreDP_background(BackSubCoreDP * self, PyObject * args
   }
 
 
- gettimeofday(&end, 0); // ************************************************************
- double diff = (end.tv_sec + 1e-6*end.tv_usec) - (start.tv_sec + 1e-6*start.tv_usec);
- printf("time for background fetch = %.6f\n", diff); // ***********************************
+ //gettimeofday(&end, 0); // ************************************************************
+ //double diff = (end.tv_sec + 1e-6*end.tv_usec) - (start.tv_sec + 1e-6*start.tv_usec);
+ //printf("time for background fetch = %.6f\n", diff); // ***********************************
 
 
  Py_INCREF(Py_None);
@@ -957,8 +957,8 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   if (!PyArg_ParseTuple(args, "O!O!O!", &PyArray_Type, &image, &PyArray_Type, &pixProb, &PyArray_Type, &mask)) return NULL;
 
 
- struct timeval start, end; // ********************************************
- gettimeofday(&start, 0); // **********************************************
+ //struct timeval start, end; // ********************************************
+ //gettimeofday(&start, 0); // **********************************************
 
 
  // Some prep required for below - generate some values, set some kernel parameters...
@@ -1273,9 +1273,9 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   }
 
 
- gettimeofday(&end, 0); // ************************************************************
- double diff = (end.tv_sec + 1e-6*end.tv_usec) - (start.tv_sec + 1e-6*start.tv_usec);
- printf("time for post process = %.6f\n", diff); // ***********************************
+ //gettimeofday(&end, 0); // ************************************************************
+ //double diff = (end.tv_sec + 1e-6*end.tv_usec) - (start.tv_sec + 1e-6*start.tv_usec);
+ //printf("time for post process = %.6f\n", diff); // ***********************************
 
 
  Py_INCREF(Py_None);
