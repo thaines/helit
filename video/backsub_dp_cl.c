@@ -1010,7 +1010,7 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   size_t work_size[2];
   size_t block_size[2];
 
-
+  
   work_offset[0] = 0;
   work_offset[1] = 0;
   work_size[0] = self->width;

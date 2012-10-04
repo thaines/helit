@@ -64,12 +64,9 @@ man.add(bs)
 
 lc.source(1,bs,2) # Calculate lighting change relative to current background estimate.
 
-cm = video.ClipMask(top = 40) # For the mile end data set chops off the problamatic sky.
-cm.source(0,bs)
-man.add(cm)
 
 mr = video.RenderMask(bgColour=(0.0,0.0,1.0))
-mr.source(0,cm)
+mr.source(0,bs)
 mr.source(1,vid)
 man.add(mr)
 
