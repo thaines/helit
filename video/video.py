@@ -20,11 +20,17 @@ from video_node import mode_to_string, VideoNode
 from manager import Manager
 
 from read_cv import ReadCV
+from read_cv_cam import ReadCamCV
 from read_cv_is import ReadCV_IS
 from write_cv import WriteCV
 from write_frames_cv import WriteFramesCV
 from write_frame_cv import WriteFrameCV
 from view_cv import ViewCV
+
+try:
+	from view_pygame import ViewPyGame
+except ImportError:
+	pass
 
 from seq import Seq
 from seq_make import num_to_seq
