@@ -295,11 +295,8 @@ kernel void update_pixel(const int frame, const int width, const int comp_count,
    mix[mixBase+home] = comp;
 
   // Apply the confidence cap as necessary...
-   if (comp.s0>cap)
-   {
-    float mult = cap / comp.s0;
-    for (int c=0;c<comp_count;c++) mix[mixBase+c].s0 *= mult;
-   }
+   float mult = min(cap / comp.s0, 1.0);
+   for (int c=0;c<comp_count;c++) mix[mixBase+c].s0 *= mult;
 }
 
 

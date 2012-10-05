@@ -50,6 +50,7 @@ from mask_flow import MaskFlow
 from five_word import FiveWord, five_word_colours
 
 from half import Half
+from reflect import Reflect
 from black import Black
 from colour_bias import ColourBias, ColourUnBias
 
