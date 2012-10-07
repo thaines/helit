@@ -45,8 +45,12 @@ cb = video.ColourBias(lumScale, noiseFloor, man.getCL())
 cb.source(0,vid)
 man.add(cb)
 
+cb_h = video.Half()
+cb_h.source(0,cb)
+man.add(cb_h)
+
 lc = video.LightCorrectMS()
-lc.source(0,cb)
+lc.source(0,cb_h)
 man.add(lc)
 
 bs = video.BackSubDP(man.getCL())
@@ -57,13 +61,21 @@ man.add(bs)
 lc.source(1,bs,2)
 
 
+bs.setDP(comp=6, conc=0.1, cap=2048.0)
+bs.setBP(half_life = 0.5)
+
+
 mr = video.RenderMask(bgColour=(0.0,0.0,1.0))
 mr.source(0,bs)
 mr.source(1,vid)
 man.add(mr)
 
-out = video.ViewPyGame()
-out.source(0,mr)
+ref = video.Reflect()
+ref.source(0,mr)
+man.add(ref)
+
+out = video.ViewPyGame(320, 240)
+out.source(0,ref)
 man.add(out)
 
 

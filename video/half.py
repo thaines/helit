@@ -17,6 +17,7 @@
 
 import math
 import numpy
+import scipy.misc
 
 from video_node import *
 

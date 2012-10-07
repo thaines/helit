@@ -204,8 +204,8 @@ static PyObject * BackSubCoreDP_new(PyTypeObject * type, PyObject * args, PyObje
   self->iterations = 16;
   self->con_comp_min = 0;
 
-  self->minSize = 8;
-  self->itersPerLevel = 4;
+  self->minSize = 64;
+  self->itersPerLevel = 2;
  }
 
  return (PyObject*)self;

@@ -150,18 +150,20 @@ class LightCorrectMS(VideoNode):
 
 
     # Mean shift for each channel in turn...
-    for channel in xrange(3):
-      codeMS = start_cpp() + """
-      // Parameters and some initialisation...
-       const float epsilon = 1e-3;
-       const int maxIter = 256;
-       const float hsm = 2.0;
-       const float winWidth = hsm*scale;
-
-       float estimate = TEMP2(count/2,channel); // Median seems a good initial estimate - as long as at least half the pixels are background at the same time in both images it is guaranteed to be a good estimate.
+    codeMS = start_cpp() + """
+    // Parameters and some initialisation...
+     const float epsilon = 1e-3;
+     const int maxIter = 32;
+     const float hsm = 3.0;
+     const float winWidth = hsm*scale;    
+       
+    // Iterate the 3 channels...
+     for (int channel=0; channel<3; channel++)
+     {
+      // Median seems a good initial estimate - as long as at least half the pixels are background at the same time in both images it is guaranteed to be a good estimate...
+       float estimate = TEMP2(count/2,channel); 
        float minVal = estimate - winWidth;
        float maxVal = estimate + winWidth;
-
 
       // Use a pair of binary searches to initialise the range to sum over...
        int low = 0;
@@ -181,7 +183,6 @@ class LightCorrectMS(VideoNode):
         if (TEMP2(half,channel)>maxVal) high  = half;
                                    else other = half;
        }
-
 
       // Iterate and do the mean shift steps...
        for (int iter=0;iter<maxIter;iter++)
@@ -224,7 +225,8 @@ class LightCorrectMS(VideoNode):
           {
            prevVal = TEMP2(i,channel);
            float delta = prevVal - estimate;
-           weight = exp(-0.5*delta*delta/scale2);
+           // weight = exp(-0.5*delta*delta/scale2); // Gaussian option
+           weight = scale / (M_PI * (delta*delta + scale2)); // Cauchy option
           }
 
           weightEst += weight;
@@ -236,16 +238,16 @@ class LightCorrectMS(VideoNode):
          estimate = newEst;
          if (done) break;
        }
+        
+      // Store it...
+       MATRIX2(channel, channel) = estimate;
+     }
+    """
 
-      return_val = estimate;
-      """
+    scale = self.scale
+    matrix = self.matrix
 
-      scale = self.scale
-
-      estimate = weave.inline(codeMS, ['temp', 'channel', 'count', 'scale'])
-
-      # Update the relevant entry in the matrix...
-      self.matrix[channel, channel] = estimate
+    weave.inline(codeMS, ['temp', 'count', 'scale', 'matrix'])
 
     return True
 

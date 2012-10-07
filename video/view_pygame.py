@@ -26,6 +26,7 @@ from video_node import *
 class ViewPyGame(VideoNode):
   """An output node for visualising frames - uses pygame and runs in fullscreen - implimented for demo purposes."""
   def __init__(self, width = 1280, height = 720):
+    """You provide the width and height - must be a resolution the monitor can enter."""
     pygame.init()
     self.screen = pygame.display.set_mode((width, height), pygame.FULLSCREEN | pygame.DOUBLEBUF | pygame.HWSURFACE)
     pygame.mouse.set_visible(0)

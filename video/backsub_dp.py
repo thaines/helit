@@ -86,24 +86,24 @@ class BackSubDP(VideoNode):
     self.param_prior_mu = mean
     self.param_prior_sigma2 = sd*sd
 
-  def setDP(self, comp = 8, conc = 0.5, cap = 256.0):
+  def setDP(self, comp = 8, conc = 0.1, cap = 512.0):
     """Sets the parameters for the DP, specifically the number of components, the concentration parameter and the certainty cap, which limits how much weight can be found in the DP."""
     self.param_components = comp
     self.param_concentration = conc
     self.param_cap = cap
 
-  def setHackDP(self, smooth = (0.0**2.0)/(255.0**2.0), min_weight = 0.01):
+  def setHackDP(self, smooth = (0.0**2.0)/(255.0**2.0), min_weight = 0.05):
     """Sets some parameters that hack the DP, to help maintain stability. Specifically smooth is an assumption about noise in each sample, used to stop the distributions from ever getting too narrow, whilst min_weight is a minimum influence that a sample can have on the DP, to inhibit overconfidence."""
     self.param_smooth = smooth
     self.param_minWeight = min_weight
 
-  def setBP(self, threshold = 0.5, half_life = 0.5, iters = 16):
+  def setBP(self, threshold = 0.5, half_life = 0.8, iters = 16):
     """Sets the main parameters for the belief propagation step, the fist of which is the threshold of probability before it considers it to be a foreground pixel. Note that it is converted into a prior, and that due to the regularisation terms this is anything but hard. The half_life is used to indicate the colourmetric distance that equates to the probability of two pixels being different reaching 50:50, whilst iters is how many iterations to run, and is used only for controlling the computational cost. This BP post processing step can be switched off by setting iters to 0, though the threshold will still be used to binarise the probabilities."""
     self.param_threshold = threshold
     self.param_half_life = half_life
     self.param_iterations = iters
 
-  def setExtraBP(self, cert_limit = 0.01, change_limit = 0.01, min_same_prob = 0.95, change_mult = 2.0):
+  def setExtraBP(self, cert_limit = 0.0001, change_limit = 0.0001, min_same_prob = 0.975, change_mult = 1.9):
     """Sets minor BP parameters that you are unlikelly to want to touch - specifically limits on how certain it can be with regards to it certainty that a pixel is background/foreground and its certainty that two pixels are the same/different, parameter to infkluence distacne scaling to make sure probabilities never drop below a certain value, plus a term to reweight their relative strengths."""
     self.param_cert_limit = cert_limit
     self.param_change_limit = change_limit
