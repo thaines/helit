@@ -23,19 +23,21 @@ from video_node import *
 
 
 
-class Half(VideoNode):
-  """Given a colour video stream halfs its resolution in each dimension - as simple a node as you can get really. Requires the input have even dimensions!"""
-  def __init__(self):
+class StepScale(VideoNode):
+  """Scales a video up, by an integer number of repetitons of each pixel."""
+  def __init__(self, scale = 2):
+    """You provide scale, how many times to repeat each pixel in both x and y."""
+    self.scale = scale
     self.video = None
     self.channel = 0
 
     self.output = None
 
   def width(self):
-    return self.video.width()//2
+    return self.video.width() * self.scale
 
   def height(self):
-    return self.video.height()//2
+    return self.video.height() * self.scale
 
   def fps(self):
     return self.video.fps()
@@ -51,7 +53,7 @@ class Half(VideoNode):
     return MODE_RGB
 
   def inputName(self, channel=0):
-    return 'Video stream to be downsized'
+    return 'Video stream to be scaled'
 
   def source(self, toChannel, video, videoChannel=0):
     self.video = video
@@ -73,9 +75,10 @@ class Half(VideoNode):
 
     # If needed create an output...
     if self.output==None:
-      self.output = numpy.empty((img.shape[0]//2,img.shape[1]//2,3), dtype=numpy.float32)
-
-    self.output[:,:,:] = 0.25 * (img[0::2,0::2,:] + img[0::2,1::2,:] + img[1::2,0::2,:] + img[1::2,1::2,:])
+      self.output = numpy.empty((img.shape[0]*self.scale,img.shape[1]*self.scale,3), dtype=numpy.float32)
+    
+    # Time to scale...
+    self.output[:,:,:] = numpy.repeat(numpy.repeat(img, self.scale, axis=0), self.scale, axis=1)
 
     return True
 
@@ -87,7 +90,7 @@ class Half(VideoNode):
     return MODE_RGB
 
   def outputName(self, channel=0):
-    return 'Smaller video stream'
+    return 'Larger video stream'
 
   def fetch(self, channel=0):
     return self.output

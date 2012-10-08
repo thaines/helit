@@ -115,7 +115,8 @@ typedef struct
  int con_comp_min; // For connected components, which is run after the bp step - any foreground segment smaller than the given size is removed.
 
  int minSize; // Minimum size for a level - basically how small the hierachy downsamples to.
- int itersPerLevel; // Iterations per level for hierachical BP.
+ int maxLayers; // Maximum number of layers for hierachy.
+ int itersPerLevel; // Iterations per level for hierachical BP, except for the bottom level, which is iterations.
 } BackSubCoreDP;
 
 
@@ -205,6 +206,7 @@ static PyObject * BackSubCoreDP_new(PyTypeObject * type, PyObject * args, PyObje
   self->con_comp_min = 0;
 
   self->minSize = 64;
+  self->maxLayers = 4;
   self->itersPerLevel = 2;
  }
 
@@ -304,7 +306,8 @@ static PyMemberDef BackSubCoreDP_members[] =
     {"half_life", T_FLOAT, offsetof(BackSubCoreDP, half_life), 0, "The colourmetric distance between adjacent pixels after which they stop passing information between each other, because the probability of them being the same drops to 0.5."},
     {"iterations", T_INT, offsetof(BackSubCoreDP, iterations), 0, "Number of belief propagation iterations to do when creating a mask. Not supported by OpenCL version."},
     {"con_comp_min", T_INT, offsetof(BackSubCoreDP, con_comp_min), 0, "Sets the minimum foreground segment size in the final output - any that is less than this will be set as background. Not supported by OpenCL version."},
-    {"minSize", T_INT, offsetof(BackSubCoreDP, minSize), 0, "Minimum size of either dimension when constructing the hierachy - the smallest level will get as close as possible without breaking this limit. Not supported by C version."},
+    {"minSize", T_INT, offsetof(BackSubCoreDP, minSize), 0, "Minimum size of either dimension when constructing the hierachy - the smallest layer will get as close as possible without breaking this limit. Not supported by C version."},
+    {"maxLayers", T_INT, offsetof(BackSubCoreDP, maxLayers), 0, "Maximum number of layers to create for BP hierachy. Not supported by C version."},
     {"itersPerLevel", T_INT, offsetof(BackSubCoreDP, itersPerLevel), 0, "Number of iterations to do for each level of the BP hierachy. Not supported by C version."},
     {NULL}
 };
@@ -365,10 +368,11 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
     }
 
     if (self->layers==0) self->layers = 1; // In principal someone could have minSize set higher than the resolution of the input, most likelly to acheive non-hierarchical behaviour.
+    if (self->layers>self->maxLayers) self->layers = self->maxLayers;
 
    // Fill in the width/height arrays...
-    self->widthBL  = (int*)malloc(sizeof(int) *self->layers);
-    self->heightBL = (int*)malloc(sizeof(int) *self->layers);
+    self->widthBL  = (int*)malloc(sizeof(int) * self->layers);
+    self->heightBL = (int*)malloc(sizeof(int) * self->layers);
 
     int l;
     w = self->width;
@@ -1178,7 +1182,9 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
     if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
    // Do the iterations...
-    for (i=0;i<self->itersPerLevel;i++)
+    int iters = self->itersPerLevel;
+    if (l==0) iters = self->iterations;
+    for (i=0;i<iters;i++)
     {
      work_offset[0] = 0;
      work_offset[1] = 0;

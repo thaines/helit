@@ -57,6 +57,7 @@ class ReadCamCV(VideoNode):
 
     if self.frame==None: return False
     self.frameNP = cv2array(self.frame)[:,:,::-1].astype(numpy.float32)/255.0
+    
     return True
 
 

@@ -22,8 +22,8 @@ import video
 
 
 
-lumScale = 0.5
-noiseFloor = 0.2
+lumScale = 0.7
+noiseFloor = 0.15
 quarter = True
 
 
@@ -61,8 +61,11 @@ man.add(bs)
 lc.source(1,bs,2)
 
 
-bs.setDP(comp=6, conc=0.1, cap=2048.0)
-bs.setBP(half_life = 0.5)
+bs.setDP(comp=6, conc=0.01, cap=128.0)
+bs.setHackDP(min_weight = 0.0005)
+bs.setBP(threshold = 0.4, half_life = 0.05, iters = 2)
+bs.setExtraBP(cert_limit = 0.005, change_limit = 0.001, min_same_prob = 0.99, change_mult = 3.0)
+bs.setOnlyCL(minSize = 64, maxLayers = 8, itersPerLevel = 2)
 
 
 mr = video.RenderMask(bgColour=(0.0,0.0,1.0))
@@ -74,7 +77,7 @@ ref = video.Reflect()
 ref.source(0,mr)
 man.add(ref)
 
-out = video.ViewPyGame(320, 240)
+out = video.ViewPyGame(320,240)
 out.source(0,ref)
 man.add(out)
 

@@ -70,6 +70,10 @@ class BackSubDP(VideoNode):
     self.param_change_mult = 1.9
     self.param_half_life = 0.8
     self.param_iterations = 16
+    
+    self.param_minSize = 64
+    self.param_maxLayers = 4
+    self.param_itersPerLevel = 2
 
     self.param_con_comp_min = 0
 
@@ -109,6 +113,12 @@ class BackSubDP(VideoNode):
     self.param_change_limit = change_limit
     self.param_min_same_prob = min_same_prob
     self.param_change_mult = change_mult
+  
+  def setOnlyCL(self, minSize = 64, maxLayers = 4, itersPerLevel = 2):
+    """Sets parameters that only affect the OpenCL version - minSize of a layer of the BP hierachy, for both dimensions; maxLayers is the maximum number of layers of the BP hierachy allowed; itersPerLevel is how many iterations are done at each level of the BP hierachy, except for the last which is done iterations times."""
+    self.param_minSize = minSize
+    self.param_maxLayers = maxLayers
+    self.param_itersPerLevel = itersPerLevel
 
   def setConComp(self, threshold):
     """Allows you to run connected components after the BP step. You provide the number of pixels below which a foreground segment is terminated. By default it is set to 0, i.e. off."""
@@ -155,10 +165,12 @@ class BackSubDP(VideoNode):
   def nextFrame(self):
     # Intial setup...
     if self.core==None:
+      didCL = False
       if backsub_dp_cl!=None and self.cl!=None:
         try:
           self.core = backsub_dp_cl.BackSubCoreDP()
           self.core.setup(self.cl, self.width(), self.height(), self.param_components, os.path.abspath(os.path.dirname(__file__)))
+          didCL = True
         except:
           self.core = None
 
@@ -187,6 +199,11 @@ class BackSubDP(VideoNode):
       self.core.iterations = self.param_iterations
 
       self.core.con_comp_min = self.param_con_comp_min
+      
+      if didCL:
+        self.core.minSize = self.param_minSize
+        self.maxLayers = self.param_maxLayers
+        self.itersPerLevel = self.param_itersPerLevel
 
 
       self.lastFrame = 0

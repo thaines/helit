@@ -28,7 +28,8 @@ class ViewPyGame(VideoNode):
   def __init__(self, width = 1280, height = 720):
     """You provide the width and height - must be a resolution the monitor can enter."""
     pygame.init()
-    self.screen = pygame.display.set_mode((width, height), pygame.FULLSCREEN | pygame.DOUBLEBUF | pygame.HWSURFACE)
+    self.flags = pygame.FULLSCREEN | pygame.DOUBLEBUF | pygame.HWSURFACE
+    self.screen = pygame.display.set_mode((width, height), self.flags)
     pygame.mouse.set_visible(0)
     
     self.surface = None
@@ -69,8 +70,23 @@ class ViewPyGame(VideoNode):
   def nextFrame(self):
     # Eat up pygame events, dying if requested...
     for event in pygame.event.get():
-      if event.type in (QUIT, KEYDOWN):
+      if event.type==QUIT:
         return False
+      if event.type==KEYDOWN and event.key==pygame.K_ESCAPE:
+        return False
+        
+      if event.type==KEYDOWN and event.key==pygame.K_SPACE:
+        width = self.screen.get_width()
+        height = self.screen.get_height()
+        
+        pygame.display.quit()
+        pygame.display.init()
+        
+        self.flags = self.flags ^ pygame.FULLSCREEN
+        
+        self.screen = pygame.display.set_mode((width, height), self.flags)
+        if self.flags & pygame.FULLSCREEN:
+          pygame.mouse.set_visible(0)
 
     # Fetch the frae we are to draw...
     frame = self.video.fetch(self.channel)
