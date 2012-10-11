@@ -12,35 +12,15 @@
 
 
 import lda
-import pydoc
 
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('lda_var.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>lda (variational)</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
-
-
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
+from utils import doc_gen
 
 
 
-# Class...
-classes = ''
-classes += doc.docclass(lda.VLDA)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
+# Setup...
+doc = doc_gen.DocGen('lda_var', 'Latent Dirichlet Allocation (variational)')
+doc.addFile('readme.txt', 'Overview')
 
 
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+# Classes...
+doc.addClass(lda.VLDA)

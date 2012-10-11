@@ -18,39 +18,18 @@
 
 
 
-import concentration_dp
-import pool
-import pydoc
+import dp_al
 
-doc = pydoc.HTMLDoc()
+from utils import doc_gen
 
 
-# Open the document...
-out = open('dp_al.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>Dirichlet process active learning</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
 
-
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
-
+# Setup...
+doc = doc_gen.DocGen('dp_al', 'Dirichlet Process Active Learning')
+doc.addFile('readme.txt', 'Overview')
 
 
 # Classes...
-classes = ''
-classes += doc.docclass(pool.Pool)
-classes += doc.docclass(pool.Entity)
-classes += doc.docclass(concentration_dp.ConcentrationDP)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
-
-
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+doc.addClass(dp_al.Pool)
+doc.addClass(dp_al.Entity)
+doc.addClass(dp_al.ConcentrationDP)

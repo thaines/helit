@@ -1,4 +1,6 @@
-An implementation of the incremental Kernel Density Estimation method from the paper 'Incremental One-Class learning with Bounded Computational Complexity', by R. R. Sillito and R. B. Fisher.
+Incremental Kernel Density Estimation
+
+An implementation of the method from the paper 'Incremental One-Class learning with Bounded Computational Complexity', by R. R. Sillito and R. B. Fisher.
 
 loo_cov.py - Code to calculate an optimal covariance matrix from a bunch of samples using leave one out.
 gmm.py - Gaussian mixture model representation, used internally.

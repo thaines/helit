@@ -11,38 +11,19 @@
 
 
 import p_cat
-import pydoc
 
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('p_cat.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>Probabilistic Classification</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
+from utils import doc_gen
 
 
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
+
+# Setup...
+doc = doc_gen.DocGen('p_cat', 'Probabilistic Classification')
+doc.addFile('readme.txt', 'Overview')
 
 
 # Classes...
-classes = ''
-classes += doc.docclass(p_cat.ProbCat)
-classes += doc.docclass(p_cat.ClassifyGaussian)
-classes += doc.docclass(p_cat.ClassifyKDE)
-classes += doc.docclass(p_cat.ClassifyDPGMM)
-classes += doc.docclass(p_cat.ClassifyDF)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
-
-
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+doc.addClass(p_cat.ProbCat)
+doc.addClass(p_cat.ClassifyGaussian)
+doc.addClass(p_cat.ClassifyKDE)
+doc.addClass(p_cat.ClassifyDPGMM)
+doc.addClass(p_cat.ClassifyDF)

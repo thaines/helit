@@ -15,65 +15,42 @@
 
 import cvarray
 import mp_map
-import numpy_help_cpp
 import prog_bar
+import numpy_help_cpp
 import python_obj_cpp
+import matrix_cpp
+import gamma_cpp
 import setProcName
 import start_cpp
+import make
 
-import pydoc
-
-
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('utils.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>Utilities/Miscellaneous</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
+import doc_gen
 
 
 
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
+# Setup...
+doc = doc_gen.DocGen('utils', 'Utilities/Miscellaneous')
+doc.addFile('readme.txt', 'Overview')
 
 
 # Variables...
-variables = ''
-variables += '<strong>numpy_help_cpp.numpy_util_code</strong><br/>'
-variables += 'Assorted utility functions for accessing numpy arrays within scipy.weave C++ code.<br/><br/>'
-variables += '<strong>python_obj_cpp.python_obj_code</strong><br/>'
-variables += 'Assorted utility functions for interfacing with python objects from scipy.weave C++ code.<br/><br/>'
-variables = variables.replace('&nbsp;',' ')
-out.write(doc.bigsection('Synonyms','#ffffff','#8d50ff',variables))
+doc.addVariable('numpy_help_cpp.numpy_util_code', 'ssorted utility functions for accessing numpy arrays within scipy.weave C++ code.')
+doc.addVariable('python_obj_cpp.python_obj_code', 'Assorted utility functions for interfacing with python objects from scipy.weave C++ code.')
+doc.addVariable('matrix_cpp.matrix_code', 'Matrix manipulation routines for use in scipy.weave C++')
+doc.addVariable('gamma_cpp.gamma_code', 'Gamma and related functions for use in scipy.weave C++')
 
 
 # Functions...
-funcs = ''
-funcs += doc.docroutine(cvarray.cv2array)
-funcs += doc.docroutine(cvarray.array2cv)
-funcs += doc.docroutine(mp_map.repeat)
-funcs += doc.docroutine(mp_map.mp_map)
-funcs += doc.docroutine(setProcName.setProcName)
-funcs += doc.docroutine(start_cpp.start_cpp)
-funcs += doc.docroutine(make.make_mod)
-funcs = funcs.replace('&nbsp;',' ')
-out.write(doc.bigsection('Functions','#ffffff','#eeaa77',funcs))
+doc.addFunction(make.make_mod)
+doc.addFunction(cvarray.cv2array)
+doc.addFunction(cvarray.array2cv)
+doc.addFunction(mp_map.repeat)
+doc.addFunction(mp_map.mp_map)
+doc.addFunction(setProcName.setProcName)
+doc.addFunction(start_cpp.start_cpp)
+doc.addFunction(make.make_mod)
 
 
 # Classes...
-classes = ''
-classes += doc.docclass(prog_bar.ProgBar)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
-
-
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+doc.addClass(prog_bar.ProgBar)
+doc.addClass(doc_gen.DocGen)

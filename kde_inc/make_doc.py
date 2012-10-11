@@ -14,38 +14,18 @@
 # This script file generates a kde_inc.html file, which contains all the information needed to use the system.
 
 import kde_inc
-import pydoc
 
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('kde_inc.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>Incrimental capped KDE</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
+from utils import doc_gen
 
 
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
 
+# Setup...
+doc = doc_gen.DocGen('kde_inc', 'Incrimental kernel density estimation')
+doc.addFile('readme.txt', 'Overview')
 
 
 # Classes...
-classes = ''
-classes += doc.docclass(kde_inc.PrecisionLOO)
-classes += doc.docclass(kde_inc.SubsetPrecisionLOO)
-classes += doc.docclass(kde_inc.GMM)
-classes += doc.docclass(kde_inc.KDE_INC)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
-
-
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+doc.addClass(kde_inc.PrecisionLOO)
+doc.addClass(kde_inc.SubsetPrecisionLOO)
+doc.addClass(kde_inc.GMM)
+doc.addClass(kde_inc.KDE_INC)

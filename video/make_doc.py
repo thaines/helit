@@ -18,70 +18,64 @@
 
 
 import video
-import pydoc
 
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('video.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>Video Node System</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
+from utils import doc_gen
 
 
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
 
+# Setup...
+doc = doc_gen.DocGen('video', 'Video Node System')
+doc.addFile('readme.txt', 'Overview')
+
+
+# Variables...
+doc.addVariable('MODE_RGB', 'Indicates a connection between nodes that uses a rgb colour stream, for normal video.')
+doc.addVariable('MODE_MASK', 'Indicates a connection between nodes that uses a binary stream, for comunicating masks.')
+doc.addVariable('MODE_FLOW', 'Indicates a connection between nodes that uses a pair of floating point numbers, for communicating optical flow.')
+doc.addVariable('MODE_WORD', 'Indicates a connection between nodes that uses a discrete assignment - often used to indicate some kind of labeling.')
+doc.addVariable('MODE_FLOAT', 'Indicates a connection between nodes that uses a float for each pixel - many uses.')
+doc.addVariable('MODE_MATRIX', 'Indicates a connection between nodes that sends matrices.')
+doc.addVariable('MODE_OTHER', 'Indicates a connection between nodes of an unknown type.')
+doc.addVariable('mode_to_string', 'A dictionary indexed by MODE_ variables that provides human readable descriptions.')
+doc.addVariable('five_word_colours', 'Default colours to use with the FiveWord and RenderWord classes.')
 
 # Functions...
-funcs = doc.docroutine(video.num_to_seq)
-funcs = funcs.replace('&nbsp;',' ')
-out.write(doc.bigsection('Functions','#ffffff','#eeaa77',funcs))
+doc.addFunction(video.num_to_seq)
 
 
 # Classes...
-classes = ''
-classes += doc.docclass(video.Manager)
-classes += doc.docclass(video.VideoNode)
-classes += doc.docclass(video.Black)
-classes += doc.docclass(video.ReadCV)
-classes += doc.docclass(video.ReadCV_IS)
-classes += doc.docclass(video.Seq)
-classes += doc.docclass(video.FrameCrop)
-classes += doc.docclass(video.Half)
-classes += doc.docclass(video.WriteCV)
-classes += doc.docclass(video.WriteFrameCV)
-classes += doc.docclass(video.ViewCV)
-classes += doc.docclass(video.Record)
-classes += doc.docclass(video.Play)
-classes += doc.docclass(video.Remap)
-classes += doc.docclass(video.DeinterlaceEV)
-classes += doc.docclass(video.ColourBias)
-classes += doc.docclass(video.ColourUnBias)
-classes += doc.docclass(video.LightCorrectMS)
-classes += doc.docclass(video.BackSubDP)
-classes += doc.docclass(video.OpticalFlowLK)
-classes += doc.docclass(video.FiveWord)
-classes += doc.docclass(video.ClipMask)
-classes += doc.docclass(video.MaskFlow)
-classes += doc.docclass(video.MaskFromColour)
-classes += doc.docclass(video.Mask_SABS)
-classes += doc.docclass(video.MaskStats)
-classes += doc.docclass(video.CombineGrid)
-classes += doc.docclass(video.RenderDiff)
-classes += doc.docclass(video.RenderFlow)
-classes += doc.docclass(video.RenderMask)
-classes += doc.docclass(video.RenderWord)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
-
-
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+doc.addClass(video.Manager)
+doc.addClass(video.VideoNode)
+doc.addClass(video.Black)
+doc.addClass(video.ReadCV)
+doc.addClass(video.ReadCV_IS)
+doc.addClass(video.Seq)
+doc.addClass(video.FrameCrop)
+doc.addClass(video.Half)
+doc.addClass(video.StepScale)
+doc.addClass(video.Reflect)
+doc.addClass(video.WriteCV)
+doc.addClass(video.WriteFramesCV)
+doc.addClass(video.WriteFrameCV)
+doc.addClass(video.ViewCV)
+doc.addClass(video.ViewPyGame)
+doc.addClass(video.Record)
+doc.addClass(video.Play)
+doc.addClass(video.Remap)
+doc.addClass(video.DeinterlaceEV)
+doc.addClass(video.ColourBias)
+doc.addClass(video.ColourUnBias)
+doc.addClass(video.LightCorrectMS)
+doc.addClass(video.BackSubDP)
+doc.addClass(video.OpticalFlowLK)
+doc.addClass(video.FiveWord)
+doc.addClass(video.ClipMask)
+doc.addClass(video.MaskFlow)
+doc.addClass(video.MaskFromColour)
+doc.addClass(video.Mask_SABS)
+doc.addClass(video.MaskStats)
+doc.addClass(video.CombineGrid)
+doc.addClass(video.RenderDiff)
+doc.addClass(video.RenderFlow)
+doc.addClass(video.RenderMask)
+doc.addClass(video.RenderWord)

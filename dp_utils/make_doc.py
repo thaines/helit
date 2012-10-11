@@ -14,49 +14,19 @@
 
 import dp_utils
 
-import pydoc
-
-
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('dp_utils.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>Dirichlet Process Utilities</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
+from utils import doc_gen
 
 
 
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
+# Setup...
+doc = doc_gen.DocGen('dp_utils', 'Dirichlet Process Utilities')
+doc.addFile('readme.txt', 'Overview')
 
 
 # Variables...
-variables = ''
-variables += '<strong>funcs_code</strong><br/>'
-variables += '<br/>Defines a selection of gamma-related functions, specifically ln-gamma, di-gamma and tri-gamma.<br/><br/>'
-variables += '<strong>sampling_code</strong><br/>'
-variables += '<br/>Code for sampling from various distributions - uniform, Gaussian, gamma and beta.<br/><br/>'
-variables += '<strong>conc_code</strong><br/>'
-variables += '<br/>Contains code to sample a concentration parameter and two classes - one to represent the status of a concentration parameter - its prior and its estimated value, and another to do the same thing for when a concentration parameter is shared between multiple Dirichlet processes.<br/><br/>'
-variables += '<strong>dir_est_code</strong><br/>'
-variables += '<br/>Contains a class for doing maximum likelihood estimation of a Dirichlet distrbution given multinomials that have been drawn from it.<br/><br/>'
-variables += '<strong>linked_list_code</strong><br/>'
-variables += '<br/>A linked list implimentation - doubly linked, adds data via templated inheritance.<br/><br/>'
-variables += '<strong>linked_list_gc_code</strong><br/>'
-variables += '<br/>A linked list with reference counting and garabge collection for its entries. Happens to be very good at representing a Dirichlet process.<br/><br/>'
-variables += '<strong>dp_utils_code</strong><br/>'
-variables += '<br/>Combines all of the code provided in this module into a single variable.<br/><br/>'
-variables = variables.replace('&nbsp;',' ')
-out.write(doc.bigsection('Variables','#ffffff','#8d50ff',variables))
-
-
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+doc.addVariable('sampling_code', 'Code for sampling from various distributions - uniform, Gaussian, gamma and beta.')
+doc.addVariable('conc_code', 'Contains code to sample a concentration parameter and two classes - one to represent the status of a concentration parameter - its prior and its estimated value, and another to do the same thing for when a concentration parameter is shared between multiple Dirichlet processes.')
+doc.addVariable('dir_est_code', 'Contains a class for doing maximum likelihood estimation of a Dirichlet distrbution given multinomials that have been drawn from it.')
+doc.addVariable('linked_list_code', 'A linked list implimentation - doubly linked, adds data via templated inheritance.')
+doc.addVariable('linked_list_gc_code', 'A linked list with reference counting and garabge collection for its entries. Happens to be very good at representing a Dirichlet process.')
+doc.addVariable('dp_utils_code', 'Combines all of the code provided in this module into a single variable.')

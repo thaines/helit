@@ -12,36 +12,16 @@
 
 
 import swood
-import pydoc
 
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('swood.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>Stochastic Woodland</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
-
-
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
+from utils import doc_gen
 
 
 
-# Class...
-classes = ''
-classes += doc.docclass(swood.SWood)
-classes += doc.docclass(swood.DecTree)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
+# Setup...
+doc = doc_gen.DocGen('swood', 'Stochastic Woodland (Depreciated)')
+doc.addFile('readme.txt', 'Overview')
 
 
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+# Classes...
+doc.addClass(swood.SWood)
+doc.addClass(swood.DecTree)

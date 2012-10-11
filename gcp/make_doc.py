@@ -11,42 +11,20 @@
 
 
 
-# This script file generates gcp.html, which contains all the information needed to use this system.
-
 import gcp
-import pydoc
 
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('gcp.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>gcp</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
+from utils import doc_gen
 
 
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
 
+# Setup...
+doc = doc_gen.DocGen('gcp', 'Gaussian Conjugate Prior')
+doc.addFile('readme.txt', 'Overview')
 
 
 # Classes...
-classes = ''
-classes += doc.docclass(gcp.Gaussian)
-classes += doc.docclass(gcp.GaussianInc)
-classes += doc.docclass(gcp.Wishart)
-classes += doc.docclass(gcp.StudentT)
-classes += doc.docclass(gcp.GaussianPrior)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
-
-
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+doc.addClass(gcp.Gaussian)
+doc.addClass(gcp.GaussianInc)
+doc.addClass(gcp.Wishart)
+doc.addClass(gcp.StudentT)
+doc.addClass(gcp.GaussianPrior)

@@ -12,43 +12,22 @@
 
 
 import lda
-import pydoc
 
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('lda_gibbs.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>lda (gibbs)</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
+from utils import doc_gen
 
 
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
+
+# Setup...
+doc = doc_gen.DocGen('lda_gibbs', 'Latent Dirichlet Allocation (Gibbs)')
+doc.addFile('readme.txt', 'Overview')
 
 
-# lda functions...
-funcs = doc.docroutine(lda.getAlgorithm)
-funcs = funcs.replace('&nbsp;',' ')
-out.write(doc.bigsection('Functions','#ffffff','#eeaa77',funcs))
+# Functions...
+doc.addFunction(lda.getAlgorithm)
 
 
 # Classes...
-classes = ''
-classes += doc.docclass(lda.Document)
-classes += doc.docclass(lda.Topic)
-classes += doc.docclass(lda.Corpus)
-classes += doc.docclass(lda.Params)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
-
-
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+doc.addClass(lda.Document)
+doc.addClass(lda.Topic)
+doc.addClass(lda.Corpus)
+doc.addClass(lda.Params)

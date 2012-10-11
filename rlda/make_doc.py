@@ -19,42 +19,21 @@
 
 
 import rlda
-import pydoc
 
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('rlda.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>rlda</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
+from utils import doc_gen
 
 
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
+
+# Setup...
+doc = doc_gen.DocGen('rlda', 'Region Latent Dirichlet Allocation')
+doc.addFile('readme.txt', 'Overview')
 
 
-# lda functions...
-funcs = doc.docroutine(rlda.getAlgorithm)
-funcs = funcs.replace('&nbsp;',' ')
-out.write(doc.bigsection('Functions','#ffffff','#eeaa77',funcs))
+# Functions...
+doc.addFunction(rlda.getAlgorithm)
 
 
 # Classes...
-classes = ''
-classes += doc.docclass(rlda.Document)
-classes += doc.docclass(rlda.Corpus)
-classes += doc.docclass(rlda.Params)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
-
-
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+doc.addClass(rlda.Document)
+doc.addClass(rlda.Corpus)
+doc.addClass(rlda.Params)

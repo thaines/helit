@@ -1,6 +1,7 @@
 #! /usr/bin/env python
+# -*- coding: utf-8 -*-
 
-# Copyright 2011 Tom SF Haines
+# Copyright 2012 Tom SF Haines
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,21 +18,5 @@
 
 
 
-import smp
-
-from utils import doc_gen
-
-
-
-# Setup...
-doc = doc_gen.DocGen('smp', 'Sparse Multinomial Posterior')
-doc.addFile('readme.txt', 'Overview')
-
-
-# Variables...
-doc.addVariable('smp_code', 'String containing the C++ code that does the actual work for the system.')
-
-
-# Classes...
-doc.addClass(smp.SMP)
-doc.addClass(smp.FlagIndexArray)
+from concentration_dp import ConcentrationDP
+from pool import Pool, Entity

@@ -11,47 +11,26 @@
 
 
 import dhdp
-import pydoc
 
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('dhdp.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>Dual Hierarchical Dirichlet Processes</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
+from utils import doc_gen
 
 
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
+
+# Setup...
+doc = doc_gen.DocGen('dhdp', 'Dual Hierarchical Dirichlet Processes')
+doc.addFile('readme.txt', 'Overview')
 
 
 # Functions...
-funcs = doc.docroutine(dhdp.getAlgorithm)
-funcs = funcs.replace('&nbsp;',' ')
-out.write(doc.bigsection('Functions','#ffffff','#eeaa77',funcs))
+doc.addFunction(dhdp.getAlgorithm)
 
 
 # Classes...
-classes = ''
-classes += doc.docclass(dhdp.PriorConcDP)
-classes += doc.docclass(dhdp.Params)
-classes += doc.docclass(dhdp.Document)
-classes += doc.docclass(dhdp.Corpus)
-classes += doc.docclass(dhdp.DocSample)
-classes += doc.docclass(dhdp.Sample)
-classes += doc.docclass(dhdp.Model)
-classes += doc.docclass(dhdp.DocModel)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
-
-
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+doc.addClass(dhdp.PriorConcDP)
+doc.addClass(dhdp.Params)
+doc.addClass(dhdp.Document)
+doc.addClass(dhdp.Corpus)
+doc.addClass(dhdp.DocSample)
+doc.addClass(dhdp.Sample)
+doc.addClass(dhdp.Model)
+doc.addClass(dhdp.DocModel)

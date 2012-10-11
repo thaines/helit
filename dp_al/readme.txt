@@ -8,8 +8,9 @@ Contains two classes - one is just a helper for estimating the concentration par
 
 Files included:
 
-concentration_dp.py - Contains ConcentrationDP, a class to assist with estimating the concentration parameter of a Dirichlet process.
+dp_al.py - File that imports all parts of the system, to be imported by users.
 
+concentration_dp.py - Contains ConcentrationDP, a class to assist with estimating the concentration parameter of a Dirichlet process.
 pool.py - Contains Pool, which you fill with entities to learn from. It then provides various active learning algorithms to select which entity to give to the oracle next. Note that the user is responsible for updating the classifier and interfacing with the oracle.
 
 

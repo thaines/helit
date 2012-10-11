@@ -11,60 +11,40 @@
 
 
 import df
-import pydoc
 
-doc = pydoc.HTMLDoc()
-
-
-# Open the document...
-out = open('df.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>Decision Forests</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
-
-
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
+from utils import doc_gen
 
 
 
-# Class...
-classes = ''
-classes += doc.docclass(df.DF)
-classes += doc.docclass(df.ExemplarSet)
-classes += doc.docclass(df.MatrixES)
-classes += doc.docclass(df.MatrixGrow)
-classes += doc.docclass(df.Goal)
-classes += doc.docclass(df.Classification)
-classes += doc.docclass(df.DensityGaussian)
-classes += doc.docclass(df.Pruner)
-classes += doc.docclass(df.PruneCap)
-classes += doc.docclass(df.Test)
-classes += doc.docclass(df.AxisSplit)
-classes += doc.docclass(df.LinearSplit)
-classes += doc.docclass(df.DiscreteBucket)
-classes += doc.docclass(df.Generator)
-classes += doc.docclass(df.MergeGen)
-classes += doc.docclass(df.RandomGen)
-classes += doc.docclass(df.AxisMedianGen)
-classes += doc.docclass(df.LinearMedianGen)
-classes += doc.docclass(df.AxisRandomGen)
-classes += doc.docclass(df.LinearRandomGen)
-classes += doc.docclass(df.DiscreteRandomGen)
-classes += doc.docclass(df.AxisClassifyGen)
-classes += doc.docclass(df.LinearClassifyGen)
-classes += doc.docclass(df.DiscreteClassifyGen)
-classes += doc.docclass(df.SVMClassifyGen)
-classes += doc.docclass(df.Node)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
+# Setup...
+doc = doc_gen.DocGen('df', 'Decision Forests')
+doc.addFile('readme.txt', 'Overview')
 
 
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+# Classes...
+doc.addClass(df.DF)
+doc.addClass(df.ExemplarSet)
+doc.addClass(df.MatrixES)
+doc.addClass(df.MatrixGrow)
+doc.addClass(df.Goal)
+doc.addClass(df.Classification)
+doc.addClass(df.DensityGaussian)
+doc.addClass(df.Pruner)
+doc.addClass(df.PruneCap)
+doc.addClass(df.Test)
+doc.addClass(df.AxisSplit)
+doc.addClass(df.LinearSplit)
+doc.addClass(df.DiscreteBucket)
+doc.addClass(df.Generator)
+doc.addClass(df.MergeGen)
+doc.addClass(df.RandomGen)
+doc.addClass(df.AxisMedianGen)
+doc.addClass(df.LinearMedianGen)
+doc.addClass(df.AxisRandomGen)
+doc.addClass(df.LinearRandomGen)
+doc.addClass(df.DiscreteRandomGen)
+doc.addClass(df.AxisClassifyGen)
+doc.addClass(df.LinearClassifyGen)
+doc.addClass(df.DiscreteClassifyGen)
+doc.addClass(df.SVMClassifyGen)
+doc.addClass(df.Node)

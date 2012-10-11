@@ -12,20 +12,14 @@
 
 
 import gmm
-from kmeans_shared import KMeansShared
-from mixture import Mixture
-import pydoc
 
-doc = pydoc.HTMLDoc()
+from utils import doc_gen
 
 
-# Open the document...
-out = open('gmm.html','w')
-out.write('<html>\n')
-out.write('<head>\n')
-out.write('<title>Gaussian Mixture Model (plus K-means)</title>\n')
-out.write('</head>\n')
-out.write('<body>\n')
+
+# Setup...
+doc = doc_gen.DocGen('gmm', 'Gaussian Mixture Model (plus K-means)')
+doc.addFile('readme.txt', 'Overview')
 
 
 # Function that removes the methods that start with 'do' from a class - to hide them in the documentation...
@@ -35,53 +29,29 @@ def pruneClassOfDo(cls):
     if method[:2]=='do':
       delattr(cls, method)
 
-pruneClassOfDo(KMeansShared)
+pruneClassOfDo(gmm.KMeansShared)
 pruneClassOfDo(gmm.KMeans0)
 pruneClassOfDo(gmm.KMeans1)
 pruneClassOfDo(gmm.KMeans2)
 pruneClassOfDo(gmm.KMeans3)
-pruneClassOfDo(Mixture)
+pruneClassOfDo(gmm.Mixture)
 pruneClassOfDo(gmm.IsotropicGMM)
 
 
-
-# Openning blob...
-readme = open('readme.txt','r').read()
-readme = readme.replace('\n','<br/>')
-out.write(doc.bigsection('Overview','#ffffff','#7799ee',readme))
-
-
 # Variables...
-variables = ''
-variables += '<strong>KMeans</strong> = <strong>KMeans3</strong><br/>'
-variables += 'The prefered k-means implimentation can be referenced as KMeans<br/><br/>'
-variables += '<strong>KMeansShort</strong> = <strong>KMeans1</strong><br/>'
-variables += 'The prefered k-means implimentation is choosen on the assumption of long feature vectors - if the feature vectors are in fact short then this is a synonym of a more appropriate fitter. (By short think less than 20, though this is very computer dependent.)<br/>'
-variables = variables.replace('&nbsp;',' ')
-out.write(doc.bigsection('Synonyms','#ffffff','#8d50ff',variables))
+doc.addVariable('KMeans', 'The prefered k-means implimentation can be referenced as KMeans')
+doc.addVariable('KMeansShort', 'The prefered k-means implimentation is choosen on the assumption of long feature vectors - if the feature vectors are in fact short then this is a synonym of a more appropriate fitter. (By short think less than 20, though this is somewhat computer dependent.)')
 
 
 # Functions...
-funcs = ''
-funcs += doc.docroutine(gmm.modelSelectBIC)
-funcs = funcs.replace('&nbsp;',' ')
-out.write(doc.bigsection('Functions','#ffffff','#eeaa77',funcs))
+doc.addFunction(gmm.modelSelectBIC)
 
 
 # Classes...
-classes = ''
-classes += doc.docclass(KMeansShared)
-classes += doc.docclass(gmm.KMeans0)
-classes += doc.docclass(gmm.KMeans1)
-classes += doc.docclass(gmm.KMeans2)
-classes += doc.docclass(gmm.KMeans3)
-classes += doc.docclass(Mixture)
-classes += doc.docclass(gmm.IsotropicGMM)
-classes = classes.replace('&nbsp;',' ')
-out.write(doc.bigsection('Classes','#ffffff','#ee77aa',classes))
-
-
-# Close the document...
-out.write('</body>\n')
-out.write('</html>\n')
-out.close()
+doc.addClass(gmm.KMeansShared)
+doc.addClass(gmm.KMeans0)
+doc.addClass(gmm.KMeans1)
+doc.addClass(gmm.KMeans2)
+doc.addClass(gmm.KMeans3)
+doc.addClass(gmm.Mixture)
+doc.addClass(gmm.IsotropicGMM)

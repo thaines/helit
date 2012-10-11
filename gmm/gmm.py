@@ -15,3 +15,5 @@
 from kmeans import *
 from isotropic import IsotropicGMM
 from bic import modelSelectBIC
+from kmeans_shared import KMeansShared
+from mixture import Mixture

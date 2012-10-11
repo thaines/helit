@@ -15,7 +15,7 @@
 
 
 
-from video_node import MODE_RGB, MODE_MASK, MODE_FLOW, MODE_WORD
+from video_node import MODE_RGB, MODE_MASK, MODE_FLOW, MODE_WORD, MODE_FLOAT, MODE_MATRIX, MODE_OTHER
 from video_node import mode_to_string, VideoNode
 from manager import Manager
 
