@@ -25,7 +25,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('rlda', 'Region Latent Dirichlet Allocation')
+doc = doc_gen.DocGen('rlda', 'Region Latent Dirichlet Allocation', 'Topic model that learns synonyms')
 doc.addFile('readme.txt', 'Overview')
 
 

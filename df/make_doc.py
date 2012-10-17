@@ -17,7 +17,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('df', 'Decision Forests')
+doc = doc_gen.DocGen('df', 'Decision Forests', 'Extensive random forests implimentation')
 doc.addFile('readme.txt', 'Overview')
 
 

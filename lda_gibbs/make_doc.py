@@ -18,7 +18,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('lda_gibbs', 'Latent Dirichlet Allocation (Gibbs)')
+doc = doc_gen.DocGen('lda_gibbs', 'Latent Dirichlet Allocation (Gibbs)', 'Gibbs sampling implimentation of latent Dirichlet allocation')
 doc.addFile('readme.txt', 'Overview')
 
 

@@ -17,7 +17,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('dhdp', 'Dual Hierarchical Dirichlet Processes')
+doc = doc_gen.DocGen('dhdp', 'Dual Hierarchical Dirichlet Processes', 'Clustering topic model')
 doc.addFile('readme.txt', 'Overview')
 
 

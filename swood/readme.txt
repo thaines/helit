@@ -16,6 +16,7 @@ A fairly basic implementation - just builds the trees and works out error estima
 Implemented using pure python, with numpy, so not very efficient, but because its such an efficient algorithm anyway its still fast enough for real world use on decently sized data sets. Obviously its quite a simple algorithm, such that anyone with a basic understanding of machine learning should be able to implement it, but it is well commented and the code should be easy to understand.
 
 Contains the following files:
+
 swood.py - Contains the SWood object, that is basically all you need.
 dec_tree.py - Contains the DecTree object, that implements a decision tree in case that is all you want. Where most of the systems functionality actually is.
 test_*.py - Various test files. Also serve as examples of how to use the system.

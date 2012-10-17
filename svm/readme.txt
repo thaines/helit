@@ -1,4 +1,5 @@
 Support Vector Machine implementation, using the Sequential Minimal Optimization technique.
+
 Implemented in python using numpy and scipy.weave.
 Only provides classification.
 

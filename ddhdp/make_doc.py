@@ -24,7 +24,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('ddhdp', 'Delta-Dual Hierarchical Dirichlet Processes')
+doc = doc_gen.DocGen('ddhdp', 'Delta-Dual Hierarchical Dirichlet Processes', 'Semi-supervised topic model, with clustering')
 doc.addFile('readme.txt', 'Overview')
 
 

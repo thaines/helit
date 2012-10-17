@@ -18,7 +18,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('swood', 'Stochastic Woodland (Depreciated)')
+doc = doc_gen.DocGen('swood', 'Stochastic Woodland (Depreciated)', 'Basic random forest implimentation (Depreciated)')
 doc.addFile('readme.txt', 'Overview')
 
 

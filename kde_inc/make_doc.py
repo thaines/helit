@@ -20,7 +20,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('kde_inc', 'Incrimental kernel density estimation')
+doc = doc_gen.DocGen('kde_inc', 'Incrimental kernel density estimation', 'Kernel density estimation with Gaussian kernels and greedy merging beyond a cap')
 doc.addFile('readme.txt', 'Overview')
 
 

@@ -23,7 +23,7 @@ class Test:
   
   
   def testCodeC(self, name, exemplar_list):
-    """Provides C code to perform the test - provides a C function that is given the test object as a pointer to the first byte and the index of the exemplar to test; it then returns true or false dependeing on if it passes the test or not. Returned string contains a function with the calling convention bool <name>(PyObject * data, void * test, size_t test_length, int exemplar). data is a python tuple indexed by channel containning the object to be fed to the exemplar access function. To construct this function it needs the return value of listCodeC for an ExemplarSet, so it can get the calling convention to access the channel. When compiled the various functions must be avaliable."""
+    """Provides C code to perform the test - provides a C function that is given the test object as a pointer to the first byte and the index of the exemplar to test; it then returns true or false dependeing on if it passes the test or not. Returned string contains a function with the calling convention `bool <name>(PyObject * data, void * test, size_t test_length, int exemplar)`. data is a python tuple indexed by channel containning the object to be fed to the exemplar access function. To construct this function it needs the return value of listCodeC for an ExemplarSet, so it can get the calling convention to access the channel. When compiled the various functions must be avaliable."""
     raise NotImplementedError
 
 

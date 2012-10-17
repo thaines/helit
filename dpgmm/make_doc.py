@@ -17,7 +17,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('dpgmm', 'Dirichlet Process Gaussian Mixture Model')
+doc = doc_gen.DocGen('dpgmm', 'Dirichlet Process Gaussian Mixture Model', 'Dynamically resizing Gaussian mixture model')
 doc.addFile('readme.txt', 'Overview')
 
 

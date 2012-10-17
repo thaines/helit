@@ -18,7 +18,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('gcp', 'Gaussian Conjugate Prior')
+doc = doc_gen.DocGen('gcp', 'Gaussian Conjugate Prior', 'Library of distributions focused on the Gaussian and its conjugate prior')
 doc.addFile('readme.txt', 'Overview')
 
 

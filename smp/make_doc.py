@@ -24,7 +24,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('smp', 'Sparse Multinomial Posterior')
+doc = doc_gen.DocGen('smp', 'Sparse Multinomial Posterior', 'Estimate a multinomial distribution, given sparse draws')
 doc.addFile('readme.txt', 'Overview')
 
 

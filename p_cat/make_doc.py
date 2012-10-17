@@ -17,7 +17,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('p_cat', 'Probabilistic Classification')
+doc = doc_gen.DocGen('p_cat', 'Probabilistic Classification', 'Standardised interface to probabilistic classifiers with features for active learning')
 doc.addFile('readme.txt', 'Overview')
 
 

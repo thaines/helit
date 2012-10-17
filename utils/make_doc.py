@@ -29,12 +29,12 @@ import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('utils', 'Utilities/Miscellaneous')
+doc = doc_gen.DocGen('utils', 'Utilities/Miscellaneous', 'Library of miscellaneous stuff - most modules depend on this.')
 doc.addFile('readme.txt', 'Overview')
 
 
 # Variables...
-doc.addVariable('numpy_help_cpp.numpy_util_code', 'ssorted utility functions for accessing numpy arrays within scipy.weave C++ code.')
+doc.addVariable('numpy_help_cpp.numpy_util_code', 'Assorted utility functions for accessing numpy arrays within scipy.weave C++ code.')
 doc.addVariable('python_obj_cpp.python_obj_code', 'Assorted utility functions for interfacing with python objects from scipy.weave C++ code.')
 doc.addVariable('matrix_cpp.matrix_code', 'Matrix manipulation routines for use in scipy.weave C++')
 doc.addVariable('gamma_cpp.gamma_code', 'Gamma and related functions for use in scipy.weave C++')

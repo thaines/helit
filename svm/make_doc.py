@@ -18,7 +18,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('svm', 'Support Vector Machine')
+doc = doc_gen.DocGen('svm', 'Support Vector Machine', 'Support vector machines, classification only')
 doc.addFile('readme.txt', 'Overview')
 
 

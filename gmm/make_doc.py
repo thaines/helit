@@ -18,7 +18,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('gmm', 'Gaussian Mixture Model (plus K-means)')
+doc = doc_gen.DocGen('gmm', 'Gaussian Mixture Model (plus K-means)', 'Gaussian mixture model, with EM, plus assorted k-means implimentations')
 doc.addFile('readme.txt', 'Overview')
 
 

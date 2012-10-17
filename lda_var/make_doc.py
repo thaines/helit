@@ -18,7 +18,7 @@ from utils import doc_gen
 
 
 # Setup...
-doc = doc_gen.DocGen('lda_var', 'Latent Dirichlet Allocation (variational)')
+doc = doc_gen.DocGen('lda_var', 'Latent Dirichlet Allocation (variational)', 'Variational implimentation of latent Dirichlet allocation')
 doc.addFile('readme.txt', 'Overview')
 
 
