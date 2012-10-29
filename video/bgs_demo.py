@@ -58,7 +58,11 @@ bs.source(0,cb)
 bs.source(1,lc,0)
 man.add(bs)
 
-lc.source(1,bs,2)
+bs_h = video.Half()
+bs_h.source(0,bs,2)
+man.add(bs_h)
+
+lc.source(1,bs_h)
 
 
 bs.setDP(comp=6, conc=0.01, cap=128.0)

@@ -207,7 +207,7 @@ kernel void new_comp_prob(const int width, const float prior_count, const float4
 
 
 // This processes a pixel, using the results of the *comp_prob kernels. This consists of doing two things - calculating the probability of the current pixel value belonging to the background, which is stored in the prob array, and updating the model with the new pixel value...
-kernel void update_pixel(const int frame, const int width, const int comp_count, const float prior_count, const float4 prior_mu, const float4 prior_sigma2, const float concentration, const float cap, const float minWeight, global const float4 * image, global float8 * mix, global float * pixel_prob)
+kernel void update_pixel(const int frame, const int width, const int height, const int comp_count, const float prior_count, const float4 prior_mu, const float4 prior_sigma2, const float concentration, const float cap, const float weight, const float minWeight, global const float4 * image, global float8 * mix, global float * pixel_prob)
 {
  // Get the pixel that we are working on...
   const int x = get_global_id(0);
@@ -215,7 +215,7 @@ kernel void update_pixel(const int frame, const int width, const int comp_count,
 
   if (x>=width) return;
 
-  const int base = y*width + x;
+  const int base = mad24(y, width, x);
   const float4 pixel = image[base];
   const int mixBase = base*comp_count;
 
@@ -253,6 +253,7 @@ kernel void update_pixel(const int frame, const int width, const int comp_count,
 
  // Now we need to update the model - either update an existing component or 'create' a new component. After that the confidence cap needs to be applied...
   // Clamp the probability, which is now used as a weight for the below update...
+   prob *= weight;
    prob = fmax(prob, minWeight);
 
   // Fetch a psuedo-random number...
@@ -268,27 +269,60 @@ kernel void update_pixel(const int frame, const int width, const int comp_count,
    }
 
   // Either update an existing component or create a new one (Actually, we always update, to save on branching, we just might be updating a zeroed out entry!)...
-   float8 comp;
-   if (home<comp_count) comp = mix[mixBase+home];
-   else
-   {
-    comp = 0.0;
-    home = lowIndex;
-   }
+   // Local copy - either new or an old one...
+    float8 comp;
+    if (home<comp_count) comp = mix[mixBase+home];
+    else
+    {
+     comp = 0.0;
+     home = lowIndex;
+    }
 
-   const float trueCount = prior_count + comp.s0;
-   const float4 trueMu = prior_mu + comp.s1233;
-   const float4 trueSigma2 = prior_sigma2 + comp.s0*comp.s4566;
+   // Get the current meaning, so its not an offset from the prior...
+    const float trueCount = prior_count + comp.s0;
+    const float4 trueMu = prior_mu + comp.s1233;
+    const float4 trueSigma2 = prior_sigma2 + comp.s0*comp.s4566;
+   
+   // Calculate the half way values, to adjacent pixels...
+    const float4 pixelUp = 0.5 * (image[mad24(max(0,y-1), width, x)] + pixel);
+    const float4 pixelDown = 0.5 * (image[mad24(min(height-1,y+1), width, x)] + pixel);
+    const float4 pixelLeft = 0.5 * (image[mad24(y, width, max(0,x-1))] + pixel);
+    const float4 pixelRight = 0.5 * (image[mad24(y, width, min(width-1,x+1))] + pixel);
 
-   const float4 diff = pixel - trueMu;
+   // Calculate the standard deviation, using the half way values to define 4 squares (We use pixel as the mean, even though it is not the mean of the 4 pixel quarters surrounding it.)...
+    float4 var = 0.0;
+    var += (pixel * pixel) / 6.0;
+    
+    var += (pixelUp * pixelUp) / 6.0;
+    var += (pixelDown * pixelDown) / 6.0;
+    var += (pixelLeft * pixelLeft) / 6.0;
+    var += (pixelRight * pixelRight) / 6.0;
+    
+    var += (pixelUp * pixelLeft) / 8.0;
+    var += (pixelUp * pixelRight) / 8.0;
+    var += (pixelDown * pixelLeft) / 8.0;
+    var += (pixelDown * pixelRight) / 8.0;
+    
+    var -= (pixel * pixelUp) / 12.0;
+    var -= (pixel * pixelDown) / 12.0;
+    var -= (pixel * pixelLeft) / 12.0;
+    var -= (pixel * pixelRight) / 12.0;
+    
+    const float4 mean = (pixelUp + pixelDown + pixelLeft + pixelRight) / 4.0;
+    var -= (mean * mean);
+   
+   // Do the update...
+    const float4 diff = pixel - trueMu;
 
-   comp.s123 = (trueCount*trueMu.s012 + prob*pixel.s012) / (trueCount+prob);
-   comp.s456 = trueSigma2.s012 + (trueCount*prob)*diff.s012*diff.s012 / (trueCount+prob);
+    comp.s123 = (trueCount*trueMu.s012 + prob*pixel.s012) / (trueCount+prob);
+    comp.s456 = trueSigma2.s012 + (prob*var.s012) + (trueCount*prob)*diff.s012*diff.s012 / (trueCount+prob);
 
-   comp.s123 -= prior_mu.s012;
-   comp.s456 = (comp.s456 - prior_sigma2.s012) / (comp.s0 + prob);
+   // Correct back so its an offset from the prior again...
+    comp.s123 -= prior_mu.s012;
+    comp.s456 = (comp.s456 - prior_sigma2.s012) / (comp.s0 + prob);
 
-   comp.s0 += prob;
+   // Also update the weight...
+    comp.s0 += prob;
 
 
   // Write back...

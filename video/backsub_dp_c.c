@@ -83,6 +83,7 @@ typedef struct
  float cap; // Maximum amount of weight that can be assigned to any given component, to prevent the model getting too certain - an alternative to degradation.
 
  float smooth; // Individual pixels are assumed to be the mean of a Gaussian with this variance.
+ float weight; // Multiplier of pixel weight.
  float minWeight; // Minimum weight allowed for a pixel.
 
  float * temp; // Temporary buffer of size compCap used to cache multinomial over components.
@@ -133,6 +134,7 @@ static PyObject * BackSubCoreDP_new(PyTypeObject * type, PyObject * args, PyObje
   self->cap = 128.0;
 
   self->smooth = 0.0 / (255.0*255.0);
+  self->weight = 1.0;
   self->minWeight = 0.01;
 
   self->temp = NULL;
@@ -176,6 +178,7 @@ static PyMemberDef BackSubCoreDP_members[] =
     {"concentration", T_FLOAT, offsetof(BackSubCoreDP, concentration), 0, "The concentration used by the Dirichlet processes."},
     {"cap", T_FLOAT, offsetof(BackSubCoreDP, cap), 0, "The maximum weight that can be assigned to any given Dirichlet process - a limit on certainty. On reaching the cap *all* component weights are divided so the cap is maintained."},
     {"smooth", T_FLOAT, offsetof(BackSubCoreDP, smooth), 0, "Each sample is assumed to have a variance of this parameter - acts as a regularisation parameter to prevent extremelly pointy distributions that don't handle the occasional noise well. Not supported by OpenCL version."},
+    {"weight", T_FLOAT, offsetof(BackSubCoreDP, weight), 0, "Multiplier for the weight used when adding new samples to the background distribution."},
     {"minWeight", T_FLOAT, offsetof(BackSubCoreDP, minWeight), 0, "Minimum weight for a new sample - used to avoid ignoring information completly."},
     {"threshold", T_FLOAT, offsetof(BackSubCoreDP, threshold), 0, "Threshold for the mask creation - gets converted into a prior for belief propagation, so this is not a hard limit."},
     {"cert_limit", T_FLOAT, offsetof(BackSubCoreDP, cert_limit), 0, "The probability of a pixel label assignment from the per-pixel density estimates is limited to be between this and one minus this."},
@@ -358,11 +361,6 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
   PyArrayObject * pixProb;
   if (!PyArg_ParseTuple(args, "O!O!", &PyArray_Type, &image, &PyArray_Type, &pixProb)) return NULL;
 
-
- struct timeval start, end; // ********************************************
- gettimeofday(&start, 0); // **********************************************
-
-
  // Zeroed out component, for calculating the probability of making a new one...
   int i;
   Component newbie;
@@ -432,6 +430,7 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
      float weight = *prob; //probSum / countSum;
 
     // Prevent the weight being too small for this step, as we don't want to completly ignore evidence...
+     weight *= self->weight;
      if (weight<self->minWeight) weight = self->minWeight;
 
     // Draw a random number, for selecting a component...
@@ -494,12 +493,6 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
      }
    }
   }
-
-
- gettimeofday(&end, 0); // ************************************************************
- double diff = (end.tv_sec + 1e-6*end.tv_usec) - (start.tv_sec + 1e-6*start.tv_usec);
- printf("time for model = %.6f\n", diff); // ***********************************
-
 
  Py_INCREF(Py_None);
  return Py_None;
@@ -585,11 +578,6 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
   PyArrayObject * pixProb;
   PyArrayObject * mask;
   if (!PyArg_ParseTuple(args, "O!O!O!", &PyArray_Type, &image, &PyArray_Type, &pixProb, &PyArray_Type, &mask)) return NULL;
-
-
- struct timeval start, end; // ********************************************
- gettimeofday(&start, 0); // **********************************************
-
 
  // Convert the threshold into a two label prior, as an offset to the background offset...
   float priorOffset = log(1.0-self->threshold) - log(self->threshold);
@@ -815,12 +803,6 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
      }
     }
   }
-
-
- gettimeofday(&end, 0); // ************************************************************
- double diff = (end.tv_sec + 1e-6*end.tv_usec) - (start.tv_sec + 1e-6*start.tv_usec);
- printf("time for post process = %.6f\n", diff); // ***********************************
-
 
  Py_INCREF(Py_None);
  return Py_None;
