@@ -90,7 +90,7 @@ class ReadCV_IS(VideoNode):
         #print img.nChannels, img.width, img.height, img.depth, img.origin
         self.frame = cv2array(img)[:,:,::-1].astype(numpy.float32)/255.0
       except:
-        print 'Frame #%i with filename %s failed to load.'(self.index,self.files[self.index])
+        print 'Frame #%i with filename %s failed to load.'%(self.index,self.files[self.index])
       self.index += 1
     else:
       self.frame = None

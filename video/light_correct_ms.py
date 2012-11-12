@@ -155,7 +155,7 @@ class LightCorrectMS(VideoNode):
      const float epsilon = 1e-3;
      const int maxIter = 32;
      const float hsm = 3.0;
-     const float winWidth = hsm*scale;    
+     const float winWidth = hsm * float(scale);
        
     // Iterate the 3 channels...
      for (int channel=0; channel<3; channel++)
@@ -218,7 +218,7 @@ class LightCorrectMS(VideoNode):
 
          float weight;
          float prevVal = 1e100;
-         float scale2 = scale*scale;
+         float scale2 = float(scale)*float(scale);
          for (int i=low;i<=high;i++)
          {
           if (fabs(prevVal-TEMP2(i,channel))>epsilon)
@@ -226,7 +226,7 @@ class LightCorrectMS(VideoNode):
            prevVal = TEMP2(i,channel);
            float delta = prevVal - estimate;
            // weight = exp(-0.5*delta*delta/scale2); // Gaussian option
-           weight = scale / (M_PI * (delta*delta + scale2)); // Cauchy option
+           weight = float(scale) / (M_PI * (delta*delta + scale2)); // Cauchy option
           }
 
           weightEst += weight;

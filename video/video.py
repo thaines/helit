@@ -45,6 +45,7 @@ from opticalflow_lk import OpticalFlowLK
 from mask_from_colour import MaskFromColour
 from mask_sabs import Mask_SABS
 from mask_stats import MaskStats
+from stats_cd import StatsCD
 from clip_mask import ClipMask
 from mask_flow import MaskFlow
 from five_word import FiveWord, five_word_colours

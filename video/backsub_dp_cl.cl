@@ -562,7 +562,7 @@ kernel void send_pos_x(const int width, global const float * bgCost, global cons
   const int x = get_global_id(0);
   const int y = get_global_id(1);
 
-  if (x>=width) return;
+  if ((x+1)>=width) return;
 
   const int from = y*width + x;
   const int to = from + 1;

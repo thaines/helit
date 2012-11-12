@@ -910,7 +910,7 @@ static PyObject * BackSubCoreDP_background(BackSubCoreDP * self, PyObject * args
 
  // Enqueue a task to put the background into the image field...
   cl_int status = clSetKernelArg(self->extract_mode, 2, sizeof(cl_float4), self->prior_mu);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
   size_t work_size[2];
   size_t block_size[2];
@@ -919,19 +919,19 @@ static PyObject * BackSubCoreDP_background(BackSubCoreDP * self, PyObject * args
   work_size[1] = self->height;
   calc_block_size(self->extract_mode_size, 2, work_size, block_size, 0);
   status = clEnqueueNDRangeKernel(self->queue, self->extract_mode, 2, NULL, work_size, block_size, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
  // Add a barrier...
   status = clEnqueueBarrier(self->queue);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
  // Enqueue extracting the result...
   status = clEnqueueReadBuffer(self->queue, self->image, CL_FALSE, 0, self->height*self->width*4*sizeof(cl_float), self->image_temp, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
  // Wait till the queue is done...
   status = clFinish(self->queue);
-  if (status!=CL_SUCCESS) return NULL;
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
  // Write the result into the output image...
   int y, x, i;
@@ -1164,6 +1164,8 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
  // Iterate over each level of the hierarchy in turn, doing the iterations and then upsampling to the next layer down...
   for (l=self->layers-1;l>=0;l--)
   {
+   //printf("layer = %i; width = %i; height = %il; widthBL = %i; heightBL = %i\n", l, self->width, self->height, self->widthBL[l], self->heightBL[l]); 
+    
    // Prepare the kernels for the iterations...
     status |= clSetKernelArg(self->send_pos_x, 0, sizeof(cl_int), &self->widthBL[l]);
     status |= clSetKernelArg(self->send_pos_x, 1, sizeof(cl_mem), &self->bgCost[l]);
@@ -1194,32 +1196,32 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
     {
      work_offset[0] = 0;
      work_offset[1] = 0;
-     work_size[0] = self->width - 1;
-     work_size[1] = self->height;
+     work_size[0] = self->widthBL[l] - 1;
+     work_size[1] = self->heightBL[l];
      calc_block_size(self->send_pos_x_size, 2, work_size, block_size, 0);
      status = clEnqueueNDRangeKernel(self->queue, self->send_pos_x, 2, work_offset, work_size, block_size, 0, NULL, NULL);
      if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
      work_offset[0] = 0;
      work_offset[1] = 0;
-     work_size[0] = self->width;
-     work_size[1] = self->height - 1;
+     work_size[0] = self->widthBL[l];
+     work_size[1] = self->heightBL[l] - 1;
      calc_block_size(self->send_pos_y_size, 2, work_size, block_size, 0);
      status = clEnqueueNDRangeKernel(self->queue, self->send_pos_y, 2, work_offset, work_size, block_size, 0, NULL, NULL);
      if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
      work_offset[0] = 1;
      work_offset[1] = 0;
-     work_size[0] = self->width - 1;
-     work_size[1] = self->height;
+     work_size[0] = self->widthBL[l] - 1;
+     work_size[1] = self->heightBL[l];
      calc_block_size(self->send_neg_x_size, 2, work_size, block_size, 0);
      status = clEnqueueNDRangeKernel(self->queue, self->send_neg_x, 2, work_offset, work_size, block_size, 0, NULL, NULL);
      if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
 
      work_offset[0] = 0;
      work_offset[1] = 1;
-     work_size[0] = self->width;
-     work_size[1] = self->height - 1;
+     work_size[0] = self->widthBL[l];
+     work_size[1] = self->heightBL[l] - 1;
      calc_block_size(self->send_neg_y_size, 2, work_size, block_size, 0);
      status = clEnqueueNDRangeKernel(self->queue, self->send_neg_y, 2, work_offset, work_size, block_size, 0, NULL, NULL);
      if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}

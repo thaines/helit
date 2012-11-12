@@ -38,6 +38,7 @@ static PyObject * ManagerCL_new(PyTypeObject * type, PyObject * args, PyObject *
 static void ManagerCL_dealloc(ManagerCL * self)
 {
  clFinish(self->queue);
+ 
  clReleaseCommandQueue(self->queue);
  clReleaseContext(self->context);
 
