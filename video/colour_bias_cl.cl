@@ -34,8 +34,7 @@ kernel void from_rgb(const int width, const float chromaScale, const float lumSc
    rotated.s2 = colour.s0 * mat.s6 + colour.s1 * mat.s7 + colour.s2 * mat.s8;
 
   // Seperate chromacity...
-   float cDiv = rotated.s0;
-   if (cDiv<noiseFloor) cDiv = noiseFloor;
+   float cDiv = max(rotated.s0, noiseFloor);
 
    rotated.s0 *= lumScale;
    rotated.s12 *= chromaScale / cDiv;
@@ -62,8 +61,7 @@ kernel void to_rgb(const int width, const float chromaScale, const float lumScal
    float4 merged;
    merged.s0 = colour.s0 / lumScale;
 
-   float cDiv = merged.s0;
-   if (cDiv<noiseFloor) cDiv = noiseFloor;
+   float cDiv = max(merged.s0, noiseFloor);
    merged.s12 = colour.s12 * (cDiv / chromaScale);
 
   // Rotate back to rgb...

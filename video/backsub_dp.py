@@ -234,6 +234,8 @@ class BackSubDP(VideoNode):
       mean = frame.mean(axis=0).mean(axis=0)
       var = numpy.square(frame).mean(axis=0).mean(axis=0) - mean**2.0
       var *= self.auto_prior
+      
+      var = numpy.maximum(var, 1e-3)
 
       self.core.prior_update(mean[0], mean[1], mean[2], var[0], var[1], var[2])
 

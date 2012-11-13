@@ -32,7 +32,10 @@ use_rgb = False
 
 man = video.Manager(useCL = True)
 
-vid = video.ReadCV(fn)
+if '#' in fn:
+  vid = video.ReadCV_IS(fn)
+else:
+  vid = video.ReadCV(fn)
 man.add(vid)
 
 print 'Resolution:', vid.width(), 'X', vid.height()

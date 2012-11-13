@@ -99,6 +99,7 @@ class RenderMask(VideoNode):
         self.output[:,:,c] = self.bgColour[c]
     else:
       bg = self.bg.fetch(self.bgChannel)
+      if bg==None: return False
       self.output[:,:,:] = bg
 
     if self.fg==None:
@@ -106,6 +107,7 @@ class RenderMask(VideoNode):
         self.output[:,:,c][mask] = self.fgColour[c]
     else:
       fg = self.fg.fetch(self.fgChannel)
+      if fg==None: return False
       for c in xrange(3):
         self.output[:,:,c][mask] = fg[:,:,c][mask]
 
