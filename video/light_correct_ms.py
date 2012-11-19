@@ -26,7 +26,7 @@ from video_node import *
 
 class LightCorrectMS(VideoNode):
   """This node estimates the lighting change between the current frame and the previous frame, providing several outputs to communicate this change to future nodes. Estimates the change as a per-channel multiplicative constant, for which it gets an estimate from each pixel. Mean shift is then used to find the mode, as in the paper 'Time_delayed Correlation Analysis for Multi-Camera Activity Understanding' by Loy, Xiang and Gong. There is no guarantee that after this values will remain within [0,1]. Also has a mode of operation where instead of the previous it fetches a frame from elsewhere - it does not indicate a dependency on the other source so anything can happen - its primary aim is to allow a loop with a background subtraction node such that it uses the current, or previous, background estimate. Requires that the input colour model be from the colour_bias node, as it makes assumptions dependent on that model."""
-  def __init__(self, scale = 8.0/255.0, limit = 0.2, lowLimit = 8.0/255.0):
+  def __init__(self, scale = 8.0/255.0, limit = 0.2, lowLimit = 8.0/255.0, incColour = False):
     """The scale is the width of the window used for mean shift, limit is a cap on how large a change before a pixel is ignored and lowLimit is a limit on how low a pixel value to consider, to avoid photon noise."""
     self.video = None
     self.channel = 0
@@ -41,6 +41,8 @@ class LightCorrectMS(VideoNode):
     self.curr = None
     self.prev = None
     self.matrix = numpy.identity(4, dtype=numpy.float32) # Previous to current.
+    
+    self.channels = 3 if incColour else 1
 
     self.temp = None
 
@@ -142,6 +144,10 @@ class LightCorrectMS(VideoNode):
     lowLimit = self.lowLimit
 
     count = weave.inline(codeE, ['curr', 'prev', 'temp', 'limit', 'lowLimit'])
+    
+    if count<8:
+      self.matrix[:,:] = numpy.identity(4, dtype=numpy.float32)
+      return True
 
 
     # Sort each channel, ready for mean shift...
@@ -157,8 +163,8 @@ class LightCorrectMS(VideoNode):
      const float hsm = 3.0;
      const float winWidth = hsm * float(scale);
        
-    // Iterate the 3 channels...
-     for (int channel=0; channel<3; channel++)
+    // Iterate the channels...
+     for (int channel=0; channel<channels; channel++)
      {
       // Median seems a good initial estimate - as long as at least half the pixels are background at the same time in both images it is guaranteed to be a good estimate...
        float estimate = TEMP2(count/2,channel); 
@@ -242,12 +248,18 @@ class LightCorrectMS(VideoNode):
       // Store it...
        MATRIX2(channel, channel) = estimate;
      }
+     
+     for (int channel=channels; channel<3; channel++)
+     {
+      MATRIX2(channel, channel) = 1,0;
+     }
     """
 
     scale = self.scale
     matrix = self.matrix
+    channels = self.channels
 
-    weave.inline(codeMS, ['temp', 'count', 'scale', 'matrix'])
+    weave.inline(codeMS, ['temp', 'count', 'scale', 'matrix', 'channels'])
 
     return True
 

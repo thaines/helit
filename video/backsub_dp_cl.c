@@ -67,9 +67,11 @@ typedef struct
  cl_kernel prior_update_mix; size_t prior_update_mix_size;
  cl_kernel light_update_mix; size_t light_update_mix_size;
 
- cl_kernel comp_prob;     size_t comp_prob_size;
- cl_kernel new_comp_prob; size_t new_comp_prob_size;
- cl_kernel update_pixel;  size_t update_pixel_size;
+ cl_kernel comp_prob;         size_t comp_prob_size;
+ cl_kernel comp_prob_lum;     size_t comp_prob_lum_size;
+ cl_kernel new_comp_prob;     size_t new_comp_prob_size;
+ cl_kernel new_comp_prob_lum; size_t new_comp_prob_lum_size;
+ cl_kernel update_pixel;      size_t update_pixel_size;
 
  cl_kernel extract_mode; size_t extract_mode_size;
 
@@ -92,6 +94,8 @@ typedef struct
  cl_kernel upsample_messages; size_t upsample_messages_size;
 
 
+ int lum_only; // 0 for colour, anything else to only consider luminence.
+ 
  float prior_count; // Prior parameters for the Dirichlet processes Gaussian mixture model's Gaussians - a student-t distribution basically.
  float prior_mu[3]; // "
  float prior_sigma2[3]; // "
@@ -160,9 +164,11 @@ static PyObject * BackSubCoreDP_new(PyTypeObject * type, PyObject * args, PyObje
   self->prior_update_mix = NULL; self->prior_update_mix_size = 32;
   self->light_update_mix = NULL; self->light_update_mix_size = 32;
 
-  self->comp_prob = NULL;     self->comp_prob_size = 32;
-  self->new_comp_prob = NULL; self->new_comp_prob_size = 32;
-  self->update_pixel = NULL;  self->update_pixel_size = 32;
+  self->comp_prob = NULL;         self->comp_prob_size = 32;
+  self->comp_prob_lum = NULL;     self->comp_prob_lum_size = 32;
+  self->new_comp_prob = NULL;     self->new_comp_prob_size = 32;
+  self->new_comp_prob_lum = NULL; self->new_comp_prob_lum_size = 32;
+  self->update_pixel = NULL;      self->update_pixel_size = 32;
 
   self->extract_mode = NULL; self->extract_mode_size = 32;
 
@@ -184,7 +190,9 @@ static PyObject * BackSubCoreDP_new(PyTypeObject * type, PyObject * args, PyObje
   self->downsample_model = NULL;  self->downsample_model_size = 32;
   self->upsample_messages = NULL; self->upsample_messages_size = 32;
 
-
+  
+  self->lum_only = 0;
+  
   self->prior_count = 1.0;
   for (i=0;i<3;i++) self->prior_mu[i] = 0.5;
   for (i=0;i<3;i++) self->prior_sigma2[i] = 0.25;
@@ -225,7 +233,9 @@ static void BackSubCoreDP_dealloc(BackSubCoreDP * self)
  clReleaseKernel(self->light_update_mix);
 
  clReleaseKernel(self->comp_prob);
+ clReleaseKernel(self->comp_prob_lum);
  clReleaseKernel(self->new_comp_prob);
+ clReleaseKernel(self->new_comp_prob_lum);
  clReleaseKernel(self->update_pixel);
 
  clReleaseKernel(self->extract_mode);
@@ -294,6 +304,7 @@ static PyMemberDef BackSubCoreDP_members[] =
     {"width", T_INT, offsetof(BackSubCoreDP, width), READONLY, "width of each frame"},
     {"height", T_INT, offsetof(BackSubCoreDP, height), READONLY, "height of each frame"},
     {"component_cap", T_INT, offsetof(BackSubCoreDP, component_cap), READONLY, "Maximum number of components allowed in the Dirichlet process assigned to each pixel."},
+    {"lum_only", T_INT, offsetof(BackSubCoreDP, lum_only), 0, "If 0 then all 3 channels are used, if anything else only the luminence (first) channel is used."},
     {"prior_count", T_FLOAT, offsetof(BackSubCoreDP, prior_count), 0, "The number of samples the prior on each Gaussian is worth."},
     {"degradation", T_FLOAT, offsetof(BackSubCoreDP, degradation), 0, "The degradation of previous evidence, i.e. previous weights are multiplied by this term every frame. You can calculate the a value of this to acheive a half life of a given number of frames using degradation=0.5^(1/frames). Not supported by OpenCL version."},
     {"concentration", T_FLOAT, offsetof(BackSubCoreDP, concentration), 0, "The concentration used by the Dirichlet processes."},
@@ -477,6 +488,22 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clGetKernelWorkGroupInfo(self->comp_prob, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->comp_prob_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
+   
+  // Luminence only version of the above...
+   self->comp_prob_lum = clCreateKernel(self->program, "comp_prob_lum", &status);
+   if (status!=CL_SUCCESS) return NULL;
+
+   status |= clSetKernelArg(self->comp_prob_lum, 0, sizeof(cl_int), &self->width);
+   status |= clSetKernelArg(self->comp_prob_lum, 1, sizeof(cl_int), &self->component_cap);
+   status |= clSetKernelArg(self->comp_prob_lum, 2, sizeof(cl_float), &self->prior_count);
+   status |= clSetKernelArg(self->comp_prob_lum, 3, sizeof(cl_float4), self->prior_mu);
+   status |= clSetKernelArg(self->comp_prob_lum, 4, sizeof(cl_float4), self->prior_sigma2);
+   status |= clSetKernelArg(self->comp_prob_lum, 5, sizeof(cl_mem), &self->image);
+   status |= clSetKernelArg(self->comp_prob_lum, 6, sizeof(cl_mem), &self->mix);
+
+   status |= clGetKernelWorkGroupInfo(self->comp_prob_lum, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->comp_prob_lum_size, NULL);
+
+   if (status!=CL_SUCCESS) return NULL;
 
   // Kernel that calculates the new component probability (Stores it in the 4th colour channel of each pixel.)...
    self->new_comp_prob = clCreateKernel(self->program, "new_comp_prob", &status);
@@ -489,6 +516,20 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->new_comp_prob, 4, sizeof(cl_mem), &self->image);
 
    status |= clGetKernelWorkGroupInfo(self->new_comp_prob, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->new_comp_prob_size, NULL);
+
+   if (status!=CL_SUCCESS) return NULL;
+   
+  // Luminence only version of the above...
+   self->new_comp_prob_lum = clCreateKernel(self->program, "new_comp_prob_lum", &status);
+   if (status!=CL_SUCCESS) return NULL;
+
+   status |= clSetKernelArg(self->new_comp_prob_lum, 0, sizeof(cl_int), &self->width);
+   status |= clSetKernelArg(self->new_comp_prob_lum, 1, sizeof(cl_float), &self->prior_count);
+   status |= clSetKernelArg(self->new_comp_prob_lum, 2, sizeof(cl_float4), self->prior_mu);
+   status |= clSetKernelArg(self->new_comp_prob_lum, 3, sizeof(cl_float4), self->prior_sigma2);
+   status |= clSetKernelArg(self->new_comp_prob_lum, 4, sizeof(cl_mem), &self->image);
+
+   status |= clGetKernelWorkGroupInfo(self->new_comp_prob_lum, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->new_comp_prob_lum_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -759,14 +800,27 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
   self->frame += 1;
 
   cl_int status = CL_SUCCESS;
+  
+  if (self->lum_only==0)
+  {
+   status |= clSetKernelArg(self->comp_prob, 2, sizeof(cl_float), &self->prior_count);
+   status |= clSetKernelArg(self->comp_prob, 3, sizeof(cl_float4), self->prior_mu);
+   status |= clSetKernelArg(self->comp_prob, 4, sizeof(cl_float4), self->prior_sigma2);
 
-  status |= clSetKernelArg(self->comp_prob, 2, sizeof(cl_float), &self->prior_count);
-  status |= clSetKernelArg(self->comp_prob, 3, sizeof(cl_float4), self->prior_mu);
-  status |= clSetKernelArg(self->comp_prob, 4, sizeof(cl_float4), self->prior_sigma2);
+   status |= clSetKernelArg(self->new_comp_prob, 1, sizeof(cl_float), &self->prior_count);
+   status |= clSetKernelArg(self->new_comp_prob, 2, sizeof(cl_float4), self->prior_mu);
+   status |= clSetKernelArg(self->new_comp_prob, 3, sizeof(cl_float4), self->prior_sigma2);
+  }
+  else
+  {
+   status |= clSetKernelArg(self->comp_prob_lum, 2, sizeof(cl_float), &self->prior_count);
+   status |= clSetKernelArg(self->comp_prob_lum, 3, sizeof(cl_float4), self->prior_mu);
+   status |= clSetKernelArg(self->comp_prob_lum, 4, sizeof(cl_float4), self->prior_sigma2);
 
-  status |= clSetKernelArg(self->new_comp_prob, 1, sizeof(cl_float), &self->prior_count);
-  status |= clSetKernelArg(self->new_comp_prob, 2, sizeof(cl_float4), self->prior_mu);
-  status |= clSetKernelArg(self->new_comp_prob, 3, sizeof(cl_float4), self->prior_sigma2);
+   status |= clSetKernelArg(self->new_comp_prob_lum, 1, sizeof(cl_float), &self->prior_count);
+   status |= clSetKernelArg(self->new_comp_prob_lum, 2, sizeof(cl_float4), self->prior_mu);
+   status |= clSetKernelArg(self->new_comp_prob_lum, 3, sizeof(cl_float4), self->prior_sigma2);
+  }
 
   status |= clSetKernelArg(self->update_pixel,  0, sizeof(cl_int), &self->frame);
   status |= clSetKernelArg(self->update_pixel,  4, sizeof(cl_float), &self->prior_count);
@@ -802,24 +856,47 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
  // Enqueue the work, making sure to wait as needed...
   size_t work_size[3];
   size_t block_size[3];
+  
+  if (self->lum_only==0)
+  {
+   work_size[0] = self->component_cap;
+   work_size[1] = self->width;
+   work_size[2] = self->height;
+   calc_block_size(self->comp_prob_size, 3, work_size, block_size, 1);
+   status = clEnqueueNDRangeKernel(self->queue, self->comp_prob, 3, NULL, work_size, block_size, 0, NULL, NULL);
+   if (status!=CL_SUCCESS) return NULL;
 
-  work_size[0] = self->component_cap;
-  work_size[1] = self->width;
-  work_size[2] = self->height;
-  calc_block_size(self->comp_prob_size, 3, work_size, block_size, 1);
-  status = clEnqueueNDRangeKernel(self->queue, self->comp_prob, 3, NULL, work_size, block_size, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+
+   work_size[0] = self->width;
+   work_size[1] = self->height;
+   calc_block_size(self->new_comp_prob_size, 2, work_size, block_size, 0);
+   status = clEnqueueNDRangeKernel(self->queue, self->new_comp_prob, 2, NULL, work_size, block_size, 0, NULL, NULL);
+   if (status!=CL_SUCCESS) return NULL;
+
+   status = clEnqueueBarrier(self->queue);
+   if (status!=CL_SUCCESS) return NULL;
+  }
+  else
+  {
+   work_size[0] = self->component_cap;
+   work_size[1] = self->width;
+   work_size[2] = self->height;
+   calc_block_size(self->comp_prob_lum_size, 3, work_size, block_size, 1);
+   status = clEnqueueNDRangeKernel(self->queue, self->comp_prob_lum, 3, NULL, work_size, block_size, 0, NULL, NULL);
+   if (status!=CL_SUCCESS) return NULL;
 
 
-  work_size[0] = self->width;
-  work_size[1] = self->height;
-  calc_block_size(self->new_comp_prob_size, 2, work_size, block_size, 0);
-  status = clEnqueueNDRangeKernel(self->queue, self->new_comp_prob, 2, NULL, work_size, block_size, 0, NULL, NULL);
-  if (status!=CL_SUCCESS) return NULL;
+   work_size[0] = self->width;
+   work_size[1] = self->height;
+   calc_block_size(self->new_comp_prob_lum_size, 2, work_size, block_size, 0);
+   status = clEnqueueNDRangeKernel(self->queue, self->new_comp_prob_lum, 2, NULL, work_size, block_size, 0, NULL, NULL);
+   if (status!=CL_SUCCESS) return NULL;
 
-  status = clEnqueueBarrier(self->queue);
-  if (status!=CL_SUCCESS) return NULL;
-
+   status = clEnqueueBarrier(self->queue);
+   if (status!=CL_SUCCESS) return NULL;
+  }
+  
+  
   work_size[0] = self->width;
   work_size[1] = self->height;
   calc_block_size(self->update_pixel_size, 2, work_size, block_size, 0);

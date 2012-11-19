@@ -56,7 +56,7 @@ man.add(ucb_lc)
 
 if use_rgb: ucb_lc = lc
 
-diff = video.RenderDiff(128.0)
+diff = video.RenderDiff(64.0)
 diff.source(0,vid)
 diff.source(1,ucb_lc,3)
 man.add(diff)
@@ -67,6 +67,7 @@ bs.source(1,lc,0)
 man.add(bs)
 
 
+if 'bw' in sys.argv: bs.setLumOnly()
 bs.setDP(comp=6, conc=0.01, cap=128.0)
 bs.setHackDP(min_weight = 0.0005)
 bs.setBP(threshold = 0.4, half_life = 0.05, iters = 2)
@@ -110,7 +111,7 @@ winBack.move(vid.width()+5,0)
 winBack.source(0,ucb_bg,2)
 man.add(winBack)
 
-winLC = video.ViewCV('Lighting Difference x128')
+winLC = video.ViewCV('Lighting Difference x64')
 winLC.source(0,diff)
 winLC.move(vid.width()*2+10,0)
 man.add(winLC)

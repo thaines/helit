@@ -162,6 +162,45 @@ kernel void comp_prob(const int width, const int comp_count, const float prior_c
 }
 
 
+// Same as comp_prob, but only uses the luminence channel...
+kernel void comp_prob_lum(const int width, const int comp_count, const float prior_count, const float4 prior_mu, const float4 prior_sigma2, global const float4 * image, global float8 * mix)
+{
+ // Get the pixel and mixture component that we are working on...
+  const int c = get_global_id(0);
+  const int x = get_global_id(1);
+  const int y = get_global_id(2);
+
+  if (x>=width) return;
+
+   const int base = y*width + x;
+   const float4 pixel = image[base];
+   const int mixPos = base*comp_count + c;
+   const float8 comp = mix[mixPos];
+
+  // Calculate the parameters for the t-distributions...
+   const float n = prior_count + comp.s0;
+   const float nMult = native_divide(n + 1.0f, n * n);
+   
+   float mean = prior_mu.s0 + comp.s1;
+   float var = nMult * (prior_sigma2.s0 + comp.s0 * comp.s4);
+
+  // Calculate the shared parts of the student-t distribution - the normalising constant basically...
+   const float term = 0.5f * (n + 1.0f);
+   const float norm = 0.39894228040143276;
+
+  // Evaluate the student-t distribution for each of the colour channels...
+   const float delta = pixel.s0 - mean;
+
+   const float core = native_divide(delta*delta, n*var) + 1.0;
+   const float eval = norm * native_rsqrt(var);
+   const float result = eval * native_powr(core, -term);
+
+  // Store the result...
+   mix[mixPos].s7 = result;
+}
+
+
+
 // This is run for each pixel; it calculates the probability of the current pixel value being drawn from a new component, storing it in the 4th colour channel, ready for the next step...
 kernel void new_comp_prob(const int width, const float prior_count, const float4 prior_mu, const float4 prior_sigma2, global float4 * image)
 {
@@ -199,6 +238,42 @@ kernel void new_comp_prob(const int width, const float prior_count, const float4
   const float evalCore = core.s0 * core.s1 * core.s2;
 
   const float result = eval / native_powr(evalCore, term);
+
+ // Store the result...
+  image[pixelInd].s3 = result;
+}
+
+
+// Same as new_comp_prob, but only uses the first component...
+kernel void new_comp_prob_lum(const int width, const float prior_count, const float4 prior_mu, const float4 prior_sigma2, global float4 * image)
+{
+ // Get the pixel and mixture component that we are working on...
+  const int x = get_global_id(0);
+  const int y = get_global_id(1);
+
+  if (x>=width) return;
+
+  const int pixelInd = y*width + x;
+  const float4 pixel = image[pixelInd];
+
+
+ // Calculate the parameters for the t-distributions...
+  float n = prior_count;
+  const float nMult = native_divide(n + 1.0f, n * n);
+  
+  float mean = prior_mu.s0;
+  float var = nMult * prior_sigma2.s0;
+
+ // Calculate the shared parts of the student-t distribution - the normalising constant basically...
+  const float term = 0.5f * (n + 1.0f);
+  const float norm = 0.39894228040143276;
+
+ // Evaluate the student-t distribution for each of the colour channels...
+  const float delta = pixel.s0 - mean;
+
+  const float core = native_divide(delta*delta, n*var) + 1.0;
+  const float eval = norm * native_rsqrt(var);
+  const float result = eval / native_powr(core, term);
 
  // Store the result...
   image[pixelInd].s3 = result;

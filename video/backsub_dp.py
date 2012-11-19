@@ -52,7 +52,9 @@ class BackSubDP(VideoNode):
     self.core = None
 
     self.auto_prior = 1.0
-
+    
+    self.param_lum_only = False
+    
     self.param_prior_count = 1.0
     self.param_prior_mu = numpy.array((0.5,0.5,0.5))
     self.param_prior_sigma2 = numpy.array((0.25,0.25,0.25))
@@ -81,7 +83,11 @@ class BackSubDP(VideoNode):
 
     self.cl = cl
 
-
+  
+  def setLumOnly(self, lum_only = True):
+    """If True then the algorithm will only use the luminance channel, if False all 3 channels. Set True if the input is a greyscale image, such as obtained from infra-red for instance. Must be set before the algorithm starts, defaults to colour."""
+    self.param_lum_only = lum_only
+    
   def setAutoPrior(self, mult = 1.0):
     """Sets the automatic prior, where it updates the prior based on the distribution of the current frame. mult is how much to multiply the variance by, to soften the distribution a bit. Call it with mult set to None to disable it - by default it is on with a value of 1."""
     self.auto_prior = mult
@@ -204,8 +210,11 @@ class BackSubDP(VideoNode):
       
       if didCL:
         self.core.minSize = self.param_minSize
-        self.maxLayers = self.param_maxLayers
-        self.itersPerLevel = self.param_itersPerLevel
+        self.core.maxLayers = self.param_maxLayers
+        self.core.itersPerLevel = self.param_itersPerLevel
+        
+        if self.param_lum_only:
+          self.core.lum_only = -1
 
 
       self.lastFrame = 0
