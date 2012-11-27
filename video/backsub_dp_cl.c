@@ -105,6 +105,7 @@ typedef struct
  float cap; // Maximum amount of weight that can be assigned to any given component, to prevent the model getting too certain - an alternative to degradation.
 
  float smooth; // Individual pixels are assumed to be the mean of a Gaussian with this variance.
+ float varMult; // Multiplier of the variance used for handling pixel shake.
  float weight; // Multiplier of pixel weight.
  float minWeight; // Minimum weight allowed for a pixel.
 
@@ -202,6 +203,7 @@ static PyObject * BackSubCoreDP_new(PyTypeObject * type, PyObject * args, PyObje
   self->cap = 128.0;
 
   self->smooth = 0.0 / (255.0*255.0);
+  self->varMult = 1.0;
   self->weight = 1.0;
   self->minWeight = 0.01;
 
@@ -310,6 +312,7 @@ static PyMemberDef BackSubCoreDP_members[] =
     {"concentration", T_FLOAT, offsetof(BackSubCoreDP, concentration), 0, "The concentration used by the Dirichlet processes."},
     {"cap", T_FLOAT, offsetof(BackSubCoreDP, cap), 0, "The maximum weight that can be assigned to any given Dirichlet process - a limit on certainty. On reaching the cap *all* component weights are divided so the cap is maintained."},
     {"smooth", T_FLOAT, offsetof(BackSubCoreDP, smooth), 0, "Each sample is assumed to have a variance of this parameter - acts as a regularisation parameter to prevent extremelly pointy distributions that don't handle the occasional noise well. Not supported by OpenCL version."},
+    {"varMult", T_FLOAT, offsetof(BackSubCoreDP, varMult), 0, "Multiplier of variance calculated from area around pixel, to handle pixel-level camera shake. OpenCL version only."},
     {"weight", T_FLOAT, offsetof(BackSubCoreDP, weight), 0, "Multiplier for the weight used when adding new samples to the background distribution."},
     {"minWeight", T_FLOAT, offsetof(BackSubCoreDP, minWeight), 0, "Minimum weight for a new sample - used to avoid ignoring information completly."},
     {"threshold", T_FLOAT, offsetof(BackSubCoreDP, threshold), 0, "Threshold for the mask creation - gets converted into a prior for belief propagation, so this is not a hard limit."},
@@ -551,6 +554,7 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->update_pixel, 11, sizeof(cl_mem), &self->image);
    status |= clSetKernelArg(self->update_pixel, 12, sizeof(cl_mem), &self->mix);
    status |= clSetKernelArg(self->update_pixel, 13, sizeof(cl_mem), &self->pixel_prob);
+   status |= clSetKernelArg(self->update_pixel, 14, sizeof(cl_float), &self->varMult);
 
    status |= clGetKernelWorkGroupInfo(self->update_pixel, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->update_pixel_size, NULL);
 
@@ -830,6 +834,7 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
   status |= clSetKernelArg(self->update_pixel,  8, sizeof(cl_float), &self->cap);
   status |= clSetKernelArg(self->update_pixel,  9, sizeof(cl_float), &self->weight);
   status |= clSetKernelArg(self->update_pixel, 10, sizeof(cl_float), &self->minWeight);
+  status |= clSetKernelArg(self->update_pixel, 14, sizeof(cl_float), &self->varMult);
 
   if (status!=CL_SUCCESS) return NULL;
 

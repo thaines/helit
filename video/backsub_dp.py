@@ -65,6 +65,7 @@ class BackSubDP(VideoNode):
     self.param_cap = 512.0
 
     self.param_smooth = (0.0**2.0) / (255.0**2.0)
+    self.param_varMult = 1.0
     self.param_minWeight_ps = 1.5 # Min weight for each second.
 
     self.param_threshold = 0.5
@@ -105,9 +106,10 @@ class BackSubDP(VideoNode):
     self.param_cap = cap
     self.param_weight_ps = weight *30.0
 
-  def setHackDP(self, smooth = (0.0**2.0)/(255.0**2.0), min_weight = 0.05):
+  def setHackDP(self, smooth = (0.0**2.0)/(255.0**2.0), sd_mult = 1.0, min_weight = 0.05):
     """Sets some parameters that hack the DP, to help maintain stability. Specifically smooth is an assumption about noise in each sample, used to stop the distributions from ever getting too narrow, whilst min_weight is a minimum influence that a sample can have on the DP, to inhibit overconfidence. This last one is subject to frame rate adjustments - it is set under the assumption of 30 frames per second."""
     self.param_smooth = smooth
+    self.param_varMult = sd_mult * sd_mult
     self.param_minWeight_ps = min_weight * 30.0
 
   def setBP(self, threshold = 0.5, half_life = 0.8, iters = 16):
@@ -212,6 +214,7 @@ class BackSubDP(VideoNode):
         self.core.minSize = self.param_minSize
         self.core.maxLayers = self.param_maxLayers
         self.core.itersPerLevel = self.param_itersPerLevel
+        self.core.varMult = self.param_varMult
         
         if self.param_lum_only:
           self.core.lum_only = -1

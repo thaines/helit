@@ -282,7 +282,7 @@ kernel void new_comp_prob_lum(const int width, const float prior_count, const fl
 
 
 // This processes a pixel, using the results of the *comp_prob kernels. This consists of doing two things - calculating the probability of the current pixel value belonging to the background, which is stored in the prob array, and updating the model with the new pixel value...
-kernel void update_pixel(const int frame, const int width, const int height, const int comp_count, const float prior_count, const float4 prior_mu, const float4 prior_sigma2, const float concentration, const float cap, const float weight, const float minWeight, global const float4 * image, global float8 * mix, global float * pixel_prob)
+kernel void update_pixel(const int frame, const int width, const int height, const int comp_count, const float prior_count, const float4 prior_mu, const float4 prior_sigma2, const float concentration, const float cap, const float weight, const float minWeight, global const float4 * image, global float8 * mix, global float * pixel_prob, float var_mult)
 {
  // Get the pixel that we are working on...
   const int x = get_global_id(0);
@@ -385,6 +385,7 @@ kernel void update_pixel(const int frame, const int width, const int height, con
     
     const float4 mean = (pixelUp + pixelDown + pixelLeft + pixelRight) / 4.0;
     var -= (mean * mean);
+    var *= var_mult;
    
    // Do the update...
     const float4 diff = pixel - trueMu;

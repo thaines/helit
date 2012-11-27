@@ -69,7 +69,7 @@ man.add(bs)
 
 if 'bw' in sys.argv: bs.setLumOnly()
 bs.setDP(comp=6, conc=0.01, cap=128.0)
-bs.setHackDP(min_weight = 0.0005)
+bs.setHackDP(sd_mult = 1.0, min_weight = 0.0005)
 bs.setBP(threshold = 0.4, half_life = 0.05, iters = 2)
 bs.setExtraBP(cert_limit = 0.005, change_limit = 0.001, min_same_prob = 0.99, change_mult = 3.0)
 bs.setOnlyCL(minSize = 64, maxLayers = 8, itersPerLevel = 2)
