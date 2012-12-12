@@ -1276,6 +1276,12 @@ static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
     if (l==0) iters = self->iterations;
     for (i=0;i<iters;i++)
     {
+     status |= clSetKernelArg(self->send_pos_x, 4, sizeof(cl_int), &i);
+     status |= clSetKernelArg(self->send_pos_y, 4, sizeof(cl_int), &i);
+     status |= clSetKernelArg(self->send_neg_x, 4, sizeof(cl_int), &i);
+     status |= clSetKernelArg(self->send_neg_y, 4, sizeof(cl_int), &i);
+     if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
+     
      work_offset[0] = 0;
      work_offset[1] = 0;
      work_size[0] = self->widthBL[l] - 1;

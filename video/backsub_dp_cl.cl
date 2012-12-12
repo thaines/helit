@@ -137,7 +137,7 @@ kernel void comp_prob(const int width, const int comp_count, const float prior_c
    float4 var;
 
    const float n = prior_count + comp.s0;
-   const float nMult = native_divide(n + 1.0f, n * n);
+   const float nMult = (n + 1.0f) / (n * n);
    mean.s012 = prior_mu.s012 + comp.s123;
    var.s012 = nMult * (prior_sigma2.s012 + comp.s0 * comp.s456);
 
@@ -149,13 +149,13 @@ kernel void comp_prob(const int width, const int comp_count, const float prior_c
    const float4 delta = pixel - mean;
 
    float4 core;
-   core.s012 = native_divide(delta.s012*delta.s012, n*var.s012);
+   core.s012 = (delta.s012*delta.s012) / (n*var.s012);
    core.s012 += 1.0f;
 
-   const float eval = norm_cube * native_rsqrt(var.s0*var.s1*var.s2);
+   const float eval = norm_cube * rsqrt(var.s0*var.s1*var.s2);
    const float evalCore = core.s0 * core.s1 * core.s2;
 
-   const float result = eval * native_powr(evalCore, -term);
+   const float result = eval * pow(evalCore, -term);
 
   // Store the result...
    mix[mixPos].s7 = result;
@@ -179,7 +179,7 @@ kernel void comp_prob_lum(const int width, const int comp_count, const float pri
 
   // Calculate the parameters for the t-distributions...
    const float n = prior_count + comp.s0;
-   const float nMult = native_divide(n + 1.0f, n * n);
+   const float nMult = (n + 1.0f) / (n * n);
    
    float mean = prior_mu.s0 + comp.s1;
    float var = nMult * (prior_sigma2.s0 + comp.s0 * comp.s4);
@@ -191,9 +191,9 @@ kernel void comp_prob_lum(const int width, const int comp_count, const float pri
   // Evaluate the student-t distribution for each of the colour channels...
    const float delta = pixel.s0 - mean;
 
-   const float core = native_divide(delta*delta, n*var) + 1.0;
-   const float eval = norm * native_rsqrt(var);
-   const float result = eval * native_powr(core, -term);
+   const float core = ((delta*delta) / (n*var)) + 1.0;
+   const float eval = norm * rsqrt(var);
+   const float result = eval * pow(core, -term);
 
   // Store the result...
    mix[mixPos].s7 = result;
@@ -219,7 +219,7 @@ kernel void new_comp_prob(const int width, const float prior_count, const float4
   float4 var;
 
   float n = prior_count;
-  const float nMult = native_divide(n + 1.0f, n * n);
+  const float nMult = (n + 1.0f) / (n * n);
   mean.s012 = prior_mu.s012;
   var.s012 = nMult * prior_sigma2.s012;
 
@@ -231,13 +231,13 @@ kernel void new_comp_prob(const int width, const float prior_count, const float4
   const float4 delta = pixel - mean;
 
   float4 core;
-  core.s012 = native_divide(delta.s012*delta.s012, n*var.s012);
+  core.s012 = (delta.s012*delta.s012) / (n*var.s012);
   core.s012 += 1.0f;
 
-  const float eval = norm_cube * native_rsqrt(var.s0*var.s1*var.s2);
+  const float eval = norm_cube * rsqrt(var.s0*var.s1*var.s2);
   const float evalCore = core.s0 * core.s1 * core.s2;
 
-  const float result = eval / native_powr(evalCore, term);
+  const float result = eval * pow(evalCore, -term);
 
  // Store the result...
   image[pixelInd].s3 = result;
@@ -259,7 +259,7 @@ kernel void new_comp_prob_lum(const int width, const float prior_count, const fl
 
  // Calculate the parameters for the t-distributions...
   float n = prior_count;
-  const float nMult = native_divide(n + 1.0f, n * n);
+  const float nMult = (n + 1.0f) / (n * n);
   
   float mean = prior_mu.s0;
   float var = nMult * prior_sigma2.s0;
@@ -271,9 +271,9 @@ kernel void new_comp_prob_lum(const int width, const float prior_count, const fl
  // Evaluate the student-t distribution for each of the colour channels...
   const float delta = pixel.s0 - mean;
 
-  const float core = native_divide(delta*delta, n*var) + 1.0;
-  const float eval = norm * native_rsqrt(var);
-  const float result = eval / native_powr(core, term);
+  const float core = ((delta*delta) / (n*var)) + 1.0;
+  const float eval = norm * rsqrt(var);
+  const float result = eval * pow(core, -term);
 
  // Store the result...
   image[pixelInd].s3 = result;
@@ -306,9 +306,12 @@ kernel void update_pixel(const int frame, const int width, const int height, con
   for (int c=0;c<comp_count;c++)
   {
    const float8 comp = mix[mixBase+c];
-
-   probSum += comp.s0 * comp.s7;
-   countSum += comp.s0;
+   
+   if (comp.s0>1e-2)
+   {
+    probSum += comp.s0 * comp.s7;
+    countSum += comp.s0;
+   }
 
    if (comp.s0<lowValue)
    {
@@ -318,10 +321,10 @@ kernel void update_pixel(const int frame, const int width, const int height, con
    highValue = fmax(highValue, comp.s0);
   }
 
-  float prob = native_divide(probSum, countSum);
+  float prob = probSum / countSum;
 
  // Apply bayes rule to get the probability of the pixel belonging to the background; store it...
-  prob = native_divide(prob, prob + native_divide(highValue, cap)); // (highValue/cap) represents P(data|foreground), and is assuming a uniform distribution over the unit-sized colour space. The value is faded in, which acheives the confidence boost during startup.
+  prob /= prob + (highValue / cap); // (highValue/cap) represents P(data|foreground), and is assuming a uniform distribution over the unit-sized colour space. The value is faded in, which acheives the confidence boost during startup.
 
   pixel_prob[base] = prob;
 
@@ -339,8 +342,11 @@ kernel void update_pixel(const int frame, const int width, const int height, con
    for (;home<comp_count;++home)
    {
     float8 comp = mix[mixBase+home];
-    r -= comp.s0 * comp.s7;
-    if (r<0.0f) break;
+    if (comp.s0>1e-2)
+    {
+     r -= comp.s0 * comp.s7;
+     if (r<0.0f) break;
+    }
    }
 
   // Either update an existing component or create a new one (Actually, we always update, to save on branching, we just might be updating a zeroed out entry!)...
@@ -405,7 +411,7 @@ kernel void update_pixel(const int frame, const int width, const int height, con
    mix[mixBase+home] = comp;
 
   // Apply the confidence cap as necessary...
-   float mult = min(cap / comp.s0, 1.0);
+   float mult = fmin(cap / comp.s0, 1.0);
    for (int c=0;c<comp_count;c++) mix[mixBase+c].s0 *= mult;
 }
 
@@ -459,8 +465,8 @@ kernel void setup_model_bgCost(const int width, const float prior_offset, const 
   const int index = y*width + x;
 
  // Do the bgCost - this is a simple transformation of the pixel_prob input...
-  float p = max(cert_limit, pixel_prob[index]);
-  float omp = max(cert_limit, 1.0f-pixel_prob[index]);
+  float p = fmax(cert_limit, pixel_prob[index]);
+  float omp = fmax(cert_limit, 1.0f-pixel_prob[index]);
 
   bgCost[index] = prior_offset + log(p/omp);
 }
@@ -595,18 +601,19 @@ kernel void setup_model_changeCost(const int width, const float half_life, const
 
  // Fetch the distances, find the minimum...
   float4 dist = changeCost[index];
-  float minDist = min(min(dist.s0, dist.s1), min(dist.s2, dist.s3));
+  dist = fmin(dist, half_life); // Probably not needed.
+  float minDist = fmin(fmin(dist.s0, dist.s1), fmin(dist.s2, dist.s3));
 
  // Calculate and apply the adjustment required to make sure that at least one of the distances are at least target_dist...
-  if (minDist>target_dist) dist *= native_divide(target_dist, minDist);
+  if (minDist>target_dist) dist *= target_dist / minDist;
 
  // Clamp all the distances at the half life, i.e. the distance of indifference...
-  dist = min(dist, half_life);
+  dist = fmin(dist, half_life);
 
  // Finally, convert the distances to costs...
-  dist = 1.0f - native_divide(half_life, half_life + dist);
-  dist = max(dist, change_limit);
-  dist = change_mult * native_log(native_divide(1.0f-dist, dist));
+  dist = 1.0f - (half_life / (half_life + dist));
+  dist = fmax(dist, change_limit);
+  dist = change_mult * log((1.0f-dist) / dist);
 
  // Store the costs ready for use...
   changeCost[index] = dist;
@@ -632,12 +639,13 @@ kernel void reset_in(const int width, global float4 * in)
 
 
 // These 4 functions send messages in the four directions as required for BP - kept seperate such that boundary conditions can be handled at the higher level, and it seperates things up even more for greater parallism, despite some repeated calculation. Naming scheme is send_* where * is the direction it sends the message..,
-kernel void send_pos_x(const int width, global const float * bgCost, global const float4 * changeCost, global float4 * in)
+kernel void send_pos_x(const int width, global const float * bgCost, global const float4 * changeCost, global float4 * in, int iter)
 {
  // Get the indexes of the two pixels that are involved...
   const int x = get_global_id(0);
   const int y = get_global_id(1);
-
+  
+  //if (((x+y+iter)%2)==1) return;
   if ((x+1)>=width) return;
 
   const int from = y*width + x;
@@ -651,15 +659,16 @@ kernel void send_pos_x(const int width, global const float * bgCost, global cons
    const float cCost = changeCost[from].s0;
 
   // The final message, as an offset...
-   in[to].s2 = min(cCost, bgOffset) - min(0.0f, cCost + bgOffset);
+   in[to].s2 = fmin(cCost, bgOffset) - fmin(0.0f, cCost + bgOffset);
 }
 
-kernel void send_pos_y(const int width, global const float * bgCost, global const float4 * changeCost, global float4 * in)
+kernel void send_pos_y(const int width, global const float * bgCost, global const float4 * changeCost, global float4 * in, int iter)
 {
  // Get the indexes of the two pixels that are involved...
   const int x = get_global_id(0);
   const int y = get_global_id(1);
 
+  //if (((x+y+iter)%2)==1) return;
   if (x>=width) return;
 
   const int from = y*width + x;
@@ -673,15 +682,16 @@ kernel void send_pos_y(const int width, global const float * bgCost, global cons
    const float cCost = changeCost[from].s1;
 
   // The final message, as an offset...
-   in[to].s3 = min(cCost, bgOffset) - min(0.0f, cCost + bgOffset);
+   in[to].s3 = fmin(cCost, bgOffset) - fmin(0.0f, cCost + bgOffset);
 }
 
-kernel void send_neg_x(const int width, global const float * bgCost, global const float4 * changeCost, global float4 * in)
+kernel void send_neg_x(const int width, global const float * bgCost, global const float4 * changeCost, global float4 * in, int iter)
 {
  // Get the indexes of the two pixels that are involved...
   const int x = get_global_id(0);
   const int y = get_global_id(1);
 
+  //if (((x+y+iter)%2)==1) return;
   if (x>=width) return;
 
   const int from = y*width + x;
@@ -695,15 +705,16 @@ kernel void send_neg_x(const int width, global const float * bgCost, global cons
    const float cCost = changeCost[from].s2;
 
   // The final message, as an offset...
-   in[to].s2 = min(cCost, bgOffset) - min(0.0f, cCost + bgOffset);
+   in[to].s0 = fmin(cCost, bgOffset) - fmin(0.0f, cCost + bgOffset);
 }
 
-kernel void send_neg_y(const int width, global const float * bgCost, global const float4 * changeCost, global float4 * in)
+kernel void send_neg_y(const int width, global const float * bgCost, global const float4 * changeCost, global float4 * in, int iter)
 {
  // Get the indexes of the two pixels that are involved...
   const int x = get_global_id(0);
   const int y = get_global_id(1);
 
+  //if (((x+y+iter)%2)==1) return;
   if (x>=width) return;
 
   const int from = y*width + x;
@@ -717,7 +728,7 @@ kernel void send_neg_y(const int width, global const float * bgCost, global cons
    const float cCost = changeCost[from].s3;
 
   // The final message, as an offset...
-   in[to].s2 = min(cCost, bgOffset) - min(0.0f, cCost + bgOffset);
+   in[to].s1 = fmin(cCost, bgOffset) - fmin(0.0f, cCost + bgOffset);
 }
 
 

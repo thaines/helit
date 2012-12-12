@@ -25,6 +25,52 @@
 
 
 
+// Impliments the prefered counter-based pseudo random number generator from the paper 'Parallel Random Numbers: As easy as 1,2, 3'. This is the Philox model with a counter consisting of 4 values and a key consisting of 2 values, each 32 bits, with 10 rounds. Input is 4 32 bit unsigned integers as a counter and 2 32 bit unsigned integers as keys. The idea is that each key gives you a new sequence, which you step through using the counter. Note that it is designed with this indexing structure such that you can assign the details arbitarilly, and as long as you don't request the same counter/key combo twice you will get 'random' data. Typical use with a GPU is to have the counter increasing for each needed random input, whilst the key is set differently for each location the kernel is run, using get_global_id. You can just as easilly swap these roles around however. The original paper indicates that this algorithm passes a large battery of statistical tests for randomness, but this was implimented from scratch, without reference to the original authors code, so there is a risk of bugs which could cause significant bias in the results, so use at your own risk. Hasn't caused me any issues however, and I did run a (small) set of tests on it to verify it was returning a uniform distribution (p-values from binomial test done on each bucket of a histogram with 10 buckets, for multiple indexing strategies and sample counts.).
+unsigned int mul_hi(unsigned int a, unsigned int b)
+{
+ uint64_t _a = a;
+ uint64_t _b = b;
+ 
+ return (_a * _b) >> 32;
+}
+
+// out is the counter on entry, the output when done.
+void philox(unsigned int out[4], const unsigned int key[2])
+{
+ const unsigned int mult[2] = {0xCD9E8D57, 0xD2511F53};
+ int rnd, i;
+ 
+ // Iterate and do each round in turn, updating the counter before we finally return it (Indexing from 1 is conveniant for the Weyl sequence.)...
+ for (rnd=1;rnd<=10;rnd++)
+ {
+  // Calculate key for this step, by applying the Weyl sequence on it...
+   unsigned int keyWeyl[2];
+   keyWeyl[0] = key[0] * rnd;
+   keyWeyl[1] = key[1] * rnd;
+
+  // Apply the s-blocks, also swap the r values between the s-blocks...
+   unsigned int next[4];
+   next[0] = out[1] * mult[0];
+   next[2] = out[3] * mult[1];
+   
+   next[3] = mul_hi(out[1],mult[0]) ^ keyWeyl[0] ^ out[0];
+   next[1] = mul_hi(out[3],mult[1]) ^ keyWeyl[1] ^ out[2];
+   
+  // Prepare for the next step...
+   for (i=0;i<4;i++) out[i] = next[i];
+ }
+}
+
+// Wrapper for the above - bit inefficient as it only uses part of the 'random' data...
+// (counter is trashed.)
+float uniform(unsigned int counter[4], const unsigned int key[2])
+{
+ philox(counter, key);
+ return ((float)counter[0]) / ((float)0xffffffff);
+}
+
+
+
 typedef struct
 {
  // The parameters of the prior, for each colour channel, except for count which is shared. These are actually offsets from the prior parameters, so it will degrade back to the prior with time.
@@ -72,6 +118,8 @@ typedef struct
  int width;
  int height;
  int component_cap; // Maximum number of mixture components per pixel
+ int frame;
+ 
  Component * comp;
 
  float prior_count; // Prior parameters for the Dirichlet processes Gaussian mixture model's Gaussians - a student-t distribution basically.
@@ -123,6 +171,8 @@ static PyObject * BackSubCoreDP_new(PyTypeObject * type, PyObject * args, PyObje
   self->width = 0;
   self->height = 0;
   self->component_cap = 0;
+  self->frame = 0;
+  
   self->comp = NULL;
 
   self->prior_count = 1.0;
@@ -310,7 +360,7 @@ static PyObject * BackSubCoreDP_prior_update(BackSubCoreDP * self, PyObject * ar
 
 // Calculates the probability of the given rgb sample being drawn from the given component. Does not factor in the weighting of the component...
 // (Includes some funky optimisations and approximations - doesn't look anything like the multiplication of 3 student-t distribution pdf's, but it is.)
-float probComponent(BackSubCoreDP * self, Component * com, float * rgb, float * maxProb)
+float probComponent(BackSubCoreDP * self, Component * com, float * rgb)
 {
  int i;
 
@@ -330,27 +380,21 @@ float probComponent(BackSubCoreDP * self, Component * com, float * rgb, float * 
  // Calculate the shared parts of the student-t distribution - the normalising constant basically...
   float halfN = 0.5*n;
   float term = halfN + 0.5;
-  float norm = 0.39894228040143276; // One hell of an approximation - conversion of Gamma terms to beta function, use of a large number approximation and then some canceling makes the normalising constant completly independent of all parameters, with some inaccuracy for lower values.
+  //const float norm = 0.39894228040143276; // One hell of an approximation - conversion of Gamma terms to beta function, use of a large number approximation and then some canceling makes the normalising constant completly independent of all parameters, with some inaccuracy for lower values.
+  const float norm_cube = 0.06349363593424101;
 
  // Evaluate the student-t distribution for each of the colour channels...
-  float eval = 1.0;
+  float evalPart = 1.0;
   float evalCore = 1.0;
-  float maxP = 1.0;
   for (i=0;i<3;i++)
   {
    float delta = rgb[i] - mean[i];
-   float core = delta*delta / (n*var[i]);
-
-   float evalCom = norm;
-   evalCom /= sqrt(var[i]);
-   maxP *= evalCom;
-   evalCore *= 1.0 + core;
-   eval *= evalCom;
+   evalCore *= 1.0 + (delta*delta / (n*var[i]));
+   evalPart *= var[i];
   }
-  if (maxProb) *maxProb = maxP;
 
  // Return the multiplication of the terms, i.e. assume independence...
-  return eval / pow(evalCore,term);
+  return norm_cube / (sqrt(evalPart) * pow(evalCore,term));
 }
 
 
@@ -373,6 +417,8 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
 
  // Iterate them, processing each pixel in turn...
   int y,x,c;
+  self->frame += 1;
+  
   for (y=0;y<self->height;y++)
   {
    for (x=0;x<self->width;x++)
@@ -382,7 +428,7 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
      float * prob = (float*)(pixProb->data + y*pixProb->strides[0] + x*pixProb->strides[1]);
 
     // First pass over the pixels components - calculate the probability of assignment to each component and degrade the counts, whilst summing some useful values and finding a victim to replace if a new component is created...
-     float probSum = self->concentration * probComponent(self, &newbie, rgb, 0);
+     float probSum = self->concentration * probComponent(self, &newbie, rgb);
      float countSum = self->concentration;
 
      int lowIndex = 0;
@@ -395,8 +441,7 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
 
       if (com->count>1e-2)
       {
-       float tempMaxProb;
-       float prob = probComponent(self, com, rgb, &tempMaxProb);
+       float prob = probComponent(self, com, rgb);
 
        self->temp[c] = com->count * prob;
        probSum += self->temp[c];
@@ -427,14 +472,17 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
 
 
     // Calculate the weight - just reusing *prob...
-     float weight = *prob; //probSum / countSum;
+     float weight = *prob;
 
     // Prevent the weight being too small for this step, as we don't want to completly ignore evidence...
      weight *= self->weight;
      if (weight<self->minWeight) weight = self->minWeight;
 
     // Draw a random number, for selecting a component...
+     unsigned int counter[4] = {x,y,self->frame,102349};
+     const unsigned int key[2] = {6546524,378946};
      float r = probSum * drand48();
+     //float r = probSum * uniform(counter, key); // This option included to match the OpenCL version.
 
     // Second pass - assign it to a component, or create a new component...
      int done = 0;
