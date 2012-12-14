@@ -144,8 +144,9 @@ class Manager:
         break
 
     # If requested write out a file containing profiling information...
-    if profile==True and len(self.profile)>0:
-      f = open('profile.csv', 'w')
+    if profile!=False and len(self.profile)>0:
+      fn = '%s-profile.csv'%profile if isinstance(profile,str) else 'profile.csv'
+      f = open(fn, 'w')
       f.write('Class name, Total run time, Percentage, Runcount, Time per run\n')
       total = sum(self.profile.values())
       for class_name, runtime in self.profile.iteritems():
