@@ -23,7 +23,7 @@ import video
 
 
 lumScale = 0.7
-noiseFloor = 0.15
+noiseFloor = 0.01
 quarter = True
 
 
@@ -63,13 +63,6 @@ bs_h.source(0,bs,2)
 man.add(bs_h)
 
 lc.source(1,bs_h)
-
-
-bs.setDP(comp=6, conc=0.01, cap=128.0)
-bs.setHackDP(min_weight = 0.0005)
-bs.setBP(threshold = 0.4, half_life = 0.05, iters = 2)
-bs.setExtraBP(cert_limit = 0.005, change_limit = 0.001, min_same_prob = 0.99, change_mult = 3.0)
-bs.setOnlyCL(minSize = 64, maxLayers = 8, itersPerLevel = 2)
 
 
 mr = video.RenderMask(bgColour=(0.0,0.0,1.0))

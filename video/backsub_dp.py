@@ -54,33 +54,7 @@ class BackSubDP(VideoNode):
     self.auto_prior = 1.0
     
     self.param_lum_only = False
-    
-    self.param_prior_count = 1.0
-    self.param_prior_mu = numpy.array((0.5,0.5,0.5))
-    self.param_prior_sigma2 = numpy.array((0.25,0.25,0.25))
-
-    self.param_components = 8
-    self.param_concentration_ps = 3.0 # Concentration per second - divided by the frame rate.
-    self.param_weight_ps = 30.0 # Weight multiplier per second.
-    self.param_cap = 512.0
-
-    self.param_smooth = (0.0**2.0) / (255.0**2.0)
-    self.param_varMult = 1.0
-    self.param_minWeight_ps = 1.5 # Min weight for each second.
-
-    self.param_threshold = 0.5
-    self.param_cert_limit_pr = 0.0001 # For 320x240 - adjusted to other resolutions.
-    self.param_change_limit_pr = 0.0001 # For 320x240 - adjusted to other resolutions.
-    self.param_min_same_prob = 0.975
-    self.param_change_mult_pr = 1.9 # For 320x240 - adjusted to other resolutions.
-    self.param_half_life = 0.8
-    self.param_iterations = 16
-    
-    self.param_minSize = 64
-    self.param_maxLayers = 4
-    self.param_itersPerLevel = 2
-
-    self.param_con_comp_min = 0
+    self.setRecParam()
 
     self.cl = cl
 
@@ -99,41 +73,53 @@ class BackSubDP(VideoNode):
     self.param_prior_mu = mean
     self.param_prior_sigma2 = sd*sd
 
-  def setDP(self, comp = 8, conc = 0.1, cap = 512.0, weight = 1.0):
+  def setDP(self, comp = 8, conc = 0.025, cap = 384.0, weight = 1.0):
     """Sets the parameters for the DP, specifically the number of components, the concentration parameter and the certainty cap, which limits how much weight can be found in the DP. Also a multiplier for the weight of a sample when combined. Because the concentration is frame rate dependent it is actually set assuming 30fps, and converted to whatever the video actually is. Same for the weight parameter."""
     self.param_components = comp
     self.param_concentration_ps = conc * 30.0
     self.param_cap = cap
     self.param_weight_ps = weight *30.0
 
-  def setHackDP(self, smooth = (0.0**2.0)/(255.0**2.0), sd_mult = 1.0, min_weight = 0.05):
+  def setHackDP(self, smooth = (0.0**2.0)/(255.0**2.0), sd_mult = 1.8, min_weight = 0.005):
     """Sets some parameters that hack the DP, to help maintain stability. Specifically smooth is an assumption about noise in each sample, used to stop the distributions from ever getting too narrow, whilst min_weight is a minimum influence that a sample can have on the DP, to inhibit overconfidence. This last one is subject to frame rate adjustments - it is set under the assumption of 30 frames per second."""
     self.param_smooth = smooth
     self.param_varMult = sd_mult * sd_mult
     self.param_minWeight_ps = min_weight * 30.0
 
-  def setBP(self, threshold = 0.5, half_life = 0.8, iters = 16):
+  def setBP(self, threshold = 0.6, half_life = 0.7, iters = 6):
     """Sets the main parameters for the belief propagation step, the fist of which is the threshold of probability before it considers it to be a foreground pixel. Note that it is converted into a prior, and that due to the regularisation terms this is anything but hard. The half_life is used to indicate the colourmetric distance that equates to the probability of two pixels being different reaching 50:50, whilst iters is how many iterations to run, and is used only for controlling the computational cost. This BP post processing step can be switched off by setting iters to 0, though the threshold will still be used to binarise the probabilities."""
     self.param_threshold = threshold
     self.param_half_life = half_life
     self.param_iterations = iters
 
-  def setExtraBP(self, cert_limit = 0.0001, change_limit = 0.0001, min_same_prob = 0.975, change_mult = 1.9):
+  def setExtraBP(self, cert_limit = 0.01, change_limit = 1e-5, min_same_prob = 0.99, change_mult = 1.9):
     """Sets minor BP parameters that you are unlikelly to want to touch - specifically limits on how certain it can be with regards to it certainty that a pixel is background/foreground and its certainty that two pixels are the same/different, parameter to influence distance scaling to make sure probabilities never drop below a certain value, plus a term to reweight their relative strengths. All except for min_same_prob are set assuming a video resolution of 320x240, and adjusted to whatever the resolution actually is."""
     self.param_cert_limit_pr = cert_limit
     self.param_change_limit_pr = change_limit
     self.param_min_same_prob = min_same_prob
-    self.param_change_mult_r = change_mult
+    self.param_change_mult_pr = change_mult
   
-  def setOnlyCL(self, minSize = 64, maxLayers = 4, itersPerLevel = 2):
+  def setOnlyCL(self, minSize = 32, maxLayers = 8, itersPerLevel = 6):
     """Sets parameters that only affect the OpenCL version - minSize of a layer of the BP hierachy, for both dimensions; maxLayers is the maximum number of layers of the BP hierachy allowed; itersPerLevel is how many iterations are done at each level of the BP hierachy, except for the last which is done iterations times."""
     self.param_minSize = minSize
     self.param_maxLayers = maxLayers
     self.param_itersPerLevel = itersPerLevel
 
-  def setConComp(self, threshold):
+  def setConComp(self, threshold = 0):
     """Allows you to run connected components after the BP step. You provide the number of pixels below which a foreground segment is terminated. By default it is set to 0, i.e. off."""
     self.param_con_comp_min = threshold
+  
+  
+  def setRecParam(self):
+    """Sets it to use recomended parameters - I basically fill in this method with whatever I have found to be a good compromise for many data sets (or, more accuractly, the defaults for the methods it calls.). These are OpenCL only - BP iterations is too low for the C version. Combine these with the colour conversion with lum_weight set to 0.7 and noise_floor set to 0.01. Note this is called automatically on initialisation, so typically you don't need to call this."""
+    self.setAutoPrior()
+    self.setPrior()
+    self.setDP()
+    self.setHackDP()
+    self.setBP()
+    self.setExtraBP()
+    self.setOnlyCL()
+    self.setConComp()
 
 
   def width(self):

@@ -26,7 +26,7 @@ if len(sys.argv)>1: fn = sys.argv[1]
 
 
 lumScale = 0.7
-noiseFloor = 0.15
+noiseFloor = 0.01
 use_rgb = False
 
 
@@ -68,13 +68,6 @@ man.add(bs)
 
 
 if 'bw' in sys.argv: bs.setLumOnly()
-bs.setDP(comp=6, conc=0.01, cap=128.0)
-bs.setHackDP(sd_mult = 1.0, min_weight = 0.0005)
-bs.setBP(threshold = 0.4, half_life = 0.05, iters = 2)
-bs.setExtraBP(cert_limit = 0.005, change_limit = 0.001, min_same_prob = 0.99, change_mult = 3.0)
-bs.setOnlyCL(minSize = 64, maxLayers = 8, itersPerLevel = 2)
-
-
 lc.source(1,bs,2) # Calculate lighting change relative to current background estimate.
 
 
