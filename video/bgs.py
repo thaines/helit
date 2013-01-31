@@ -42,7 +42,7 @@ if len(args)!=1:
   sys.exit(1)
 
 inFN = args[0]
-outFN = os.path.splitext(inFN)[0] + '/#.png'
+outFN = filter(lambda c: c!='#', os.path.splitext(inFN)[0]) + '/#.png'
 if options.outFN!=None: outFN = options.outFN
 
 
