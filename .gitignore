@@ -3,6 +3,8 @@ syntax: glob
 *.kate-swp
 *.so
 
+MANIFEST
+
 lda_gibbs/lda_gibbs.html
 lda_gibbs/lda_gibbs.wiki
 lda_var/lda_var.html
@@ -43,3 +45,6 @@ df/df.wiki
 video/video.html
 video/video.wiki
 video/profile.csv
+
+ms/ms.html
+ms/ms.wiki
