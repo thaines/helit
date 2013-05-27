@@ -157,7 +157,7 @@ class DocGen:
     self.wiki_classes += '== %s(%s) ==\n'%(name, par_str)
     self.wiki_classes += '    %s\n\n'%doc
     
-    methods = inspect.getmembers(cls, inspect.ismethod)
+    methods = inspect.getmembers(cls, lambda x: inspect.ismethod(x) or inspect.isbuiltin(x) or inspect.isroutine(x))
     def method_key(pair):
       if pair[0]=='__init__': return '___'
       else: return pair[0]
@@ -165,8 +165,14 @@ class DocGen:
     
     
     for name, method in methods:
-      if not name.startswith('_%s'%cls.__name__):
-        args, varargs, keywords, defaults = inspect.getargspec(method)
+      if not name.startswith('_%s'%cls.__name__) and (not inspect.ismethod(method) and name[:2]!='__'):
+        if inspect.ismethod(method):
+          args, varargs, keywords, defaults = inspect.getargspec(method)
+        else:
+          args = ['?']
+          varargs = None
+          keywords = None
+          defaults = None
         
         if defaults==None: defaults = list()
         defaults = (len(args)-len(defaults)) * [None] + list(defaults)
@@ -198,8 +204,10 @@ class DocGen:
         self.wiki_classes += '    %s\n\n'%doc
     
     
-    variables = inspect.getmembers(cls, lambda x: isinstance(x, int) or isinstance(x, str) or isinstance(x, float))
+    variables = inspect.getmembers(cls, lambda x: inspect.ismemberdescriptor(x) or isinstance(x, int) or isinstance(x, str) or isinstance(x, float))
     
     for name, var in variables:
       if not name.startswith('__'):
-        self.wiki_classes += '*`%s`* = %s\n\n'%(name, str(var))
+        if hasattr(var, '__doc__'): d = var.__doc__
+        else: d = str(var)
+        self.wiki_classes += '*`%s`* = %s\n\n'%(name, d)
