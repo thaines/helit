@@ -295,7 +295,7 @@ int assign_cluster(Spatial spatial, const Kernel * kernel, float alpha, Balls ba
 
 
 
-void manifold(Spatial spatial, int degrees, float * fv, float * grad, float * hess, float * eigen_val, float * eigen_vec, float quality, float epsilon, int iter_cap)
+void manifold(Spatial spatial, int degrees, float * fv, float * grad, float * hess, float * eigen_val, float * eigen_vec, float quality, float epsilon, int iter_cap, int always_hessian)
 {
  int i, j;
  
@@ -303,7 +303,8 @@ void manifold(Spatial spatial, int degrees, float * fv, float * grad, float * he
   DataMatrix * dm = Spatial_dm(spatial);
   
   int feats = DataMatrix_features(dm);
-  float range = Gaussian.range(feats, 0.0, quality);
+  float range = Gaussian.range(feats, 1.0, quality);
+  float norm = Gaussian.norm(feats, 1.0);
   
  // Converge the feature vector, one step at a time...
   int iters = 0;
@@ -311,12 +312,17 @@ void manifold(Spatial spatial, int degrees, float * fv, float * grad, float * he
   
   while ((delta>epsilon)&&(iters<iter_cap))
   {
+   int update_hessian = (always_hessian!=0) || (iters==0);
+   
    // First calculate the gradiant and hessian at the current location...
     // Initialise parameters...
      float weight = 0.0;
      for (i=0; i<feats; i++) grad[i] = 0.0;
-     for (i=0; i<feats*feats; i++) hess[i] = 0.0;
-    
+     if (update_hessian)
+     {
+      for (i=0; i<feats*feats; i++) hess[i] = 0.0;
+     }
+     
     // Loop all relevant exemplars in the dataset...
      Spatial_start(spatial, fv, range);
      while (1)
@@ -328,7 +334,7 @@ void manifold(Spatial spatial, int degrees, float * fv, float * grad, float * he
       float * loc = DataMatrix_fv(dm, targ, &w);
       
       for (i=0; i<feats; i++) loc[i] -= fv[i];
-      w *= Gaussian.weight(feats, 0.0, loc);
+      w *= norm * Gaussian.weight(feats, 1.0, loc);
      
       if (w>1e-6)
       {
@@ -336,24 +342,30 @@ void manifold(Spatial spatial, int degrees, float * fv, float * grad, float * he
        
        // Update the gradient...
         for (i=0; i<feats; i++) grad[i] += w * (loc[i] - grad[i]) / weight;
-        
+       
        // Update the hessian...
-        for (j=0; j<feats; j++)
+        if (update_hessian)
         {
-         for (i=0; i<feats; i++)
+         for (j=0; j<feats; j++)
          {
-          int ii = j*feats + i;
+          for (i=0; i<feats; i++)
+          {
+           int ii = j*feats + i;
           
-          float val = loc[i] * loc[j];
-          if (i==j) val -= 1.0;
-          hess[ii] += w * (val - hess[ii]) / weight;
+           float val = loc[i] * loc[j];
+           if (i==j) val -= 1.0;
+           hess[ii] += w * (val - hess[ii]) / weight;
+          }
          }
         }
       }
      }
-    
+
    // Calculate the eigenvectors of the hessian...
-    symmetric_eigen_abs(feats, hess, eigen_vec, eigen_val);
+    if (update_hessian)
+    {
+     symmetric_eigen_abs(feats, hess, eigen_vec, eigen_val);
+    }
    
    // Calculate the change, including projecting to the relevant subspace...
    // (Use the eigen_val vector as an intermediate.)

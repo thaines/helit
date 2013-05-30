@@ -916,8 +916,15 @@ static PyObject * MeanShift_manifold_py(MeanShift * self, PyObject * args)
  // Get the argument - a feature vector and degrees of freedom for the manifold... 
   PyArrayObject * start;
   int degrees;
-  if (!PyArg_ParseTuple(args, "O!i", &PyArray_Type, &start, &degrees)) return NULL;
+  PyObject * always_hessian = Py_True;
+  if (!PyArg_ParseTuple(args, "O!i|O", &PyArray_Type, &start, &degrees, &always_hessian)) return NULL;
   
+  if (PyBool_Check(always_hessian)==0)
+  {
+   PyErr_SetString(PyExc_RuntimeError, "Parameter indicating if to calculate the hessian for every step or not should be boolean");
+   return NULL;  
+  }
+
  // Check the input is acceptable...
   npy_intp feats = DataMatrix_features(&self->dm);
   if ((start->nd!=1)||(start->dimensions[0]!=feats))
@@ -949,7 +956,7 @@ static PyObject * MeanShift_manifold_py(MeanShift * self, PyObject * args)
   float * eigen_vec = (float*)malloc(feats * feats * sizeof(float));
   float * eigen_val = (float*)malloc(feats * sizeof(float));
   
-  manifold(self->spatial, degrees, (float*)ret->data, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap);
+  manifold(self->spatial, degrees, (float*)ret->data, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
   
   free(eigen_val);
   free(eigen_vec);
@@ -974,8 +981,15 @@ static PyObject * MeanShift_manifolds_py(MeanShift * self, PyObject * args)
  // Get the argument - a data matrix and degrees of freedom for the manifold... 
   PyArrayObject * start;
   int degrees;
-  if (!PyArg_ParseTuple(args, "O!i", &PyArray_Type, &start, &degrees)) return NULL;
+  PyObject * always_hessian = Py_True;
+  if (!PyArg_ParseTuple(args, "O!i|O", &PyArray_Type, &start, &degrees, &always_hessian)) return NULL;
 
+  if (PyBool_Check(always_hessian)==0)
+  {
+   PyErr_SetString(PyExc_RuntimeError, "Parameter indicating if to calculate the hessian for every step or not should be boolean");
+   return NULL;  
+  }
+  
  // Check the input is acceptable...
   npy_intp dims[2];
   dims[0] = start->dimensions[0];
@@ -1016,7 +1030,7 @@ static PyObject * MeanShift_manifolds_py(MeanShift * self, PyObject * args)
   {
    float * out = (float*)(ret->data + i*ret->strides[0]);
    
-   manifold(self->spatial, degrees, out, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap);
+   manifold(self->spatial, degrees, out, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
    
    for (j=0; j<dims[1]; j++) out[j] /= self->dm.mult[j];
   }
@@ -1036,7 +1050,14 @@ static PyObject * MeanShift_manifolds_data_py(MeanShift * self, PyObject * args)
 {
  // Get the argument - a data matrix... 
   int degrees;
-  if (!PyArg_ParseTuple(args, "i", &degrees)) return NULL;
+  PyObject * always_hessian = Py_True;
+  if (!PyArg_ParseTuple(args, "i|O", &degrees, &always_hessian)) return NULL;
+ 
+  if (PyBool_Check(always_hessian)==0)
+  {
+   PyErr_SetString(PyExc_RuntimeError, "Parameter indicating if to calculate the hessian for every step or not should be boolean");
+   return NULL;  
+  }
   
  // If spatial is null create it...
   if (self->spatial==NULL)
@@ -1085,7 +1106,7 @@ static PyObject * MeanShift_manifolds_data_py(MeanShift * self, PyObject * args)
     for (i=0; i<dims[nd-1]; i++) out[i] = fv[i];
    
    // Converge mean shift...
-    manifold(self->spatial, degrees, out, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap);
+    manifold(self->spatial, degrees, out, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
     
    // Undo any scale change...
     for (i=0; i<dims[nd-1]; i++) out[i] /= self->dm.mult[i];
@@ -1156,9 +1177,9 @@ static PyMethodDef MeanShift_methods[] =
  {"assign_cluster", (PyCFunction)MeanShift_assign_cluster_py, METH_VARARGS, "After the cluster method has been called this can be called with a single feature vector. It will then return the index of the cluster to which it has been assigned, noting that this will map to the mode array returned by the cluster method. In the event it does not map to a pre-existing cluster it will return a negative integer - this usually means it is so far from the provided data that the kernel does not include any samples."},
  {"assign_clusters", (PyCFunction)MeanShift_assign_clusters_py, METH_VARARGS, "After the cluster method has been called this can be called with a data matrix. It will then return the indices of the clusters to which each feature vector has been assigned, as a 1D numpy array, noting that this will map to the mode array returned by the cluster method. In the event any entry does not map to a pre-existing cluster it will return a negative integer for it - this usually means it is so far from the provided data that the kernel does not include any samples."},
  
- {"manifold", (PyCFunction)MeanShift_manifold_py, METH_VARARGS, "Given a feature vector and the dimensionality of the manifold projects the feature vector onto the manfold using subspace constrained mean shift. Returns an array with the same shape as the input."},
- {"manifolds", (PyCFunction)MeanShift_manifolds_py, METH_VARARGS, "Given a data matrix [exemplar, feature] and the dimensionality of the manifold projects the feature vectors onto the manfold using subspace constrained mean shift. Returns a data matrix with the same shape as the input."},
- {"manifolds_data", (PyCFunction)MeanShift_manifolds_data_py, METH_VARARGS, "Given the dimensionality of the manifold projects the feature vectors that are defining the density estimate onto the manfold using subspace constrained mean shift. The return value will be indexed in the same way as the provided data matrix, but without the feature dimensions, with an extra dimension at the end to index features."},
+ {"manifold", (PyCFunction)MeanShift_manifold_py, METH_VARARGS, "Given a feature vector and the dimensionality of the manifold projects the feature vector onto the manfold using subspace constrained mean shift. Returns an array with the same shape as the input. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
+ {"manifolds", (PyCFunction)MeanShift_manifolds_py, METH_VARARGS, "Given a data matrix [exemplar, feature] and the dimensionality of the manifold projects the feature vectors onto the manfold using subspace constrained mean shift. Returns a data matrix with the same shape as the input. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
+ {"manifolds_data", (PyCFunction)MeanShift_manifolds_data_py, METH_VARARGS, "Given the dimensionality of the manifold projects the feature vectors that are defining the density estimate onto the manfold using subspace constrained mean shift. The return value will be indexed in the same way as the provided data matrix, but without the feature dimensions, with an extra dimension at the end to index features. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
  
  {NULL}
 };
