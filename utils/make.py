@@ -40,6 +40,7 @@ def make_mod(name, base, source, openCL = False):
 
   if reduce(lambda a,b: a or b, map(lambda s: distutils.dep_util.newer(s, library_path), source_path)):
     try:
+      print 'b'
       # Backup the argv variable and create a temporary directory to do all work in...
       old_argv = sys.argv[:]
       temp_dir = tempfile.mkdtemp()
@@ -48,10 +49,11 @@ def make_mod(name, base, source, openCL = False):
       sys.argv = ['','build_ext','--build-lib', base, '--build-temp', temp_dir]
 
       comp_path = filter(lambda s: not s.endswith('.h'), source_path)
+      depends = filter(lambda s: s.endswith('.h'), source_path)
       if openCL:
-        ext = Extension(name, comp_path, include_dirs=['/usr/local/cuda/include', '/opt/AMDAPP/include'], libraries = ['OpenCL'], library_dirs = ['/usr/lib64/nvidia', '/opt/AMDAPP/lib/x86_64'])
+        ext = Extension(name, comp_path, include_dirs=['/usr/local/cuda/include', '/opt/AMDAPP/include'], libraries = ['OpenCL'], library_dirs = ['/usr/lib64/nvidia', '/opt/AMDAPP/lib/x86_64'], depends=depends)
       else:
-        ext = Extension(name, comp_path)
+        ext = Extension(name, comp_path, depends=depends)
 
       # Compile...
       setup(name=name, version='1.0.0', ext_modules=[ext])
