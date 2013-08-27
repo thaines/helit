@@ -30,6 +30,8 @@ import video
 parser = OptionParser(usage='usage: %prog [options] video_file', version='%prog 0.1')
 
 parser.add_option('-o', '--out', dest='outFN', help="Overide default output filenames. Default is '<video_file without extension>/#.png'.", metavar='FILE')
+parser.add_option('-c', '--com_count', dest='ccFN', help="Sets an output file into which component count visualisation is writen - must include a #.", metavar='FILE')
+parser.add_option('--com_count_log', action='store_true', dest='ccl', default=False, help='Log the average component count for each frame into a csv file, called com_count_log.csv')
 parser.add_option('-d', '--deinterlace', action='store_true', dest='deinterlace', default=False, help='Deinterlace the input.')
 parser.add_option('-e', '--even-first', action='store_true', dest='even_first', default=False, help='When deinterlacing assume even-first rather than odd-first fields.')
 parser.add_option('-s', '--sequence', action='store_true', dest='sequence', default=False, help='Treats the filename as a sequence, where a # indicates where a file number should be (Of arbitrary length, with preceding zeros if you want.) - all files in the sequence will be considered as one long video file, in numerical order (It will not complain about gaps).')
@@ -44,6 +46,9 @@ if len(args)!=1:
 inFN = args[0]
 outFN = filter(lambda c: c!='#', os.path.splitext(inFN)[0]) + '/#.png'
 if options.outFN!=None: outFN = options.outFN
+
+ccFN = options.ccFN
+if ccFN!=None and '#' not in ccFN: ccFN = None
 
 
 
@@ -83,7 +88,7 @@ lc = video.LightCorrectMS()
 lc.source(0,cb)
 man.add(lc)
 
-bs = video.BackSubDP()
+bs = video.BackSubDP(man.getCL())
 bs.source(0,cb)
 bs.source(1,lc,0)
 man.add(bs)
@@ -106,6 +111,17 @@ wf = video.WriteFramesCV(outFN, start_frame = baseFrame)
 wf.source(0,mr)
 man.add(wf)
 
+
+if ccFN!=None:
+  wcc = video.WriteFramesCV(ccFN, start_frame = baseFrame)
+  wcc.source(0,bs,3)
+  man.add(wcc)
+
+
+if options.ccl:
+  ccl = video.RecordAverage('com_count_log.csv', '%(frame)i, %(r)f\n', 'Frame #, Component count\n', 6.0)
+  ccl.source(0,bs,3)
+  man.add(ccl)
 
 
 # Run....

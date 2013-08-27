@@ -66,3 +66,5 @@ from combine_grid import CombineGrid
 from remap import Remap
 from record import Record
 from play import Play
+
+from record_average import RecordAverage

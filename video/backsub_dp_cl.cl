@@ -452,6 +452,46 @@ kernel void extract_mode(const int width, const int comp_count, const float4 pri
 
 
 
+// Extracts an estimate of the mode count for each pixel, so it can be visualised - outputs as a greyscale map (As colour), with black for 0 and white for the component_cap...
+kernel void extract_component_count(const int width, const int comp_count, const float com_count_mass, const float cap, global float4 * image, global const float8 * mix)
+{
+ // Get the details of the pixel we are calculating for...
+  const int x = get_global_id(0);
+  const int y = get_global_id(1);
+
+  if (x>=width) return;
+
+  const int mixBase = (y*width + x) * comp_count;
+
+ // Find the maximum...
+  float threshold = 0.0;
+  int c;
+ 
+  for (c=0;c<comp_count;c++)
+  {
+   const float8 comp = mix[mixBase+c];
+   threshold = max(threshold, comp.s0);
+  }
+  
+ // Factor in the percentage...
+  threshold *= com_count_mass;
+  
+  float count = 0.0;
+  for (c=0;c<comp_count;c++)
+  {
+   const float8 comp = mix[mixBase+c];
+   if (comp.s0>threshold) count += 1.0;
+  }
+
+ // Write out...
+  float val = count / comp_count;
+  image[y*width + x].s0 = val;
+  image[y*width + x].s1 = val;
+  image[y*width + x].s2 = val;
+}
+
+
+
 // This set of functions calculates the BP model (bgCost and changeCost) given the input image and probability map - bgCost is a straight calculation, but changeCost is first filled with colourmetric distances, using 4 methods to handle boundary conditions, plus a 5th to fill in said boundary, followed by a per-pixel function that converts them to costs, handling the interactions...
 // (priorOffset is the offset applied to the background cost by the prior.)
 kernel void setup_model_bgCost(const int width, const float prior_offset, const float cert_limit, global const float * pixel_prob, global float * bgCost)

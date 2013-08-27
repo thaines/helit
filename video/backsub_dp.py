@@ -108,6 +108,10 @@ class BackSubDP(VideoNode):
   def setConComp(self, threshold = 0):
     """Allows you to run connected components after the BP step. You provide the number of pixels below which a foreground segment is terminated. By default it is set to 0, i.e. off."""
     self.param_con_comp_min = threshold
+    
+  def setCompCount(self, count_mass = 0.1):
+    """Sets the amount of probability mass used when calculating the component count - required because all of the probability mass should give you infinity, which is not what you are really after."""
+    self.param_com_count_mass = count_mass
   
   
   def setRecParam(self):
@@ -120,6 +124,7 @@ class BackSubDP(VideoNode):
     self.setExtraBP()
     self.setOnlyCL()
     self.setConComp()
+    self.setCompCount()
 
 
   def width(self):
@@ -200,6 +205,7 @@ class BackSubDP(VideoNode):
         self.core.minSize = self.param_minSize
         self.core.maxLayers = self.param_maxLayers
         self.core.itersPerLevel = self.param_itersPerLevel
+        self.core.com_count_mass = self.param_com_count_mass
         self.core.varMult = self.param_varMult
         
         if self.param_lum_only:
@@ -210,6 +216,7 @@ class BackSubDP(VideoNode):
       self.prob = numpy.zeros((self.height(),self.width()), dtype=numpy.float32)
       self.mask = numpy.zeros((self.height(),self.width()), dtype=numpy.uint8)
       self.bg = numpy.zeros((self.height(),self.width(),3), dtype=numpy.float32)
+      self.cc = numpy.zeros((self.height(),self.width(),3), dtype=numpy.float32)
     
     # Update temporarlly dependent parameters every frame, incase the frame rate is varying (e.g. webcam)...
     fps = float(self.video.fps())
@@ -242,22 +249,24 @@ class BackSubDP(VideoNode):
     self.core.make_mask(frame, self.prob, self.mask)
 
     self.bgDirty = True
+    self.ccDirty = True
 
     return True
 
 
   def outputCount(self):
-    return 3
+    return 4
 
   def outputMode(self, channel=0):
     if channel==0: return MODE_MASK
     elif channel==1: return MODE_FLOAT
-    else: return MODE_RGB
+    else: return MODE_RGB # For channels 2 and 3.
 
   def outputName(self, channel=0):
     if channel==0: return 'mask indicating which areas are foreground'
     elif channel==1: return 'foreground probability map'
     elif channel==2: return 'background image - the mode, sort of.'
+    elif channel==3: return 'component count for each pixel, as an image.'
 
   def fetch(self, channel = 0):
     if channel==0:
@@ -270,3 +279,9 @@ class BackSubDP(VideoNode):
         self.core.background(self.bg)
         self.bgDirty = False
       return self.bg
+    elif channel==3:
+      if self.core==None: return None
+      if self.ccDirty:
+        self.core.component_count(self.cc)
+        self.ccDirty = False
+      return self.cc

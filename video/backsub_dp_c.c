@@ -71,17 +71,21 @@ float uniform(unsigned int counter[4], const unsigned int key[2])
 
 
 
-typedef struct
+typedef struct Component Component;
+
+struct Component
 {
  // The parameters of the prior, for each colour channel, except for count which is shared. These are actually offsets from the prior parameters, so it will degrade back to the prior with time.
  float count;
  float mu[3];
  float sigma2[3]; // Actually divided by count, to make degradation simple.
-} Component;
+};
 
 
 
-typedef struct
+typedef struct Pixel Pixel;
+
+struct Pixel
 {
  // The status of a pixel for the belief propagation labeling algorithm that thresholds and regularises the probability map to generate an actual mask...
  // For direction indices use 0=+ve x, 1=+ve y, 2=-ve x, 3 =-ve y.
@@ -94,7 +98,7 @@ typedef struct
 
  int count; // Number of pixels this is associated with - used to perform connected components.
  struct Pixel * parent; // Used for a disjoint set data structure during connected components.
-} Pixel;
+};
 
 
 // Used for the disjoint set data structure - given a pixel returns its parent; does path shortening...
@@ -111,7 +115,9 @@ Pixel * GetParent(Pixel * p)
 
 
 
-typedef struct
+typedef struct BackSubCoreDP BackSubCoreDP;
+
+struct BackSubCoreDP
 {
  PyObject_HEAD
 
@@ -149,9 +155,10 @@ typedef struct
 
  int minSize; // Minimum size for a level - basically how small the hierachy downsamples to.
  int itersPerLevel; // Iterations per level for hierachical BP.
+ float com_count_mass; // Amount of probability mass to use for counting the number of components for each pixel.
 
  Pixel * pixel; // Array of pixel objects, for the bp masking and regularisation step, and also the connected components step.
-} BackSubCoreDP;
+};
 
 Component * GetComponent(BackSubCoreDP * obj, int y, int x, int c)
 {
@@ -201,6 +208,7 @@ static PyObject * BackSubCoreDP_new(PyTypeObject * type, PyObject * args, PyObje
 
   self->minSize = 8;
   self->itersPerLevel = 4;
+  self->com_count_mass = 0.9;
 
   self->pixel = NULL;
  }
@@ -240,6 +248,7 @@ static PyMemberDef BackSubCoreDP_members[] =
     {"con_comp_min", T_INT, offsetof(BackSubCoreDP, con_comp_min), 0, "Sets the minimum foreground segment size in the final output - any that is less than this will be set as background. Not supported by OpenCL version."},
     {"minSize", T_INT, offsetof(BackSubCoreDP, minSize), 0, "Minimum size of either dimension when constructing the hierachy - the smallest level will get as close as possible without breaking this limit. Not supported by C version."},
     {"itersPerLevel", T_INT, offsetof(BackSubCoreDP, itersPerLevel), 0, "Number of iterations to do for each level of the BP hierachy. Not supported by C version."},
+    {"com_count_mass", T_FLOAT, offsetof(BackSubCoreDP, com_count_mass), 0, "Amount of probability to consider when calculating how many mixture components a pixel has, to compensate for the fact the correct answer is infinity. Not avaliable in C version."},
     {NULL}
 };
 
@@ -479,8 +488,8 @@ static PyObject * BackSubCoreDP_process(BackSubCoreDP * self, PyObject * args)
      if (weight<self->minWeight) weight = self->minWeight;
 
     // Draw a random number, for selecting a component...
-     unsigned int counter[4] = {x,y,self->frame,102349};
-     const unsigned int key[2] = {6546524,378946};
+     //unsigned int counter[4] = {x,y,self->frame,102349};
+     //const unsigned int key[2] = {6546524,378946};
      float r = probSum * drand48();
      //float r = probSum * uniform(counter, key); // This option included to match the OpenCL version.
 

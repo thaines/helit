@@ -30,7 +30,9 @@
 
 
 
-typedef struct
+typedef struct BackSubCoreDP BackSubCoreDP;
+
+struct BackSubCoreDP
 {
  PyObject_HEAD
 
@@ -74,6 +76,7 @@ typedef struct
  cl_kernel update_pixel;      size_t update_pixel_size;
 
  cl_kernel extract_mode; size_t extract_mode_size;
+ cl_kernel extract_component_count; size_t extract_component_count_size;
 
  cl_kernel setup_model_bgCost;        size_t setup_model_bgCost_size;
  cl_kernel setup_model_dist_boundary; size_t setup_model_dist_boundary_size;
@@ -123,7 +126,8 @@ typedef struct
  int minSize; // Minimum size for a level - basically how small the hierachy downsamples to.
  int maxLayers; // Maximum number of layers for hierachy.
  int itersPerLevel; // Iterations per level for hierachical BP, except for the bottom level, which is iterations.
-} BackSubCoreDP;
+ float com_count_mass; // Amount of probability mass to use for counting the number of components for each pixel.
+};
 
 
 
@@ -171,7 +175,8 @@ static PyObject * BackSubCoreDP_new(PyTypeObject * type, PyObject * args, PyObje
   self->new_comp_prob_lum = NULL; self->new_comp_prob_lum_size = 32;
   self->update_pixel = NULL;      self->update_pixel_size = 32;
 
-  self->extract_mode = NULL; self->extract_mode_size = 32;
+  self->extract_mode = NULL;            self->extract_mode_size = 32;
+  self->extract_component_count = NULL; self->extract_component_count_size = 32;
 
   self->setup_model_bgCost = NULL;        self->setup_model_bgCost_size = 32;
   self->setup_model_dist_boundary = NULL; self->setup_model_dist_boundary_size = 32;
@@ -181,7 +186,7 @@ static PyObject * BackSubCoreDP_new(PyTypeObject * type, PyObject * args, PyObje
   self->setup_model_dist_neg_y = NULL;    self->setup_model_dist_neg_y_size = 32;
   self->setup_model_changeCost = NULL;    self->setup_model_changeCost_size = 32;
 
-  self->reset_in = NULL;   self->reset_in_size = 32;
+  self->reset_in   = NULL; self->reset_in_size   = 32;
   self->send_pos_x = NULL; self->send_pos_x_size = 32;
   self->send_pos_y = NULL; self->send_pos_y_size = 32;
   self->send_neg_x = NULL; self->send_neg_x_size = 32;
@@ -220,6 +225,7 @@ static PyObject * BackSubCoreDP_new(PyTypeObject * type, PyObject * args, PyObje
   self->minSize = 64;
   self->maxLayers = 4;
   self->itersPerLevel = 2;
+  self->com_count_mass = 0.9;
  }
 
  return (PyObject*)self;
@@ -241,6 +247,7 @@ static void BackSubCoreDP_dealloc(BackSubCoreDP * self)
  clReleaseKernel(self->update_pixel);
 
  clReleaseKernel(self->extract_mode);
+ clReleaseKernel(self->extract_component_count);
 
  clReleaseKernel(self->setup_model_bgCost);
  clReleaseKernel(self->setup_model_dist_boundary);
@@ -326,6 +333,7 @@ static PyMemberDef BackSubCoreDP_members[] =
     {"minSize", T_INT, offsetof(BackSubCoreDP, minSize), 0, "Minimum size of either dimension when constructing the hierachy - the smallest layer will get as close as possible without breaking this limit. Not supported by C version."},
     {"maxLayers", T_INT, offsetof(BackSubCoreDP, maxLayers), 0, "Maximum number of layers to create for BP hierachy. Not supported by C version."},
     {"itersPerLevel", T_INT, offsetof(BackSubCoreDP, itersPerLevel), 0, "Number of iterations to do for each level of the BP hierachy. Not supported by C version."},
+    {"com_count_mass", T_FLOAT, offsetof(BackSubCoreDP, com_count_mass), 0, "Amount of probability to consider when calculating how many mixture components a pixel has, to compensate for the fact the correct answer is infinity. Not avaliable in C version."},
     {NULL}
 };
 
@@ -571,6 +579,21 @@ static PyObject * BackSubCoreDP_setup(BackSubCoreDP * self, PyObject * args)
    status |= clSetKernelArg(self->extract_mode, 4, sizeof(cl_mem), &self->mix);
 
    status |= clGetKernelWorkGroupInfo(self->extract_mode, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->extract_mode_size, NULL);
+
+   if (status!=CL_SUCCESS) return NULL;
+   
+  // Kernel used to extract component counts for each pixel...
+   self->extract_component_count = clCreateKernel(self->program, "extract_component_count", &status);
+   if (status!=CL_SUCCESS) return NULL;
+
+   status |= clSetKernelArg(self->extract_component_count, 0, sizeof(cl_int), &self->width);
+   status |= clSetKernelArg(self->extract_component_count, 1, sizeof(cl_int), &self->component_cap);
+   status |= clSetKernelArg(self->extract_component_count, 2, sizeof(cl_float), &self->com_count_mass);
+   status |= clSetKernelArg(self->extract_component_count, 3, sizeof(cl_float), &self->cap);
+   status |= clSetKernelArg(self->extract_component_count, 4, sizeof(cl_mem), &self->image);
+   status |= clSetKernelArg(self->extract_component_count, 5, sizeof(cl_mem), &self->mix);
+
+   status |= clGetKernelWorkGroupInfo(self->extract_component_count, managerCL->device, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &self->extract_component_count_size, NULL);
 
    if (status!=CL_SUCCESS) return NULL;
 
@@ -1040,6 +1063,61 @@ static PyObject * BackSubCoreDP_background(BackSubCoreDP * self, PyObject * args
 
 
 
+static PyObject * BackSubCoreDP_component_count(BackSubCoreDP * self, PyObject * args)
+{
+ // Get the output numpy array...
+  PyArrayObject * image;
+  if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &image)) return NULL;
+
+ // Set parameters as required...
+  cl_int status = CL_SUCCESS;
+  
+  status |= clSetKernelArg(self->extract_component_count, 2, sizeof(cl_float), &self->com_count_mass);
+  status |= clSetKernelArg(self->extract_component_count, 3, sizeof(cl_float), &self->cap);
+  
+  if (status!=CL_SUCCESS) return NULL;
+
+ // Enqueue a task to put the background into the image field...
+  size_t work_size[2];
+  size_t block_size[2];
+
+  work_size[0] = self->width;
+  work_size[1] = self->height;
+  calc_block_size(self->extract_component_count_size, 2, work_size, block_size, 0);
+  status = clEnqueueNDRangeKernel(self->queue, self->extract_component_count, 2, NULL, work_size, block_size, 0, NULL, NULL);
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
+
+ // Add a barrier...
+  status = clEnqueueBarrier(self->queue);
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
+
+ // Enqueue extracting the result...
+  status = clEnqueueReadBuffer(self->queue, self->image, CL_FALSE, 0, self->height*self->width*4*sizeof(cl_float), self->image_temp, 0, NULL, NULL);
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
+
+ // Wait till the queue is done...
+  status = clFinish(self->queue);
+  if (status!=CL_SUCCESS) {open_cl_error(status); return NULL;}
+
+ // Write the result into the output image...
+  int y, x, i;
+  for (y=0;y<self->height;y++)
+  {
+   for (x=0;x<self->width;x++)
+   {
+    cl_float * in = self->image_temp + (y*self->width + x)*4;
+    float * out = (float*)(image->data + y*image->strides[0] + x*image->strides[1]);
+
+    for (i=0;i<3;i++) out[i] = in[i];
+   }
+  }
+
+ Py_INCREF(Py_None);
+ return Py_None;
+}
+
+
+
 static PyObject * BackSubCoreDP_make_mask(BackSubCoreDP * self, PyObject * args)
 {
  // Get the input and output numpy arrays...
@@ -1395,6 +1473,7 @@ static PyMethodDef BackSubCoreDP_methods[] =
  {"process", (PyCFunction)BackSubCoreDP_process, METH_VARARGS, "Given two inputs - a rgb frame indexed as [y,x,component] and a float32 output, indexed as [y,x]. It updates the model and writes the probability of seeing each pixel value into the output."},
  {"light_update", (PyCFunction)BackSubCoreDP_light_update, METH_VARARGS, "Given 3 floats, corresponding to red, green and blue - multiplies the means of all the components by these values - this allows the background model to track lighting changes."},
  {"background", (PyCFunction)BackSubCoreDP_background, METH_VARARGS, "Given an output float32 rgb array this fills it with the current mode of the per-pixel density estimates."},
+ {"component_count", (PyCFunction)BackSubCoreDP_component_count, METH_VARARGS, "Given an output float32 rgb array this fills it with an estimate of the number of components for each pixel, or at least how many it takes to get to com_count_mass of the probability. Note that it assumes they are ordered largest to smallest, which is statisticaly likelly but hardly guaranteed."},
  {"make_mask", (PyCFunction)BackSubCoreDP_make_mask, METH_VARARGS, "Helper method that is given 3 inputs: a rgb frame, a probability array, and a mask - it then uses the first two to fill in the third. Uses a two-label belief propagation implimentation that regularises the mask."},
  {NULL}
 };
