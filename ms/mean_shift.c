@@ -14,6 +14,38 @@
 
 
 
+float calc_weight(DataMatrix * dm)
+{
+ float ret = 0.0;
+ 
+ int i;
+ int exemplars = DataMatrix_exemplars(dm);
+ 
+ for (i=0; i<exemplars; i++)
+ {
+  float w;
+  DataMatrix_fv(dm, i, &w);
+  ret += w;
+ }
+  
+ return ret;
+}
+
+
+
+float calc_norm(DataMatrix * dm, const Kernel * kernel, float alpha, float weight)
+{
+ int features = DataMatrix_features(dm);
+ float ret = kernel->norm(features, alpha) / weight;
+ 
+ int i;
+ for (i=0; i<features; i++) ret *= dm->mult[i];
+ 
+ return ret;
+}
+
+
+
 float prob(Spatial spatial, const Kernel * kernel, float alpha, const float * fv, float norm, float quality)
 {
  // Extract a bunch of things...
@@ -41,6 +73,60 @@ float prob(Spatial spatial, const Kernel * kernel, float alpha, const float * fv
    w *= norm;
    ret += w;
   }
+  
+ return ret;
+}
+
+
+
+float loo_nll(Spatial spatial, const Kernel * kernel, float alpha, float norm, float quality, float limit)
+{
+ // Extract a bunch of things...
+  DataMatrix * dm = Spatial_dm(spatial);
+  
+  int exemplars = DataMatrix_exemplars(dm);
+  int features = DataMatrix_features(dm);
+  float range = kernel->range(features, alpha, quality);
+  
+ // Loop and do each exemplar in the data set in turn... 
+  float ret = 0.0;
+  
+  float * fvi = (float*)malloc(features * sizeof(float));
+  
+  int i, j;
+  for (i=0; i<exemplars; i++)
+  {
+   // Get exemplar i, so we can play with it...
+    float wi;
+    float * fv = DataMatrix_fv(dm, i, &wi);
+    for (j=0; j<features; j++) fvi[j] = fv[j];
+    
+   // Calculate the probability of exemplar i, ignoring entry i...
+    float prob = 0.0;
+    Spatial_start(spatial, fvi, range);
+    
+    while (1)
+    {
+     int targ = Spatial_next(spatial);
+     if (targ<0) break;
+     if (targ==i) continue; // Skip the one we are currently analysing.
+   
+     float w;
+     float * fv = DataMatrix_fv(dm, targ, &w);
+   
+     for (j=0; j<features; j++) fv[j] -= fvi[j];
+     w *= kernel->weight(features, alpha, fv);
+   
+     w *= norm;
+     prob += w;
+    }
+    
+   // Update the return cost...
+    if (prob<limit) prob = limit;
+    ret -= wi * log(prob);
+  }
+  
+  free(fvi);
   
  return ret;
 }

@@ -12,6 +12,8 @@
 
 #include <string.h>
 
+// Note to anyone reading this code - the atof function used throughout is not related to the normal function with that name - try not to get confused!
+
 
 
 void MeanShift_new(MeanShift * this)
@@ -370,6 +372,49 @@ static PyObject * MeanShift_set_data_py(MeanShift * self, PyObject * args)
 }
 
 
+static PyObject * MeanShift_get_dm_py(MeanShift * self, PyObject * args)
+{
+ Py_INCREF((PyObject*)self->dm.array);
+ return (PyObject*)self->dm.array;
+}
+
+
+static PyObject * MeanShift_get_dim_py(MeanShift * self, PyObject * args)
+{
+ PyObject * ret = PyString_FromStringAndSize(NULL, self->dm.array->nd);
+ char * out = PyString_AsString(ret);
+ 
+ int i;
+ for (i=0;i<self->dm.array->nd;i++)
+ {
+  switch (self->dm.dt[i])
+  {
+   case DIM_DATA:    out[i] = 'd'; break;
+   case DIM_FEATURE: out[i] = 'f'; break;
+   case DIM_DUAL:    out[i] = 'b'; break;
+   default: out[i] = 'e'; break; // Should never happen, obviously.
+  }
+ }
+  
+ return ret;
+}
+
+
+static PyObject * MeanShift_get_weight_dim_py(MeanShift * self, PyObject * args)
+{
+ if (self->dm.weight_index>=0)
+ {
+  return Py_BuildValue("f", self->dm.weight_index);
+ }
+ else
+ {
+  Py_INCREF(Py_None);
+  return Py_None;
+ }
+}
+
+
+
 static PyObject * MeanShift_set_scale_py(MeanShift * self, PyObject * args)
 {
  // Extract the parameters...
@@ -419,6 +464,27 @@ static PyObject * MeanShift_set_scale_py(MeanShift * self, PyObject * args)
 }
 
 
+static PyObject * MeanShift_get_scale_py(MeanShift * self, PyObject * args)
+{
+ npy_intp dim = DataMatrix_features(&self->dm);
+ PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &dim, NPY_FLOAT32);
+ 
+ int i;
+ for (i=0; i<dim; i++)
+ {
+  *(float*)(ret->data + i*ret->strides[0]) = self->dm.mult[i];
+ }
+ 
+ return (PyObject*)ret;
+}
+
+
+static PyObject * MeanShift_get_weight_scale_py(MeanShift * self, PyObject * args)
+{
+ return Py_BuildValue("f", self->dm.weight_scale);
+}
+
+
 
 static PyObject * MeanShift_exemplars_py(MeanShift * self, PyObject * args)
 {
@@ -431,26 +497,254 @@ static PyObject * MeanShift_features_py(MeanShift * self, PyObject * args)
  return Py_BuildValue("i", DataMatrix_features(&self->dm));
 }
 
+
 float MeanShift_weight(MeanShift * this)
 {
  if (this->weight<0.0)
  {
-  this->weight = 0.0;
-  int i;
-  for (i=0; i<DataMatrix_exemplars(&this->dm); i++)
-  {
-   float w;
-   DataMatrix_fv(&this->dm, i, &w);
-   this->weight += w; 
-  }
+  this->weight = calc_weight(&this->dm);
  }
   
  return this->weight;
 }
 
+
 static PyObject * MeanShift_weight_py(MeanShift * self, PyObject * args)
 {
  return Py_BuildValue("f", MeanShift_weight(self));
+}
+
+
+static PyObject * MeanShift_stats_py(MeanShift * self, PyObject * args)
+{
+ // Prep...
+  int exemplars = DataMatrix_exemplars(&self->dm);
+  npy_intp features = DataMatrix_features(&self->dm);
+  
+  PyArrayObject * mean = (PyArrayObject*)PyArray_SimpleNew(1, &features, NPY_FLOAT32);
+  PyArrayObject * sd   = (PyArrayObject*)PyArray_SimpleNew(1, &features, NPY_FLOAT32);
+  
+  int i, j;
+  for (j=0; j<features; j++)
+  {
+   *(float*)(mean->data + j*mean->strides[0]) = 0.0;
+   *(float*)(sd->data + j*sd->strides[0])     = 0.0;
+  }
+  
+ // Single pass to calculate everything at once...
+  float total = 0.0;  
+  for (i=0; i<exemplars; i++)
+  {
+   float w;
+   float * fv = DataMatrix_fv(&self->dm, i, &w);
+   float new_total = total + w;
+   
+   for (j=0; j<features; j++)
+   {
+    float delta = fv[j] - *(float*)(mean->data + j*mean->strides[0]);
+    float r = delta * w / new_total;
+    *(float*)(mean->data + j*mean->strides[0]) += r;
+    *(float*)(sd->data + j*sd->strides[0]) += total * delta * r;
+   }
+    
+   total = new_total;
+  }
+    
+ // Finish the sd and adapt the scale...
+  if (total<1e-6) total = 1e-6; // Safety, for if they are all outliers.
+  for (j=0; j<features; j++)
+  {
+   *(float*)(mean->data + j*mean->strides[0]) /= self->dm.mult[j];
+   *(float*)(sd->data + j*sd->strides[0]) = sqrt(*(float*)(sd->data + j*sd->strides[0]) / total) / self->dm.mult[j];
+  }
+  
+ // Construct and do the return...
+  return Py_BuildValue("(N,N)", mean, sd);
+}
+
+
+
+static PyObject * MeanShift_scale_silverman_py(MeanShift * self, PyObject * args)
+{
+ int i, j;
+ 
+ // Reset the scale to 1 before we start, so fv does something sensible...
+  int exemplars = DataMatrix_exemplars(&self->dm);
+  int features = DataMatrix_features(&self->dm);
+  
+  for (i=0; i<features; i++) self->dm.mult[i] = 1.0;
+  
+ // Use Silverman's rule of thumb to calculate scale values...
+  float weight = 0.0;
+  float * mean = (float*)malloc(features * sizeof(float));
+  float * sd = (float*)malloc(features * sizeof(float));
+  
+  // Calculate and store the standard deviation of each dimension...
+   for (i=0; i<features; i++)
+   {
+    mean[i] = 0.0;
+    sd[i] = 0.0;
+   }
+   
+   for (j=0; j<exemplars; j++)
+   {
+    float w;
+    float * fv = DataMatrix_fv(&self->dm, j, &w);
+    float temp = weight + w;
+    
+    for (i=0; i<features; i++)
+    {
+     float delta = fv[i] - mean[i];
+     float r = delta * w / temp;
+     mean[i] += r;
+     sd[i] += weight * delta * r;
+    }
+    
+    weight = temp;
+   }
+   
+   for (i=0; i<features; i++)
+   {
+    sd[i] = sqrt(sd[i] / weight);
+   }
+  
+  // Convert standard deviations into a bandwidth via applying the rule...
+   float mult = pow(weight * (features + 2.0) / 4.0, -1.0 / (features + 4.0));
+   for (i=0; i<features; i++)
+   {
+    sd[i] = 1.0 / (sd[i] * mult);
+   }
+ 
+ // Set the scale...
+  DataMatrix_set_scale(&self->dm, sd, self->dm.weight_scale);
+  free(sd);
+  free(mean);
+ 
+ // Trash the spatial - changing the above invalidates it...
+  if (self->spatial!=NULL)
+  {
+   Spatial_delete(self->spatial);
+   self->spatial = NULL; 
+  }
+  
+ // Trash the cluster centers...
+  if (self->balls!=NULL)
+  {
+   Balls_delete(self->balls);
+   self->balls = NULL;
+  }
+  
+ // Trash the normalising constant...
+  self->norm = -1.0;
+
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+static PyObject * MeanShift_scale_scott_py(MeanShift * self, PyObject * args)
+{
+ int i, j;
+ 
+ // Reset the scale to 1 before we start, so fv does something sensible...
+  int exemplars = DataMatrix_exemplars(&self->dm);
+  int features = DataMatrix_features(&self->dm);
+  
+  for (i=0; i<features; i++) self->dm.mult[i] = 1.0;
+ 
+ // Use Silverman's rule fo thumb to calculate scale values...   
+  float weight = 0.0;
+  float * mean = (float*)malloc(features * sizeof(float));
+  float * sd = (float*)malloc(features * sizeof(float));
+  
+  // Calculate and store into s the standard deviation of each dimension...
+   for (i=0; i<features; i++)
+   {
+    mean[i] = 0.0;
+    sd[i] = 0.0;
+   }
+   
+   for (j=0; j<exemplars; j++)
+   {
+    float w;
+    float * fv = DataMatrix_fv(&self->dm, j, &w);
+    float temp = weight + w;
+    
+    for (i=0; i<features; i++)
+    {
+     float delta = fv[i] - mean[i];
+     float r = delta * w / temp;
+     mean[i] += r;
+     sd[i] += weight * delta * r;
+    }
+    
+    weight = temp;
+   }
+   
+   for (i=0; i<features; i++)
+   {
+    sd[i] = sqrt(sd[i] / weight);
+   }
+  
+  // Convert standard deviations into a bandwidth via applying the rule...
+   float mult = pow(weight, -1.0 / (features + 4.0));
+   for (i=0; i<features; i++)
+   {
+    sd[i] = 1.0 / (sd[i] * mult);
+   }
+ 
+ // Set the scale...
+  DataMatrix_set_scale(&self->dm, sd, self->dm.weight_scale);
+  free(sd);
+  free(mean);
+ 
+ // Trash the spatial - changing the above invalidates it...
+  if (self->spatial!=NULL)
+  {
+   Spatial_delete(self->spatial);
+   self->spatial = NULL; 
+  }
+  
+ // Trash the cluster centers...
+  if (self->balls!=NULL)
+  {
+   Balls_delete(self->balls);
+   self->balls = NULL;
+  }
+  
+ // Trash the normalising constant...
+  self->norm = -1.0;
+  
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+static PyObject * MeanShift_loo_nll_py(MeanShift * self, PyObject * args)
+{
+ // Extract the limit from the parameters...
+  float limit = 1e-16;
+  if (!PyArg_ParseTuple(args, "|f", &limit)) return NULL;
+ 
+ // If spatial is null create it...
+  if (self->spatial==NULL)
+  {
+   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+  }
+  
+ // Calculate the normalising term if needed...
+  if (self->norm<0.0)
+  {
+   self->norm = calc_norm(&self->dm, self->kernel, self->alpha, MeanShift_weight(self));
+  }
+  
+ // Calculate the probability...
+  float nll = loo_nll(self->spatial, self->kernel, self->alpha, self->norm, self->quality, limit);
+ 
+ // Return it...
+  return Py_BuildValue("f", nll);
 }
 
 
@@ -477,16 +771,14 @@ static PyObject * MeanShift_prob_py(MeanShift * self, PyObject * args)
   }
   
  // Calculate the normalising term if needed...
-  int i;
   if (self->norm<0.0)
   {
-   self->norm = self->kernel->norm(feats, self->alpha) / MeanShift_weight(self);
-   for (i=0; i<feats; i++) self->norm /= self->dm.mult[i];
+   self->norm = calc_norm(&self->dm, self->kernel, self->alpha, MeanShift_weight(self));
   }
  
  // Create a temporary to hold the feature vector...
   float * fv = (float*)malloc(feats * sizeof(float));
-  
+  int i;
   for (i=0; i<feats; i++)
   {
    fv[i] = atof(start->data + i*start->strides[0]) * self->dm.mult[i];
@@ -523,11 +815,9 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
   }
   
  // Calculate the normalising term if needed...
-  int i;
   if (self->norm<0.0)
   {
-   self->norm = self->kernel->norm(feats, self->alpha) / MeanShift_weight(self);
-   for (i=0; i<feats; i++) self->norm /= self->dm.mult[i]; 
+   self->norm = calc_norm(&self->dm, self->kernel, self->alpha, MeanShift_weight(self));
   }
   
  // Create a temporary array of floats...
@@ -538,6 +828,7 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
   
   
  // Run the algorithm...
+  int i;
   for (i=0; i<start->dimensions[0]; i++)
   {
    // Copy the feature vector into the temporary storage...
@@ -1137,7 +1428,7 @@ static PyMemberDef MeanShift_members[] =
  {"iter_cap", T_INT, offsetof(MeanShift, iter_cap), 0, "Maximum number of iterations to do before stopping, a hard limit on computation."},
  {"ident_dist", T_FLOAT, offsetof(MeanShift, ident_dist), 0, "If two exemplars are found at any point to have a distance less than this from each other whilst clustering it is assumed they will go to the same destination, saving computation."},
  {"merge_range", T_FLOAT, offsetof(MeanShift, merge_range), 0, "Controls how close two mean shift locations have to be to be merged in the clustering method."},
- {"merge_check_step", T_INT, offsetof(MeanShift, merge_check_step), 0, "When clustering this controls how many mean shift iterations it does between checking for convergance - simply a tradeoff between wasting time doing mean shift when it has already converged and doing proximity checks for convergance. Should only affects runtime."},
+ {"merge_check_step", T_INT, offsetof(MeanShift, merge_check_step), 0, "When clustering this controls how many mean shift iterations it does between checking for convergance - simply a tradeoff between wasting time doing mean shift when it has already converged and doing proximity checks for convergance. Should only affect runtime."},
  {NULL}
 };
 
@@ -1159,12 +1450,23 @@ static PyMethodDef MeanShift_methods[] =
  
  {"info", (PyCFunction)MeanShift_info_py, METH_VARARGS | METH_STATIC, "A static method that is given the name of a kernel, spatial or ball. It then returns a human readable description of that entity."},
  
- {"set_data", (PyCFunction)MeanShift_set_data_py, METH_VARARGS, "Sets the data matrix, which defines the probability distribution via a kernel density estimate that everything is using. First parameter is a numpy matrix (Any normal numerical type), the second a string with its length matching the number of dimensions of the matrix. The characters in the string define the meaning of each dimension: 'd' (data) - changing the index into this dimension changes which exemplar you are indexing; 'f' (feature) - changing the index into this dimension changes which feature you are indexing; 'b' (both) - same as d, except it also contributes an item to the feature vector, which is essentially the position in that dimension (used on the dimensions of an image for instance, to include pixel position in the feature vector). The system unwraps all data indices and all feature indices in row major order to hallucinate a standard data matrix, with all 'both' features at the start of the feature vector. Note that calling this resets scale. A third optional parameter sets an index into the original feature vector that is to be the weight of the feature vector - this effectivly reduces the length of the feature vector, as used by all other methods, by one."},
+ {"set_data", (PyCFunction)MeanShift_set_data_py, METH_VARARGS, "Sets the data matrix, which defines the probability distribution via a kernel density estimate that everything is using. The data matrix is used directly, so it should not be modified during use as it could break the data structures created to accelerate question answering. First parameter is a numpy matrix (Any normal numerical type), the second a string with its length matching the number of dimensions of the matrix. The characters in the string define the meaning of each dimension: 'd' (data) - changing the index into this dimension changes which exemplar you are indexing; 'f' (feature) - changing the index into this dimension changes which feature you are indexing; 'b' (both) - same as d, except it also contributes an item to the feature vector, which is essentially the position in that dimension (used on the dimensions of an image for instance, to include pixel position in the feature vector). The system unwraps all data indices and all feature indices in row major order to hallucinate a standard data matrix, with all 'both' features at the start of the feature vector. Note that calling this resets scale. A third optional parameter sets an index into the original feature vector (Including the dual dimensions, so you can use one of them to provide weight) that is to be the weight of the feature vector - this effectivly reduces the length of the feature vector, as used by all other methods, by one."}, 
+ {"get_dm", (PyCFunction)MeanShift_get_dm_py, METH_NOARGS, "Returns the current data matrix, which will be some kind of numpy ndarray"},
+ {"get_dim", (PyCFunction)MeanShift_get_dim_py, METH_NOARGS, "Returns the string that gives the meaning of each dimension, as matched to the number of dimensions in the data matrix."},
+ {"get_weight_dim", (PyCFunction)MeanShift_get_weight_dim_py, METH_NOARGS, "Returns the feature vector index that provides the weight of each sample, or None if there is not one and they are all fixed to 1."},
+ 
  {"set_scale", (PyCFunction)MeanShift_set_scale_py, METH_VARARGS, "Given two parameters. First is an array indexed by feature to get a multiplier that is applied before the kernel (Which is always of radius 1, or some approximation of.) is considered - effectivly an inverse bandwidth in kernel density estimation terms. Second is an optional scale for the weight assigned to each feature vector via the set_data method (In the event that no weight is assigned this parameter is the weight of each feature vector, as the default is 1)."},
+ {"get_scale", (PyCFunction)MeanShift_get_scale_py, METH_NOARGS, "Returns a copy of the scale array (Inverse bandwidth)."},
+ {"get_weight_scale", (PyCFunction)MeanShift_get_weight_scale_py, METH_NOARGS, "Returns the scalar for the weight of each sample - typically left as 1."},
  
  {"exemplars", (PyCFunction)MeanShift_exemplars_py, METH_NOARGS, "Returns how many exemplars are in the hallucinated data matrix."},
  {"features", (PyCFunction)MeanShift_features_py, METH_NOARGS, "Returns how many features are in the hallucinated data matrix."},
- {"weight", (PyCFunction)MeanShift_weight_py, METH_NOARGS, "Returns the total weight of the included data, taking into account a weight channel if provided."},
+ {"weight", (PyCFunction)MeanShift_weight_py, METH_NOARGS, "Returns the total weight of the included data, taking into account the weight channel if provided."},
+ {"stats", (PyCFunction)MeanShift_stats_py, METH_NOARGS, "Returns some basic stats about the data set - (mean, standard deviation). These are per channel."},
+
+ {"scale_silverman", (PyCFunction)MeanShift_scale_silverman_py, METH_NOARGS, "Sets the scale for the current data using Silverman's rule of thumb, generalised to multidimensional data (Multidimensional version often attributed to Wand & Jones.). Note that this is assuming you are using Gaussian kernels and that the samples have been drawn from a Gaussian - if these asumptions are valid you should probably just fit a Gaussian in the first place, if they are not you should not use this method. Basically, do not use!"},
+ {"scale_scott", (PyCFunction)MeanShift_scale_scott_py, METH_NOARGS, "Alternative to scale_silverman - assumptions are very similar and it is hence similarly crap - would recomend against this, though maybe prefered to Silverman."},
+ {"loo_nll", (PyCFunction)MeanShift_loo_nll_py, METH_VARARGS, "Calculate the negative log liklihood of the model where it leaves out the sample whos probability is being calculated and then muliplies together the probability of all samples calculated independently. This can be used for model comparison, to see which is better out of several configurations, be that kernel size, kernel type etc. Takes one optional parameter, which is a lower bound on probability, to avoid outliers causing problems - defaults to 1e-16"},
  
  {"prob", (PyCFunction)MeanShift_prob_py, METH_VARARGS, "Given a feature vector returns its probability, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},
  {"probs", (PyCFunction)MeanShift_probs_py, METH_VARARGS, "Given a data matrix returns an array (1D) containing the probability of each feature, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},
@@ -1208,7 +1510,7 @@ static PyTypeObject MeanShiftType =
  0,                                /*tp_getattro*/
  0,                                /*tp_setattro*/
  0,                                /*tp_as_buffer*/
- Py_TPFLAGS_DEFAULT,               /*tp_flags*/
+ Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /*tp_flags*/
  "An object implimenting mean shift; also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Includes multiple spatial indexing schemes and kernel types, including one for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario.", /* tp_doc */
  0,                                /* tp_traverse */
  0,                                /* tp_clear */

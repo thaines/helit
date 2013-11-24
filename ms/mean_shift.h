@@ -17,8 +17,26 @@
 
 
 
+// Note: All of the below functions require that feature vectors (fv) are given in transformed space, i.e. have been multiplied by the vector in the data matrix.
+
+// Returns the total weight within the given data matrix - normally each exemplar is weighted as 1 and this is the exmeplar count, but that is not always the case...
+float calc_weight(DataMatrix * dm);
+
+
+
+// Returns the normalising constant required to be passed into some of the below functions - usually cached. alpha is for the kernel, weight is the output of calc_weight...
+float calc_norm(DataMatrix * dm, const Kernel * kernel, float alpha, float weight);
+
+
+
 // This calculates the probability of a given feature vector, as defined by the kernel density estimate defined by the provided spatial and kernel (with an associated alpha). You also provide the normalising multiplier, as that can be cached to save repeated calculation, and quality to define the search range around the kernel. The norm parameter must be the kernel normalising constant divided by the weight of the samples...
 float prob(Spatial spatial, const Kernel * kernel, float alpha, const float * fv, float norm, float quality);
+
+
+
+// Calculates the log probability of all the items in the data set, leave one out style - allows for model comparison so you can optimise any of the parameters, such as scale or kernel type. Parameters match up with the prob function, except it gets the feature vectors from spatial and returns a negative log probability. It includes one extra parameter - a minimum probability to assign to any given exemplar, to limit the damage of outliers...
+// (Note that it does not correctly adjust the total weight for each exemplar probability calculation, which technically can bias things a bit if they all have different weights, but not really enough to worry about, and it would prevent the use of the norm optimisation.)
+float loo_nll(Spatial spatial, const Kernel * kernel, float alpha, float norm, float quality, float limit);
 
 
 
