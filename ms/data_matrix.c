@@ -177,8 +177,8 @@ void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int we
   dm->array = array;
   Py_INCREF(dm->array);
   
-  dm->dt = (DimType*)malloc(dm->array->nd * sizeof(DimType));
-  for (i=0; i<dm->array->nd; i++) dm->dt[i] = dt[i];
+  dm->dt = (DimType*)malloc(PyArray_NDIM(dm->array) * sizeof(DimType));
+  for (i=0; i<PyArray_NDIM(dm->array); i++) dm->dt[i] = dt[i];
   
   dm->weight_index = weight_index;
   
@@ -186,21 +186,21 @@ void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int we
   dm->exemplars = 1;
   dm->feats = 1;
   
-  for (i=0; i<dm->array->nd; i++)
+  for (i=0; i<PyArray_NDIM(dm->array); i++)
   {
    switch(dm->dt[i])
    {
     case DIM_DATA:
-     dm->exemplars *= dm->array->dimensions[i];
+     dm->exemplars *= PyArray_DIMS(dm->array)[i];
     break;
      
     case DIM_DUAL:
-     dm->exemplars *= dm->array->dimensions[i];
+     dm->exemplars *= PyArray_DIMS(dm->array)[i];
      dm->dual_feats += 1;
     break;
      
     case DIM_FEATURE:
-     dm->feats *= dm->array->dimensions[i];
+     dm->feats *= PyArray_DIMS(dm->array)[i];
      dm->feat_dims += 1;
     break;
    }
@@ -223,7 +223,7 @@ void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int we
  // Create the index of all feature indices...
   dm->feat_indices = (int*)malloc(dm->feat_dims * sizeof(int));
   int os = 0;
-  for (i=0; i<dm->array->nd; i++)
+  for (i=0; i<PyArray_NDIM(dm->array); i++)
   {
    if (dm->dt[i]==DIM_FEATURE)
    {
@@ -233,7 +233,7 @@ void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int we
   }
   
  // Store a function pointer in the to_float variable that matches this array type...
-  dm->to_float = KindToFunc(dm->array->descr);
+  dm->to_float = KindToFunc(PyArray_DESCR(dm->array));
 }
 
 
@@ -263,15 +263,15 @@ void DataMatrix_set_scale(DataMatrix * dm, float * scale, float weight_scale)
 float * DataMatrix_fv(DataMatrix * dm, int index, float * weight)
 {
  int i;
- char * base = dm->array->data;
+ char * base = PyArray_DATA(dm->array);
  int next_dual_feat = dm->dual_feats-1;
    
  if (weight!=NULL) *weight = dm->weight_scale;
  
  // Indexing pass - go backwards through the dimensions, updating the index as we go and figuring out the base index for the output; do the dual dimensions as we go...
-  for (i=dm->array->nd-1; i>=0; i--)
+  for (i=PyArray_NDIM(dm->array)-1; i>=0; i--)
   {
-   npy_intp size = dm->array->dimensions[i];
+   npy_intp size = PyArray_DIMS(dm->array)[i];
    npy_intp step = index % size;
    
    if (dm->dt[i]==DIM_DUAL)
@@ -289,7 +289,7 @@ float * DataMatrix_fv(DataMatrix * dm, int index, float * weight)
    
    if (dm->dt[i]!=DIM_FEATURE)
    {
-    base += dm->array->strides[i] * step;
+    base += PyArray_STRIDES(dm->array)[i] * step;
     index /= size;
    }
   }
@@ -322,8 +322,8 @@ float * DataMatrix_fv(DataMatrix * dm, int index, float * weight)
     for (j=dm->feat_dims-1; j>=0; j--)
     {
      int di = dm->feat_indices[j];
-     npy_intp size = dm->array->dimensions[di];
-     pos += dm->array->strides[di] * (fi % size);
+     npy_intp size = PyArray_DIMS(dm->array)[di];
+     pos += PyArray_STRIDES(dm->array)[di] * (fi % size);
      fi /= size;
     }
    

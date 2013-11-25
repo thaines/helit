@@ -299,20 +299,20 @@ static PyObject * MeanShift_set_data_py(MeanShift * self, PyObject * args)
   if (!PyArg_ParseTuple(args, "O!s|O", &PyArray_Type, &data, &dim_types, &weight_index)) return NULL;
   
  // Check its all ok...
-  if (strlen(dim_types)!=data->nd)
+  if (strlen(dim_types)!=PyArray_NDIM(data))
   {
    PyErr_SetString(PyExc_RuntimeError, "dimension type string must be the same length as the number of dimensions in the data matrix");
    return NULL;
   }
   
-  if ((data->descr->kind!='b')&&(data->descr->kind!='i')&&(data->descr->kind!='u')&&(data->descr->kind!='f'))
+  if ((PyArray_DESCR(data)->kind!='b')&&(PyArray_DESCR(data)->kind!='i')&&(PyArray_DESCR(data)->kind!='u')&&(PyArray_DESCR(data)->kind!='f'))
   {
    PyErr_SetString(PyExc_RuntimeError, "provided data matrix is not of a supported type");
    return NULL; 
   }
   
   int i;
-  for (i=0; i<data->nd; i++)
+  for (i=0; i<PyArray_NDIM(data); i++)
   {
    if ((dim_types[i]!='d')&&(dim_types[i]!='f')&&(dim_types[i]!='b'))
    {
@@ -334,8 +334,8 @@ static PyObject * MeanShift_set_data_py(MeanShift * self, PyObject * args)
   }
   
  // Make the assignment...
-  DimType * dt = (DimType*)malloc(data->nd * sizeof(DimType));
-  for (i=0; i<data->nd; i++)
+  DimType * dt = (DimType*)malloc(PyArray_NDIM(data) * sizeof(DimType));
+  for (i=0; i<PyArray_NDIM(data); i++)
   {
    switch (dim_types[i])
    {
@@ -381,11 +381,11 @@ static PyObject * MeanShift_get_dm_py(MeanShift * self, PyObject * args)
 
 static PyObject * MeanShift_get_dim_py(MeanShift * self, PyObject * args)
 {
- PyObject * ret = PyString_FromStringAndSize(NULL, self->dm.array->nd);
+ PyObject * ret = PyString_FromStringAndSize(NULL, PyArray_NDIM(self->dm.array));
  char * out = PyString_AsString(ret);
  
  int i;
- for (i=0;i<self->dm.array->nd;i++)
+ for (i=0;i<PyArray_NDIM(self->dm.array);i++)
  {
   switch (self->dm.dt[i])
   {
@@ -423,18 +423,18 @@ static PyObject * MeanShift_set_scale_py(MeanShift * self, PyObject * args)
   if (!PyArg_ParseTuple(args, "O!|f", &PyArray_Type, &scale, &weight_scale)) return NULL;
  
  // Handle the scale...
-  if ((scale->nd!=1)||(scale->dimensions[0]!=DataMatrix_features(&self->dm)))
+  if ((PyArray_NDIM(scale)!=1)||(PyArray_DIMS(scale)[0]!=DataMatrix_features(&self->dm)))
   {
    PyErr_SetString(PyExc_RuntimeError, "scale vector must be a simple 1D numpy array with length matching the number of features.");
    return NULL;
   }
-  ToFloat atof = KindToFunc(scale->descr);
+  ToFloat atof = KindToFunc(PyArray_DESCR(scale));
   
-  float * s = (float*)malloc(scale->dimensions[0] * sizeof(float));
+  float * s = (float*)malloc(PyArray_DIMS(scale)[0] * sizeof(float));
   int i;
-  for (i=0; i<scale->dimensions[0]; i++)
+  for (i=0; i<PyArray_DIMS(scale)[0]; i++)
   {
-   s[i] = atof(scale->data + i*scale->strides[0]);
+   s[i] = atof(PyArray_GETPTR1(scale, i));
   }
   
   DataMatrix_set_scale(&self->dm, s, weight_scale);
@@ -472,7 +472,7 @@ static PyObject * MeanShift_get_scale_py(MeanShift * self, PyObject * args)
  int i;
  for (i=0; i<dim; i++)
  {
-  *(float*)(ret->data + i*ret->strides[0]) = self->dm.mult[i];
+  *(float*)PyArray_GETPTR1(ret, i) = self->dm.mult[i];
  }
  
  return (PyObject*)ret;
@@ -527,8 +527,8 @@ static PyObject * MeanShift_stats_py(MeanShift * self, PyObject * args)
   int i, j;
   for (j=0; j<features; j++)
   {
-   *(float*)(mean->data + j*mean->strides[0]) = 0.0;
-   *(float*)(sd->data + j*sd->strides[0])     = 0.0;
+   *(float*)PyArray_GETPTR1(mean, j) = 0.0;
+   *(float*)PyArray_GETPTR1(sd, j)   = 0.0;
   }
   
  // Single pass to calculate everything at once...
@@ -541,10 +541,10 @@ static PyObject * MeanShift_stats_py(MeanShift * self, PyObject * args)
    
    for (j=0; j<features; j++)
    {
-    float delta = fv[j] - *(float*)(mean->data + j*mean->strides[0]);
+    float delta = fv[j] - *(float*)PyArray_GETPTR1(mean , j);
     float r = delta * w / new_total;
-    *(float*)(mean->data + j*mean->strides[0]) += r;
-    *(float*)(sd->data + j*sd->strides[0]) += total * delta * r;
+    *(float*)PyArray_GETPTR1(mean, j) += r;
+    *(float*)PyArray_GETPTR1(sd, j) += total * delta * r;
    }
     
    total = new_total;
@@ -554,8 +554,8 @@ static PyObject * MeanShift_stats_py(MeanShift * self, PyObject * args)
   if (total<1e-6) total = 1e-6; // Safety, for if they are all outliers.
   for (j=0; j<features; j++)
   {
-   *(float*)(mean->data + j*mean->strides[0]) /= self->dm.mult[j];
-   *(float*)(sd->data + j*sd->strides[0]) = sqrt(*(float*)(sd->data + j*sd->strides[0]) / total) / self->dm.mult[j];
+   *(float*)PyArray_GETPTR1(mean, j) /= self->dm.mult[j];
+   *(float*)PyArray_GETPTR1(sd, j) = sqrt(*(float*)PyArray_GETPTR1(sd, j) / total) / self->dm.mult[j];
   }
   
  // Construct and do the return...
@@ -757,12 +757,12 @@ static PyObject * MeanShift_prob_py(MeanShift * self, PyObject * args)
   
  // Check the input is acceptable...
   npy_intp feats = DataMatrix_features(&self->dm);
-  if ((start->nd!=1)||(start->dimensions[0]!=feats))
+  if ((PyArray_NDIM(start)!=1)||(PyArray_DIMS(start)[0]!=feats))
   {
    PyErr_SetString(PyExc_RuntimeError, "input vector must be 1D with the same length as the number of features.");
    return NULL;
   }
-  ToFloat atof = KindToFunc(start->descr);
+  ToFloat atof = KindToFunc(PyArray_DESCR(start));
   
  // If spatial is null create it...
   if (self->spatial==NULL)
@@ -781,7 +781,7 @@ static PyObject * MeanShift_prob_py(MeanShift * self, PyObject * args)
   int i;
   for (i=0; i<feats; i++)
   {
-   fv[i] = atof(start->data + i*start->strides[0]) * self->dm.mult[i];
+   fv[i] = atof(PyArray_GETPTR1(start, i)) * self->dm.mult[i];
   }
   
  // Calculate the probability...
@@ -801,12 +801,12 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
 
  // Check the input is acceptable...
   npy_intp feats = DataMatrix_features(&self->dm);
-  if ((start->nd!=2)||(start->dimensions[1]!=feats))
+  if ((PyArray_NDIM(start)!=2)||(PyArray_DIMS(start)[1]!=feats))
   {
    PyErr_SetString(PyExc_RuntimeError, "input matrix must be 2D with the same length as the number of features in the second dimension");
    return NULL;
   }
-  ToFloat atof = KindToFunc(start->descr);
+  ToFloat atof = KindToFunc(PyArray_DESCR(start));
 
  // If spatial is null create it...
   if (self->spatial==NULL)
@@ -824,25 +824,25 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
   float * fv = (float*)malloc(feats * sizeof(float));
 
  // Create the output array... 
-  PyArrayObject * out = (PyArrayObject*)PyArray_SimpleNew(1, start->dimensions, NPY_FLOAT32);
+  PyArrayObject * out = (PyArrayObject*)PyArray_SimpleNew(1, PyArray_DIMS(start), NPY_FLOAT32);
   
   
  // Run the algorithm...
   int i;
-  for (i=0; i<start->dimensions[0]; i++)
+  for (i=0; i<PyArray_DIMS(start)[0]; i++)
   {
    // Copy the feature vector into the temporary storage...
     int j;
     for (j=0; j<feats; j++)
     {
-     fv[j] = atof(start->data + i*start->strides[0] + j*start->strides[1]) * self->dm.mult[j];
+     fv[j] = atof(PyArray_GETPTR2(start, i, j)) * self->dm.mult[j];
     }
    
    // Calculate the probability...
     float p = prob(self->spatial, self->kernel, self->alpha, fv, self->norm, self->quality);
    
    // Store it...
-    *(float*)(out->data + i * out->strides[0]) = p;
+    *(float*)PyArray_GETPTR1(out, i) = p;
   }
   
  // Clean up...
@@ -862,12 +862,12 @@ static PyObject * MeanShift_mode_py(MeanShift * self, PyObject * args)
   
  // Check the input is acceptable...
   npy_intp feats = DataMatrix_features(&self->dm);
-  if ((start->nd!=1)||(start->dimensions[0]!=feats))
+  if ((PyArray_NDIM(start)!=1)||(PyArray_DIMS(start)[0]!=feats))
   {
    PyErr_SetString(PyExc_RuntimeError, "input vector must be 1D with the same length as the number of features.");
    return NULL;
   }
-  ToFloat atof = KindToFunc(start->descr);
+  ToFloat atof = KindToFunc(PyArray_DESCR(start));
   
  // Create an output matrix, copy in the data, applying the scale change...  
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats, NPY_FLOAT32);
@@ -875,8 +875,8 @@ static PyObject * MeanShift_mode_py(MeanShift * self, PyObject * args)
   int i;
   for (i=0; i<feats; i++)
   {
-   float * out = (float*)(ret->data + i*ret->strides[0]);
-   *out = atof(start->data + i*start->strides[0]) * self->dm.mult[i];
+   float * out = (float*)PyArray_GETPTR1(ret, i);
+   *out = atof(PyArray_GETPTR1(start, i)) * self->dm.mult[i];
   }
  
  // If spatial is null create it...
@@ -887,13 +887,13 @@ static PyObject * MeanShift_mode_py(MeanShift * self, PyObject * args)
   
  // Run the agorithm; we need some temporary storage...
   float * temp = (float*)malloc(feats * sizeof(float));
-  mode(self->spatial, self->kernel, self->alpha, (float*)ret->data, temp, self->quality, self->epsilon, self->iter_cap);
+  mode(self->spatial, self->kernel, self->alpha, (float*)PyArray_DATA(ret), temp, self->quality, self->epsilon, self->iter_cap);
   free(temp);
   
  // Undo the scale change...
   for (i=0; i<feats; i++)
   {
-   float * out = (float*)(ret->data + i*ret->strides[0]);
+   float * out = (float*)PyArray_GETPTR1(ret, i);
    *out /= self->dm.mult[i];
   }
  
@@ -911,15 +911,15 @@ static PyObject * MeanShift_modes_py(MeanShift * self, PyObject * args)
 
  // Check the input is acceptable...
   npy_intp dims[2];
-  dims[0] = start->dimensions[0];
+  dims[0] = PyArray_DIMS(start)[0];
   dims[1] = DataMatrix_features(&self->dm);
   
-  if ((start->nd!=2)||(start->dimensions[1]!=dims[1]))
+  if ((PyArray_NDIM(start)!=2)||(PyArray_DIMS(start)[1]!=dims[1]))
   {
    PyErr_SetString(PyExc_RuntimeError, "input matrix must be 2D with the same length as the number of features in the second dimension");
    return NULL;
   }
-  ToFloat atof = KindToFunc(start->descr);
+  ToFloat atof = KindToFunc(PyArray_DESCR(start));
   
  // Create an output matrix, copy in the data, applying the scale change...  
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
@@ -929,7 +929,7 @@ static PyObject * MeanShift_modes_py(MeanShift * self, PyObject * args)
   {
    for (j=0; j<dims[1]; j++)
    {
-    *(float*)(ret->data + i*ret->strides[0] + j*ret->strides[1]) = atof(start->data + i*start->strides[0] + j*start->strides[1]) * self->dm.mult[j];
+    *(float*)PyArray_GETPTR2(ret, i, j) = atof(PyArray_GETPTR2(start, i, j)) * self->dm.mult[j];
    }
   }
   
@@ -943,7 +943,7 @@ static PyObject * MeanShift_modes_py(MeanShift * self, PyObject * args)
   float * temp = (float*)malloc(dims[1] * sizeof(float));
   for (i=0; i<dims[0]; i++)
   {
-   float * out = (float*)(ret->data + i*ret->strides[0]);
+   float * out = (float*)PyArray_GETPTR1(ret, i);
    
    mode(self->spatial, self->kernel, self->alpha, out, temp, self->quality, self->epsilon, self->iter_cap);
    
@@ -968,7 +968,7 @@ static PyObject * MeanShift_modes_data_py(MeanShift * self, PyObject * args)
  // Work out the output matrix size...
   int nd = 1;
   int i;
-  for (i=0; i<self->dm.array->nd; i++)
+  for (i=0; i<PyArray_NDIM(self->dm.array); i++)
   {
    if (self->dm.dt[i]!=DIM_FEATURE) nd += 1;
   }
@@ -976,11 +976,11 @@ static PyObject * MeanShift_modes_data_py(MeanShift * self, PyObject * args)
   npy_intp * dims = (npy_intp*)malloc(nd * sizeof(npy_intp));
   
   nd = 0;
-  for (i=0; i<self->dm.array->nd; i++)
+  for (i=0; i<PyArray_NDIM(self->dm.array); i++)
   {
    if (self->dm.dt[i]!=DIM_FEATURE)
    {
-    dims[nd] = self->dm.array->dimensions[i];
+    dims[nd] = PyArray_DIMS(self->dm.array)[i];
     nd += 1;
    }
   }
@@ -994,7 +994,7 @@ static PyObject * MeanShift_modes_data_py(MeanShift * self, PyObject * args)
  // Iterate and do each entry in turn...
   float * temp = (float*)malloc(dims[nd-1] * sizeof(float));
   
-  float * out = (float*)ret->data;
+  float * out = (float*)PyArray_DATA(ret);
   int loc = 0;
   while (loc<DataMatrix_exemplars(&self->dm))
   {
@@ -1034,7 +1034,7 @@ static PyObject * MeanShift_cluster_py(MeanShift * self, PyObject * args)
  // Work out the output matrix size...
   int nd = 0;
   int i;
-  for (i=0; i<self->dm.array->nd; i++)
+  for (i=0; i<PyArray_NDIM(self->dm.array); i++)
   {
    if (self->dm.dt[i]!=DIM_FEATURE) nd += 1;
   }
@@ -1043,11 +1043,11 @@ static PyObject * MeanShift_cluster_py(MeanShift * self, PyObject * args)
   npy_intp * dims = (npy_intp*)malloc(nd * sizeof(npy_intp));
   
   nd = 0;
-  for (i=0; i<self->dm.array->nd; i++)
+  for (i=0; i<PyArray_NDIM(self->dm.array); i++)
   {
    if (self->dm.dt[i]!=DIM_FEATURE)
    {
-    dims[nd] = self->dm.array->dimensions[i];
+    dims[nd] = PyArray_DIMS(self->dm.array)[i];
     nd += 1;
    }
   }
@@ -1060,7 +1060,7 @@ static PyObject * MeanShift_cluster_py(MeanShift * self, PyObject * args)
   self->balls = Balls_new(self->balls_type, self->dm.feats, self->merge_range);
  
  // Do the work...
-  cluster(self->spatial, self->kernel, self->alpha, self->balls, (int*)index->data, self->quality, self->epsilon, self->iter_cap, self->ident_dist, self->merge_range, self->merge_check_step);
+  cluster(self->spatial, self->kernel, self->alpha, self->balls, (int*)PyArray_DATA(index), self->quality, self->epsilon, self->iter_cap, self->ident_dist, self->merge_range, self->merge_check_step);
  
  // Extract the modes, which happen to be the centers of the balls...
   dims[0] = Balls_count(self->balls);
@@ -1075,7 +1075,7 @@ static PyObject * MeanShift_cluster_py(MeanShift * self, PyObject * args)
    int j;
    for (j=0; j<dims[1]; j++)
    {
-    ((float*)modes->data)[i*dims[1] + j] = loc[j] / self->dm.mult[j]; 
+    *(float*)PyArray_GETPTR2(modes, i, j) = loc[j] / self->dm.mult[j]; 
    }
   }
  
@@ -1096,12 +1096,12 @@ static PyObject * MeanShift_assign_cluster_py(MeanShift * self, PyObject * args)
   
  // Check the input is acceptable...
   npy_intp feats = DataMatrix_features(&self->dm);
-  if ((start->nd!=1)||(start->dimensions[0]!=feats))
+  if ((PyArray_NDIM(start)!=1)||(PyArray_DIMS(start)[0]!=feats))
   {
    PyErr_SetString(PyExc_RuntimeError, "input vector must be 1D with the same length as the number of features.");
    return NULL;
   }
-  ToFloat atof = KindToFunc(start->descr);
+  ToFloat atof = KindToFunc(PyArray_DESCR(start));
   
  // Verify that cluster has been run...
   if (self->balls==NULL)
@@ -1117,7 +1117,7 @@ static PyObject * MeanShift_assign_cluster_py(MeanShift * self, PyObject * args)
   int i;
   for (i=0; i<feats; i++)
   {
-   fv[i] = atof(start->data + i*start->strides[0]) * self->dm.mult[i];
+   fv[i] = atof(PyArray_GETPTR1(start, i)) * self->dm.mult[i];
   }
  
  // If spatial is null create it...
@@ -1147,12 +1147,12 @@ static PyObject * MeanShift_assign_clusters_py(MeanShift * self, PyObject * args
   
  // Check the input is acceptable...
   npy_intp feats = DataMatrix_features(&self->dm);
-  if ((start->nd!=2)||(start->dimensions[1]!=feats))
+  if ((PyArray_NDIM(start)!=2)||(PyArray_DIMS(start)[1]!=feats))
   {
    PyErr_SetString(PyExc_RuntimeError, "input vector must be 2D with the second dimension the same length as the number of features.");
    return NULL;
   }
-  ToFloat atof = KindToFunc(start->descr);
+  ToFloat atof = KindToFunc(PyArray_DESCR(start));
   
  // Verify that cluster has been run...
   if (self->balls==NULL)
@@ -1166,7 +1166,7 @@ static PyObject * MeanShift_assign_clusters_py(MeanShift * self, PyObject * args
   float * temp = (float*)malloc(feats * sizeof(float));
 
  // Create the output array... 
-  PyArrayObject * cluster = (PyArrayObject*)PyArray_SimpleNew(1, start->dimensions, NPY_INT32);
+  PyArrayObject * cluster = (PyArrayObject*)PyArray_SimpleNew(1, PyArray_DIMS(start), NPY_INT32);
  
  // If spatial is null create it...
   if (self->spatial==NULL)
@@ -1176,20 +1176,20 @@ static PyObject * MeanShift_assign_clusters_py(MeanShift * self, PyObject * args
   
  // Run the algorithm...
   int i;
-  for (i=0; i<start->dimensions[0]; i++)
+  for (i=0; i<PyArray_DIMS(start)[0]; i++)
   {
    // Copy the feature vector into the temporary storage...
     int j;
     for (j=0; j<feats; j++)
     {
-     fv[j] = atof(start->data + i*start->strides[0] + j*start->strides[1]) * self->dm.mult[j];
+     fv[j] = atof(PyArray_GETPTR2(start, i, j)) * self->dm.mult[j];
     }
    
    // Run it...
     int c = assign_cluster(self->spatial, self->kernel, self->alpha, self->balls, fv, temp, self->quality, self->epsilon, self->iter_cap, self->merge_check_step);
    
    // Store the result...
-    *(int*)(cluster->data + i * cluster->strides[0]) = c;
+    *(int*)PyArray_GETPTR1(cluster, i) = c;
   }
   
  // Clean up...
@@ -1218,12 +1218,12 @@ static PyObject * MeanShift_manifold_py(MeanShift * self, PyObject * args)
 
  // Check the input is acceptable...
   npy_intp feats = DataMatrix_features(&self->dm);
-  if ((start->nd!=1)||(start->dimensions[0]!=feats))
+  if ((PyArray_NDIM(start)!=1)||(PyArray_DIMS(start)[0]!=feats))
   {
    PyErr_SetString(PyExc_RuntimeError, "input vector must be 1D with the same length as the number of features.");
    return NULL;
   }
-  ToFloat atof = KindToFunc(start->descr);
+  ToFloat atof = KindToFunc(PyArray_DESCR(start));
   
  // Create an output matrix, copy in the data, applying the scale change...  
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats, NPY_FLOAT32);
@@ -1231,8 +1231,8 @@ static PyObject * MeanShift_manifold_py(MeanShift * self, PyObject * args)
   int i;
   for (i=0; i<feats; i++)
   {
-   float * out = (float*)(ret->data + i*ret->strides[0]);
-   *out = atof(start->data + i*start->strides[0]) * self->dm.mult[i];
+   float * out = (float*)PyArray_GETPTR1(ret, i);
+   *out = atof(PyArray_GETPTR1(start, i)) * self->dm.mult[i];
   }
  
  // If spatial is null create it...
@@ -1247,7 +1247,7 @@ static PyObject * MeanShift_manifold_py(MeanShift * self, PyObject * args)
   float * eigen_vec = (float*)malloc(feats * feats * sizeof(float));
   float * eigen_val = (float*)malloc(feats * sizeof(float));
   
-  manifold(self->spatial, degrees, (float*)ret->data, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
+  manifold(self->spatial, degrees, (float*)PyArray_DATA(ret), grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
   
   free(eigen_val);
   free(eigen_vec);
@@ -1257,7 +1257,7 @@ static PyObject * MeanShift_manifold_py(MeanShift * self, PyObject * args)
  // Undo the scale change...
   for (i=0; i<feats; i++)
   {
-   float * out = (float*)(ret->data + i*ret->strides[0]);
+   float * out = (float*)PyArray_GETPTR1(ret, i);
    *out /= self->dm.mult[i];
   }
  
@@ -1283,15 +1283,15 @@ static PyObject * MeanShift_manifolds_py(MeanShift * self, PyObject * args)
   
  // Check the input is acceptable...
   npy_intp dims[2];
-  dims[0] = start->dimensions[0];
+  dims[0] = PyArray_DIMS(start)[0];
   dims[1] = DataMatrix_features(&self->dm);
   
-  if ((start->nd!=2)||(start->dimensions[1]!=dims[1]))
+  if ((PyArray_NDIM(start)!=2)||(PyArray_DIMS(start)[1]!=dims[1]))
   {
    PyErr_SetString(PyExc_RuntimeError, "input matrix must be 2D with the same length as the number of features in the second dimension");
    return NULL;
   }
-  ToFloat atof = KindToFunc(start->descr);
+  ToFloat atof = KindToFunc(PyArray_DESCR(start));
   
  // Create an output matrix, copy in the data, applying the scale change...  
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
@@ -1301,7 +1301,7 @@ static PyObject * MeanShift_manifolds_py(MeanShift * self, PyObject * args)
   {
    for (j=0; j<dims[1]; j++)
    {
-    *(float*)(ret->data + i*ret->strides[0] + j*ret->strides[1]) = atof(start->data + i*start->strides[0] + j*start->strides[1]) * self->dm.mult[j];
+    *(float*)PyArray_GETPTR2(ret, i, j) = atof(PyArray_GETPTR2(start, i, j)) * self->dm.mult[j];
    }
   }
   
@@ -1319,7 +1319,7 @@ static PyObject * MeanShift_manifolds_py(MeanShift * self, PyObject * args)
   
   for (i=0; i<dims[0]; i++)
   {
-   float * out = (float*)(ret->data + i*ret->strides[0]);
+   float * out = (float*)PyArray_GETPTR1(ret,i);
    
    manifold(self->spatial, degrees, out, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
    
@@ -1359,7 +1359,7 @@ static PyObject * MeanShift_manifolds_data_py(MeanShift * self, PyObject * args)
  // Work out the output matrix size...
   int nd = 1;
   int i;
-  for (i=0; i<self->dm.array->nd; i++)
+  for (i=0; i<PyArray_NDIM(self->dm.array); i++)
   {
    if (self->dm.dt[i]!=DIM_FEATURE) nd += 1;
   }
@@ -1367,11 +1367,11 @@ static PyObject * MeanShift_manifolds_data_py(MeanShift * self, PyObject * args)
   npy_intp * dims = (npy_intp*)malloc(nd * sizeof(npy_intp));
   
   nd = 0;
-  for (i=0; i<self->dm.array->nd; i++)
+  for (i=0; i<PyArray_NDIM(self->dm.array); i++)
   {
    if (self->dm.dt[i]!=DIM_FEATURE)
    {
-    dims[nd] = self->dm.array->dimensions[i];
+    dims[nd] = PyArray_DIMS(self->dm.array)[i];
     nd += 1;
    }
   }
@@ -1388,7 +1388,7 @@ static PyObject * MeanShift_manifolds_data_py(MeanShift * self, PyObject * args)
   float * eigen_vec = (float*)malloc(dims[1] * dims[1] * sizeof(float));
   float * eigen_val = (float*)malloc(dims[1] * sizeof(float));
   
-  float * out = (float*)ret->data;
+  float * out = (float*)PyArray_DATA(ret);
   int loc = 0;
   while (loc<DataMatrix_exemplars(&self->dm))
   {

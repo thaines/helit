@@ -12,13 +12,13 @@ from distutils.core import setup, Extension
 
 
 
-depends = ['bessel.h', 'eigen.h', 'kernels.h', 'data_matrix.h', 'spatial.h', 'balls.h', 'mean_shift.h', 'ms_c.h']
-code = ['bessel.c', 'eigen.c', 'kernels.c', 'data_matrix.c', 'spatial.c', 'balls.c',  'mean_shift.c', 'ms_c.c']
+depends = ['philox.h', 'bessel.h', 'eigen.h', 'kernels.h', 'data_matrix.h', 'spatial.h', 'balls.h', 'mean_shift.h', 'ms_c.h']
+code = ['philox.c', 'bessel.c', 'eigen.c', 'kernels.c', 'data_matrix.c', 'spatial.c', 'balls.c',  'mean_shift.c', 'ms_c.c']
 
 ext = Extension('ms_c', code, depends=depends)
 
 setup(name='ms',
-      version='1.0.0',
+      version='1.1.0',
       description='Mean Shift',
       author='Tom SF Haines',
       author_email='thaines@gmail.com',

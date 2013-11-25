@@ -160,14 +160,14 @@ Spatial IterDual_new(DataMatrix * dm)
  
  this->indices = 0;
  int i;
- for (i=0; i<this->dm->array->nd; i++)
+ for (i=0; i<PyArray_NDIM(this->dm->array); i++)
  {
   if (this->dm->dt[i]!=DIM_FEATURE) this->indices += 1; 
  }
  
  this->original = (int*)malloc(this->indices * sizeof(int));
  this->indices = 0;
- for (i=0; i<this->dm->array->nd; i++)
+ for (i=0; i<PyArray_NDIM(this->dm->array); i++)
  {
   if (this->dm->dt[i]!=DIM_FEATURE)
   {
@@ -214,7 +214,7 @@ void IterDual_start(Spatial self, const float * centre, float range)
   for (i=0; i<this->indices; i++)
   {
    int oi = this->original[i];
-   npy_intp size = this->dm->array->dimensions[oi];
+   npy_intp size = PyArray_DIMS(this->dm->array)[oi];
    
    if (this->dm->dt[oi]==DIM_DATA)
    {
@@ -253,7 +253,7 @@ int IterDual_next(Spatial self)
   for (i=0; i<this->indices; i++)
   {
    int oi = this->original[i];
-   ret *= this->dm->array->dimensions[oi];
+   ret *= PyArray_DIMS(this->dm->array)[oi];
    ret += this->pos[i];
   }
 

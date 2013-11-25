@@ -13,6 +13,8 @@
 
 #include <Python.h>
 #include <structmember.h>
+
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 
 // Provides a wrapper around a numpy matrix that converts it into a data matrix of floats - allows each index of the dat matrix to be assigned to one of three classes - data, feature or spatial. It does linearisation to allow indexing of the exemplars/features, always in row major order...
