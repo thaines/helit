@@ -48,7 +48,7 @@ float ModBesselFirst(int orderX2, float x, float accuracy, int limit)
    summand /= order + r;
    summand /= r;
    float ret2 = ret + summand;
-   if (isfinite(ret2)==0) break; // If this first the function hasn't worked, but at least you get a finite answer.
+   if (isfinite(ret2)==0) break; // If this fires the function hasn't worked, but at least you get a finite answer.
    ret = ret2;
 
    if (summand<accuracy) break;

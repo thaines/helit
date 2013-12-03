@@ -11,7 +11,7 @@
 
 
 
-// Calculates the modified bessel function of the first kind. The order is given as twice the order, so it supports only whole and half orders. Iterative in nature, accuracy indicates how accurate it should be. Limit is a cap on how many iterations. Highest input this can take is 84 (And you shouldn't really get that close to the limit), to produce a value of about 1e35, any larger and it will return a finite but wrong answer.
+// Calculates the modified bessel function of the first kind. The order is given as twice the order, so it supports only whole and half orders. Iterative in nature, accuracy indicates how accurate it should be. Limit is a cap on how many iterations. Highest input this can take is 84 (And you shouldn't really get that close to the limit), to produce a value of about 1e35, any larger and it will return a finite but wrong answer...
 float ModBesselFirst(int orderX2, float x, float accuracy, int limit);
 
 

@@ -50,3 +50,24 @@ void philox(unsigned int out[4])
    for (i=0;i<4;i++) out[i] = next[i];
  }
 }
+
+
+
+float uniform(unsigned int ui)
+{
+ return (float)ui / 4294967296.0;
+}
+
+
+
+float box_muller(unsigned int pa, unsigned int pb, float * second)
+{
+ float ra = uniform(pa);
+ float rb = uniform(pb);
+ 
+ float mult = sqrt(-2.0 * log(ra));
+ float inner = 2 * M_PI * rb;
+ 
+ if (second!=NULL) *second = mult * sin(inner);
+ return mult * cos(inner);
+}

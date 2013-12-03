@@ -12,6 +12,7 @@
 
 #include <math.h>
 
+#include "philox.h"
 #include "bessel.h"
 
 
@@ -85,6 +86,52 @@ float Uniform_range(int dims, float alpha, float quality)
  return 1.0;
 }
 
+void Uniform_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+{
+ unsigned int random[4];
+ 
+ // Put a Gaussian into each out, keeping track of the squared length...
+  int i;
+  float radius = 0.0;
+  for (i=0; i<dims; i+=2)
+  {
+   // We need some random data...
+    random[0] = index[0];
+    random[1] = index[1];
+    random[2] = index[2];
+    random[3] = i;
+    philox(random);
+    
+   // Output...
+    float * second = (i+1<dims) ? (out+i+1) : NULL;
+    out[i] = box_muller(random[0], random[1], second);
+    
+    radius += out[i] * out[i];
+    if (second!=NULL) radius += out[i+1] * out[i+1];
+  }
+  
+ // Convert from squared radius to not-squared radius...
+  radius = sqrt(radius);
+  
+ // Draw the radius we are going to emit; prepare the multiplier...
+  if ((dims&1)==0)
+  {
+   random[0] = index[0];
+   random[1] = index[1];
+   random[2] = index[2];
+   random[3] = dims;
+   philox(random);
+  }
+    
+  radius = pow(uniform(random[3]), 1.0/dims) / radius;
+ 
+ // Normalise so its at the required distance...
+  for (i=0; i<dims; i++)
+  {
+   out[i] = center[i] + out[i] * radius;
+  }
+}
+
 
 
 const Kernel Uniform =
@@ -95,6 +142,7 @@ const Kernel Uniform =
  Uniform_norm,
  Uniform_range,
  Kernel_offset,
+ Uniform_draw,
 };
 
 
@@ -124,6 +172,52 @@ float Triangular_range(int dims, float alpha, float quality)
  return 1.0;
 }
 
+void Triangular_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+{
+ unsigned int random[4];
+ 
+ // Put a Gaussian into each out, keeping track of the squared length...
+  int i;
+  float radius = 0.0;
+  for (i=0; i<dims; i+=2)
+  {
+   // We need some random data...
+    random[0] = index[0];
+    random[1] = index[1];
+    random[2] = index[2];
+    random[3] = i;
+    philox(random);
+    
+   // Output...
+    float * second = (i+1<dims) ? (out+i+1) : NULL;
+    out[i] = box_muller(random[0], random[1], second);
+    
+    radius += out[i] * out[i];
+    if (second!=NULL) radius += out[i+1] * out[i+1];
+  }
+  
+ // Convert from squared radius to not-squared radius...
+  radius = sqrt(radius);
+  
+ // Draw the radius we are going to emit; prepare the multiplier...
+  if ((dims&1)==0)
+  {
+   random[0] = index[0];
+   random[1] = index[1];
+   random[2] = index[2];
+   random[3] = dims;
+   philox(random);
+  }
+    
+  radius = (1.0 - sqrt(1.0 - uniform(random[3]))) / radius;
+ 
+ // Normalise so its at the required distance...
+  for (i=0; i<dims; i++)
+  {
+   out[i] = center[i] + out[i] * radius;
+  }
+}
+
 
 
 const Kernel Triangular =
@@ -134,6 +228,7 @@ const Kernel Triangular =
  Triangular_norm,
  Triangular_range,
  Kernel_offset,
+ Triangular_draw,
 };
 
 
@@ -163,6 +258,53 @@ float Epanechnikov_range(int dims, float alpha, float quality)
  return 1.0;
 }
 
+void Epanechnikov_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+{
+ unsigned int random[4];
+ 
+ // Put a Gaussian into each out, keeping track of the squared length...
+  int i;
+  float radius = 0.0;
+  for (i=0; i<dims; i+=2)
+  {
+   // We need some random data...
+    random[0] = index[0];
+    random[1] = index[1];
+    random[2] = index[2];
+    random[3] = i;
+    philox(random);
+    
+   // Output...
+    float * second = (i+1<dims) ? (out+i+1) : NULL;
+    out[i] = box_muller(random[0], random[1], second);
+    
+    radius += out[i] * out[i];
+    if (second!=NULL) radius += out[i+1] * out[i+1];
+  }
+  
+ // Convert from squared radius to not-squared radius...
+  radius = sqrt(radius);
+  
+ // Draw the radius we are going to emit; prepare the multiplier...
+  if ((dims&1)==0)
+  {
+   random[0] = index[0];
+   random[1] = index[1];
+   random[2] = index[2];
+   random[3] = dims;
+   philox(random);
+  }
+  
+  float u = uniform(random[3]);
+  radius = -2.0 * cos((atan2(sqrt(1.0-u*u), u) + 4*M_PI) / 3.0) / radius;
+ 
+ // Normalise so its at the required distance...
+  for (i=0; i<dims; i++)
+  {
+   out[i] = center[i] + out[i] * radius;
+  }
+}
+
 
 
 const Kernel Epanechnikov =
@@ -173,6 +315,7 @@ const Kernel Epanechnikov =
  Epanechnikov_norm,
  Epanechnikov_range,
  Kernel_offset,
+ Epanechnikov_draw,
 };
 
 
@@ -220,6 +363,52 @@ float Cosine_range(int dims, float alpha, float quality)
  return 1.0;
 }
 
+void Cosine_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+{
+ unsigned int random[4];
+ 
+ // Put a Gaussian into each out, keeping track of the squared length...
+  int i;
+  float radius = 0.0;
+  for (i=0; i<dims; i+=2)
+  {
+   // We need some random data...
+    random[0] = index[0];
+    random[1] = index[1];
+    random[2] = index[2];
+    random[3] = i;
+    philox(random);
+    
+   // Output...
+    float * second = (i+1<dims) ? (out+i+1) : NULL;
+    out[i] = box_muller(random[0], random[1], second);
+    
+    radius += out[i] * out[i];
+    if (second!=NULL) radius += out[i+1] * out[i+1];
+  }
+  
+ // Convert from squared radius to not-squared radius...
+  radius = sqrt(radius);
+  
+ // Draw the radius we are going to emit; prepare the multiplier...
+  if ((dims&1)==0)
+  {
+   random[0] = index[0];
+   random[1] = index[1];
+   random[2] = index[2];
+   random[3] = dims;
+   philox(random);
+  }
+  
+  radius = 2.0*asin(uniform(random[3])) / (M_PI * radius);
+ 
+ // Normalise so its at the required distance...
+  for (i=0; i<dims; i++)
+  {
+   out[i] = center[i] + out[i] * radius;
+  }
+}
+
 
 
 const Kernel Cosine =
@@ -230,6 +419,7 @@ const Kernel Cosine =
  Cosine_norm,
  Cosine_range,
  Kernel_offset,
+ Cosine_draw,
 };
 
 
@@ -258,6 +448,27 @@ float Gaussian_range(int dims, float alpha, float quality)
  return (1.0-quality)*1.5 + quality*3.5;
 }
 
+void Gaussian_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+{
+ unsigned int random[4];
+ 
+ // Put a unit Gaussian into each out - that is all...
+  int i;
+  for (i=0; i<dims; i+=2)
+  {
+   // We need some random data...
+    random[0] = index[0];
+    random[1] = index[1];
+    random[2] = index[2];
+    random[3] = i;
+    philox(random);
+    
+   // Output...
+    float * second = (i+1<dims) ? (out+i+1) : NULL;
+    out[i] = center[i] + box_muller(random[0], random[1], second);
+  }
+}
+
 
 
 const Kernel Gaussian =
@@ -268,6 +479,7 @@ const Kernel Gaussian =
  Gaussian_norm,
  Gaussian_range,
  Kernel_offset,
+ Gaussian_draw,
 };
 
 
@@ -307,6 +519,52 @@ float Cauchy_range(int dims, float alpha, float quality)
  return (1.0-quality)*2.0 + quality*6.0;
 }
 
+void Cauchy_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+{
+ unsigned int random[4];
+ 
+ // Put a Gaussian into each out, keeping track of the squared length...
+  int i;
+  float radius = 0.0;
+  for (i=0; i<dims; i+=2)
+  {
+   // We need some random data...
+    random[0] = index[0];
+    random[1] = index[1];
+    random[2] = index[2];
+    random[3] = i;
+    philox(random);
+    
+   // Output...
+    float * second = (i+1<dims) ? (out+i+1) : NULL;
+    out[i] = box_muller(random[0], random[1], second);
+    
+    radius += out[i] * out[i];
+    if (second!=NULL) radius += out[i+1] * out[i+1];
+  }
+  
+ // Convert from squared radius to not-squared radius...
+  radius = sqrt(radius);
+  
+ // Draw the radius we are going to emit; prepare the multiplier...
+  if ((dims&1)==0)
+  {
+   random[0] = index[0];
+   random[1] = index[1];
+   random[2] = index[2];
+   random[3] = dims;
+   philox(random);
+  }
+  
+  radius = tan(0.5*M_PI*uniform(random[3])) / radius;
+ 
+ // Normalise so its at the required distance, add the center offset...
+  for (i=0; i<dims; i++)
+  {
+   out[i] = center[i] + out[i] * radius;
+  }
+}
+
 
 
 const Kernel Cauchy =
@@ -317,6 +575,7 @@ const Kernel Cauchy =
  Cauchy_norm,
  Cauchy_range,
  Kernel_offset,
+ Cauchy_draw,
 };
 
 
@@ -365,16 +624,86 @@ float Fisher_offset(int dims, float alpha, float * fv, const float * offset)
  return delta;
 }
 
+void Fisher_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+{
+ unsigned int random[4];
+
+ // Generate a uniform draw into all but the first dimension of out, which is currently the mean direction...
+  int i;
+  float radius = 0.0;
+  
+  for (i=1; i<dims; i+=2)
+  {
+   // We need some random data...
+    random[0] = index[0];
+    random[1] = index[1];
+    random[2] = index[2];
+    random[3] = i;
+    philox(random);
+    
+   // Output...
+    float * second = (i+1<dims) ? (out+i+1) : NULL;
+    out[i] = box_muller(random[0], random[1], second);
+    
+    radius += out[i] * out[i];
+    if (second!=NULL) radius += out[i+1] * out[i+1];
+  }
+  
+ // Draw the value of the dot product between the output vector and the kernel direction (1, 0, 0, ...), putting it into out[0]...
+  if ((dims&1)!=0)
+  {
+   random[0] = index[0];
+   random[1] = index[1];
+   random[2] = index[2];
+   random[3] = dims;
+   philox(random);
+  }
+   
+  out[0] = (alpha * uniform(random[3])) / Fisher_norm(dims, alpha);
+  out[0] = log(out[0] + 1.0) / alpha;
+
+ // Blend the first row of the basis with the random draw to obtain the drawn dot product - i.e. scale the uniform draw so that with the first element set to the drawn dot product the entire vector is of length 1...
+  radius = sqrt(1.0 - out[0]*out[0]) / sqrt(radius);
+  for (i=1; i<dims; i++) out[i] *= radius;
+  
+ // Rotate to put the orthonormal basis in the correct position - apply 2x2 rotation matrices in sequence to rotate the (1, 0, 0, ...) vector to center...
+  float tail = 1.0;
+  for (i=0; i<dims-1; i++)
+  {
+   // Calculate the rotation matrix that leaves tail at the value in the center vector...
+    float cos_theta = center[i] / tail;
+    float sin_theta = sqrt(1.0  - cos_theta*cos_theta);
+   
+   // Apply the rotation matrix to the tail, but offset to the row below, ready for the next time around the loop...
+    tail *= sin_theta;
+   
+   // In the sqrt above we might want the negative answer - check and make the change if so...
+    if ((tail * center[i]) < 0.0)
+    {
+     sin_theta *= -1.0;
+     tail     *= -1.0;
+    }
+    
+   // Apply the 2x2 rotation we have calculated...
+    float oi  = out[i];
+    float oi1 = out[i+1];
+    
+    out[i]   = cos_theta * oi - sin_theta * oi1;
+    out[i+1] = sin_theta * oi + cos_theta * oi1;
+  }
+}
+
 
 
 const Kernel Fisher =
 {
  "fisher",
- "A kernel for dealing with directional data, using the von-Mises Fisher distribution as a kernel. Requires that all feature vectors be on the unit-hypersphere, plus it uses the alpha parameter provided to the kernel as the concentration parameter of the distribution. To avoid numerical problems its best to avoid taking the concentration parameter much above 64.",
+ "A kernel for dealing with directional data, using the von-Mises Fisher distribution as a kernel (Fisher is technically 3 dimensions only, but I like short names!). Requires that all feature vectors be on the unit-hypersphere, plus it uses the alpha parameter provided to the kernel as the concentration parameter of the distribution. To avoid numerical problems its best to avoid taking the concentration parameter much above 64.",
  Fisher_weight,
  Fisher_norm,
  Fisher_range,
  Fisher_offset,
+ Fisher_draw,
 };
 
 
