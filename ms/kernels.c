@@ -86,7 +86,7 @@ float Uniform_range(int dims, float alpha, float quality)
  return 1.0;
 }
 
-void Uniform_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+void Uniform_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -172,7 +172,7 @@ float Triangular_range(int dims, float alpha, float quality)
  return 1.0;
 }
 
-void Triangular_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+void Triangular_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -258,7 +258,7 @@ float Epanechnikov_range(int dims, float alpha, float quality)
  return 1.0;
 }
 
-void Epanechnikov_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+void Epanechnikov_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -363,7 +363,7 @@ float Cosine_range(int dims, float alpha, float quality)
  return 1.0;
 }
 
-void Cosine_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+void Cosine_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -448,7 +448,7 @@ float Gaussian_range(int dims, float alpha, float quality)
  return (1.0-quality)*1.5 + quality*3.5;
 }
 
-void Gaussian_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+void Gaussian_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -466,6 +466,7 @@ void Gaussian_draw(int dims, float alpha, unsigned int index[3], const float * c
    // Output...
     float * second = (i+1<dims) ? (out+i+1) : NULL;
     out[i] = center[i] + box_muller(random[0], random[1], second);
+    if (second!=NULL) *second += center[i+1];
   }
 }
 
@@ -519,7 +520,7 @@ float Cauchy_range(int dims, float alpha, float quality)
  return (1.0-quality)*2.0 + quality*6.0;
 }
 
-void Cauchy_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+void Cauchy_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -624,7 +625,7 @@ float Fisher_offset(int dims, float alpha, float * fv, const float * offset)
  return delta;
 }
 
-void Fisher_draw(int dims, float alpha, unsigned int index[3], const float * center, float * out)
+void Fisher_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
 
@@ -659,7 +660,7 @@ void Fisher_draw(int dims, float alpha, unsigned int index[3], const float * cen
    philox(random);
   }
    
-  out[0] = (alpha * uniform(random[3])) / Fisher_norm(dims, alpha);
+  out[0] = (alpha * uniform(random[3])) / Fisher_norm(dims, alpha); // Horribly inefficient, but a planned future refactoring will fix this, so I am leaving it for now.
   out[0] = log(out[0] + 1.0) / alpha;
 
  // Blend the first row of the basis with the random draw to obtain the drawn dot product - i.e. scale the uniform draw so that with the first element set to the drawn dot product the entire vector is of length 1...
@@ -681,7 +682,7 @@ void Fisher_draw(int dims, float alpha, unsigned int index[3], const float * cen
     if ((tail * center[i]) < 0.0)
     {
      sin_theta *= -1.0;
-     tail     *= -1.0;
+     tail      *= -1.0;
     }
     
    // Apply the 2x2 rotation we have calculated...

@@ -29,8 +29,13 @@ float calc_norm(DataMatrix * dm, const Kernel * kernel, float alpha, float weigh
 
 
 
-// This calculates the probability of a given feature vector, as defined by the kernel density estimate defined by the provided spatial and kernel (with an associated alpha). You also provide the normalising multiplier, as that can be cached to save repeated calculation, and quality to define the search range around the kernel. The norm parameter must be the kernel normalising constant divided by the weight of the samples...
+// This calculates the probability of a given feature vector, as defined by the kernel density estimate defined by the provided spatial and kernel (with an associated alpha). You also provide the normalising multiplier, as that can be cached to save repeated calculation, and quality to define the search range around the kernel. The norm parameter must be the kernel normalising constant divided by the weight of the samples and factoring in the scale change - as calc_norm does. Note that this is strange as it expects fv in scaled space and then outputs a probability in unscaled space!..
 float prob(Spatial spatial, const Kernel * kernel, float alpha, const float * fv, float norm, float quality);
+
+
+
+// This draws a sample from the distribution - you provide the usual indexing structure, which contains the data matrix, the kernel to use and an index into the philox rng, which it then uses to deterministically draw into out. out must be long enough to store the # of dimensions within the data matrix...
+void draw(DataMatrix * dm, const Kernel * kernel, float alpha, const unsigned int index[3], float * out);
 
 
 
@@ -57,6 +62,7 @@ int assign_cluster(Spatial spatial, const Kernel * kernel, float alpha, Balls ba
 
 // This uses subspace constrained mean shift to project a given feature vector to a manifold. The degrees parameter indicates the degrees of freedom of the surface to converge to - 0 is standard mean shift (Don't do this - its much faster to do the normal thing), 1 will extract lines (1D surfaces), 2 will extract a 2D manifold and so on. Requires the spatial to define the density estimate, plus the feature vector, which is modified in place until it converges - output is in effect a point on the manifold. Also requires four temporaries - grad, for the gradient (Same size as fv); hess, for the hessian (Size of fv squared); eigen_vec, for the eigen vectors of the hessian (Size of fv squared); and eigen_val, for the eigen values (Size of fv). Additionally there are various parameters, for determining accuracy when evaluating the kernels and detecting convergance. The always_hessian parameter should be non-zero for the correct algorithm, but if 0 then it just calculates the hessain once at the start, which saves a lot of time and still works for clean data. Note that this is coded to only work with the unit isotropic Gaussian kernel, hence the kernel is not a parameter...
 void manifold(Spatial spatial, int degrees, float * fv, float * grad, float * hess, float * eigen_val, float * eigen_vec, float quality, float epsilon, int iter_cap, int always_hessian);
+
 
 
 #endif

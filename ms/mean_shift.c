@@ -79,6 +79,32 @@ float prob(Spatial spatial, const Kernel * kernel, float alpha, const float * fv
 
 
 
+void draw(DataMatrix * dm, const Kernel * kernel, float alpha, const unsigned int index[3], float * out)
+{
+ int feats = DataMatrix_features(dm);
+ 
+ // First draw the exemplar we are to play with...
+  unsigned int key[4];
+  key[0] = index[0];
+  key[1] = index[1];
+  key[2] = index[2];
+  key[3] = 0xFFFFFFFF;
+  
+  int exemplar = DataMatrix_draw(dm, key);
+  
+ // Get the exemplars location...
+  float * fv = DataMatrix_fv(dm, exemplar, NULL);
+  
+ // Draw from the kernel in question...
+  kernel->draw(feats, alpha, index, fv, out);
+ 
+ // Convert from scaled space to normal space...
+  int i;
+  for (i=0; i<feats; i++) out[i] /= dm->mult[i];
+}
+
+
+
 float loo_nll(Spatial spatial, const Kernel * kernel, float alpha, float norm, float quality, float limit)
 {
  // Extract a bunch of things...

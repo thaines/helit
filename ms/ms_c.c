@@ -854,6 +854,79 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
 
 
 
+static PyObject * MeanShift_draw_py(MeanShift * self, PyObject * args)
+{
+ // Get the arguments - indices for the rng... 
+  unsigned int index[3] = {0, 0, 0};
+  if (!PyArg_ParseTuple(args, "I|II", &index[0], &index[1], &index[2])) return NULL;
+  
+ // Create the return array...
+  npy_intp feats = DataMatrix_features(&self->dm);
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats, NPY_FLOAT32);
+  
+ // Generate the return...
+  draw(&self->dm, self->kernel, self->alpha, index, (float*)PyArray_DATA(ret));
+  
+ // Return the draw...
+  return (PyObject*)ret;
+}
+
+
+
+static PyObject * MeanShift_draws_py(MeanShift * self, PyObject * args)
+{
+ // Get the arguments - how many to output and indices for the rng... 
+  npy_intp shape[2];
+  unsigned int index[3] = {0, 0, 0};
+  if (!PyArg_ParseTuple(args, "iI|I", &shape[0], &index[0], &index[1])) return NULL;
+  
+ // Create the return array...
+  shape[1] = DataMatrix_features(&self->dm);
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, shape, NPY_FLOAT32);
+  
+ // Fill in the return matrix...
+  for (index[2]=0; index[2]<shape[0]; index[2]++)
+  {
+   float * out = (float*)PyArray_GETPTR2(ret, index[2], 0);
+   draw(&self->dm, self->kernel, self->alpha, index, out);
+  }
+  
+ // Return the draw...
+  return (PyObject*)ret;
+}
+
+
+
+static PyObject * MeanShift_bootstrap_py(MeanShift * self, PyObject * args)
+{
+ // Get the arguments - how many to output and indices for the rng... 
+  npy_intp shape[2];
+  unsigned int index[4] = {0, 0, 0, 0};
+  if (!PyArg_ParseTuple(args, "iI|II", &shape[0], &index[0], &index[1], &index[2])) return NULL;
+  
+ // Create the return array...
+  shape[1] = DataMatrix_features(&self->dm);
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, shape, NPY_FLOAT32);
+  
+ // Fill in the return matrix...
+  for (index[3]=0; index[3]<shape[0]; index[3]++)
+  {
+   int ind = DataMatrix_draw(&self->dm, index);
+   float * fv = DataMatrix_fv(&self->dm, ind, NULL);
+   
+   int i;
+   for (i=0; i<shape[1]; i++)
+   {
+    *(float*)PyArray_GETPTR2(ret, index[3], i) = fv[i] / self->dm.mult[i];
+   }
+  }
+  
+ // Return the draw...
+  return (PyObject*)ret;
+}
+
+
+
 static PyObject * MeanShift_mode_py(MeanShift * self, PyObject * args)
 {
  // Get the argument - a feature vector... 
@@ -889,8 +962,7 @@ static PyObject * MeanShift_mode_py(MeanShift * self, PyObject * args)
   float * temp = (float*)malloc(feats * sizeof(float));
   mode(self->spatial, self->kernel, self->alpha, (float*)PyArray_DATA(ret), temp, self->quality, self->epsilon, self->iter_cap);
   free(temp);
-  
- // Undo the scale change...
+   // Undo the scale change...
   for (i=0; i<feats; i++)
   {
    float * out = (float*)PyArray_GETPTR1(ret, i);
@@ -1471,6 +1543,10 @@ static PyMethodDef MeanShift_methods[] =
  {"prob", (PyCFunction)MeanShift_prob_py, METH_VARARGS, "Given a feature vector returns its probability, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},
  {"probs", (PyCFunction)MeanShift_probs_py, METH_VARARGS, "Given a data matrix returns an array (1D) containing the probability of each feature, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},
  
+ {"draw", (PyCFunction)MeanShift_draw_py, METH_VARARGS, "Allows you to draw from the distribution represented by the kernel density estimate. It is actually entirly deterministic - you hand over three unsigned 32 bit integers which index into the rng, so you should iterate them to get a sequence. (Second two rng indices are optional, and default to 0.) Returns a vector."},
+ {"draws", (PyCFunction)MeanShift_draws_py, METH_VARARGS, "Allows you to draw from the distribution represented by the kernel density estimate. Same as draw except it returns a matrix - the first number handed in is how many draws to make, the next two indices going into the Philox rng. The same as calling the draw method with the first two rng indices set as passed in and the third set to 0 then 1, 2 etc. (Second index is optional and defaults to 0 if not provided.) Returns an array, <# draws>X<# exemplars>."},
+ {"bootstrap", (PyCFunction)MeanShift_bootstrap_py, METH_VARARGS, "Does a bootstrap draw from the samples - essentially the same as draws but assuming a Dirac delta function for the kernel. You provide the number of draws as the first parameter, then 3 rng indexing parameters, that make it deterministic (Last two are optional - default to 0). Returns an array, <# draws>X<# exemplars>."},
+ 
  {"mode", (PyCFunction)MeanShift_mode_py, METH_VARARGS, "Given a feature vector returns its mode as calculated using mean shift - essentially the maxima in the kernel density estimate to which you converge by climbing the gradient."},
  {"modes", (PyCFunction)MeanShift_modes_py, METH_VARARGS, "Given a data matrix [exemplar, feature] returns a matrix of the same size, where each feature has been replaced by its mode, as calculated using mean shift."},
  {"modes_data", (PyCFunction)MeanShift_modes_data_py, METH_NOARGS, "Runs mean shift on the contained data set, returning a feature vector for each data point. The return value will be indexed in the same way as the provided data matrix, but without the feature dimensions, with an extra dimension at the end to index features. Note that the resulting output will contain a lot of effective duplication, making this a very inefficient method - your better off using the cluster method."},
@@ -1546,7 +1622,7 @@ static PyMethodDef ms_c_methods[] =
 
 PyMODINIT_FUNC initms_c(void)
 {
- PyObject * mod = Py_InitModule3("ms_c", ms_c_methods, "Primarily provides a mean shift implementation, but also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Includes multiple spatial indexing schemes and kernel types, including one for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario.");
+ PyObject * mod = Py_InitModule3("ms_c", ms_c_methods, "Primarily provides a mean shift implementation, but also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Includes multiple spatial indexing schemes and kernel types, including support for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario efficiently. Exemplars can also be weighted.");
  
  import_array();
  

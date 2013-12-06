@@ -9,6 +9,7 @@
 
 
 #include "data_matrix.h"
+#include "philox.h"
 
 #include <stdlib.h>
 
@@ -127,6 +128,7 @@ void DataMatrix_init(DataMatrix * dm)
   dm->dt = NULL;
   dm->weight_index = -1;
   dm->weight_scale = 1.0;
+  dm->weight_cum = NULL;
   dm->exemplars = 0;
   dm->feats = 0;
   dm->dual_feats = 0;
@@ -145,6 +147,9 @@ void DataMatrix_deinit(DataMatrix * dm)
  
  free(dm->dt);
  dm->dt = NULL;
+ 
+ free(dm->weight_cum);
+ dm->weight_cum = NULL;
  
  dm->exemplars = 0;
  dm->feats = 0;
@@ -231,6 +236,10 @@ void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int we
     os += 1;
    }
   }
+  
+ // Clean up any cache of cumulative weight...
+  free(dm->weight_cum);
+  dm->weight_cum = NULL;
   
  // Store a function pointer in the to_float variable that matches this array type...
   dm->to_float = KindToFunc(PyArray_DESCR(dm->array));
@@ -341,4 +350,69 @@ float * DataMatrix_fv(DataMatrix * dm, int index, float * weight)
   
  // Return the internal storage we have written the information into...
   return dm->fv;
+}
+
+
+
+int DataMatrix_draw(DataMatrix * dm, const unsigned int index[4])
+{
+ // Random bytes ahoy!..
+  int i;
+  unsigned int key[4];
+  for (i=0; i<4; i++) key[i] = index[i];
+  philox(key);
+ 
+ // Two scenarios - all samples have the same weight, or they don't, resulting in different approaches...
+  if (dm->weight_index<0) // All samples have the same weight
+  { 
+   // Uniform draw multiplied by the number of exemplars...
+    float pos = dm->exemplars * uniform(key[0]);
+    
+   // Return the index of the sample that is that far in...
+    return (int)pos;
+  }
+  else // Samples have variable weights
+  {
+   // Build the array of cumulative weights if it has not already been cached...
+    if (dm->weight_cum==NULL)
+    {
+     dm->weight_cum = (float*)malloc(dm->exemplars * sizeof(float));
+     
+     float sum = 0.0;
+     for (i=0; i<dm->exemplars; i++)
+     {
+      float weight;
+      DataMatrix_fv(dm, i, &weight); // Inefficient - could write code to get just the weight out, but its as painful as the called function. May do later.
+      sum += weight;
+      dm->weight_cum[i] = sum;
+     }
+    }
+    
+   // Uniform draw multiplied by the total weight, as given by weight_cum...
+    float pos = dm->weight_cum[dm->exemplars-1] * uniform(key[0]);
+    
+   // Use a biased binary search (under the assumption that similar weights are more likelly) to find the index of the relevant item; return it...
+    int low  = 0;
+    int high = dm->exemplars-1;
+    
+    while (low<high)
+    {
+     // Select a split point...
+      float wc_low = dm->weight_cum[low];
+      float wc_high = dm->weight_cum[high];
+      if (wc_low>pos) break; // It must be the element at position low - shortcut! (of the kind where it all goes wrong if its not taken.)
+      
+      int split = (int)(low + (high - low)*((pos - wc_low) / (wc_high-wc_low)));
+      
+      if (split>=high) --split;
+      if (split<=low)  ++split;
+      
+     // Recurse to the relevant side...
+      if (dm->weight_cum[split]>pos) high = split;
+                                else low  = split;
+    }
+    
+    return low;
+  }
+  
 }

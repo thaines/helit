@@ -47,6 +47,9 @@ struct DataMatrix
   int weight_index;
   float weight_scale;
   
+ // Cumulative weight array, so we can do a binary search when drawing a  specific exemplar from the data matrix - only used if there is a weight_index set. If not NULL then it must be valid - note that this uses a random weight_scale as its not relevant (Whatever it was when the cache is built), and is inclusive, so the last entry is the total weight...
+  float * weight_cum;
+  
  // Number of data items represented by the data matrix - calculated when you set the array...
   int exemplars;
   
@@ -88,6 +91,9 @@ void DataMatrix_set_scale(DataMatrix * dm, float * scale, float weight_scale);
 
 // Fetches a feature vector, using a single index to do row-major indexing into all dimensions marked as data or dual. Note that the returned pointer is to internal storage, that is replaced every time this method is called. The dual dimensions will always be first, followed by all the feature dimensions in row major flattened order. If you want the weight as well provide a pointer and it will be filled...
 float * DataMatrix_fv(DataMatrix * dm, int index, float * weight);
+
+// Draws the index of a random exemplar from the datamatrix, using the philox random number generator, hence you provide it with an index (If exemplars are weighted it will be a weighted draw)...
+int DataMatrix_draw(DataMatrix * dm, const unsigned int index[4]);
 
 
 

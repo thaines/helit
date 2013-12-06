@@ -32,7 +32,7 @@ typedef float (*KernelRange)(int dims, float alpha, float quality);
 typedef float (*KernelOffset)(int dims, float alpha, float * fv, const float * offset);
 
 // Allows you to draw from the kernel (At position centre in the scaled space) - you provide the first 3 indices for the philox rng (It then has the entire range of the 4th value for its own use, whilst remaining entirly predictable.), and also provide an output vector, as well as dims and alpha as per usual...
-typedef void (*KernelDraw)(int dims, float alpha, unsigned int index[3], const float * center, float * out);
+typedef void (*KernelDraw)(int dims, float alpha, const unsigned int index[3], const float * center, float * out);
 
 
 
