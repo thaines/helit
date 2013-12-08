@@ -16,4 +16,9 @@ float ModBesselFirst(int orderX2, float x, float accuracy, int limit);
 
 
 
+// Returns the log of ModBesselFirst - much more numerically stable, and highly recomended, though takes a touch more computation...
+float LogModBesselFirst(int orderX2, float x, float accuracy, int limit);
+
+
+
 #endif

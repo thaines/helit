@@ -1616,6 +1616,10 @@ static PyMethodDef ms_c_methods[] =
 
 
 
+//#include "bessel.h"
+
+
+
 #ifndef PyMODINIT_FUNC
 #define PyMODINIT_FUNC void
 #endif
@@ -1627,6 +1631,16 @@ PyMODINIT_FUNC initms_c(void)
  import_array();
  
  if (PyType_Ready(&MeanShiftType) < 0) return;
+ 
+ //int order, x;
+ //for (order=0; order<7; order++)
+ //{
+ // for (x=0; x<9; x++)
+ // {
+ //  printf("modified bessel function , first kind (order=%f,x=%f) = %f = %f\n", (float)(0.5*order), (float)x, ModBesselFirst(order, x, 1e-6, 1024), exp(LogModBesselFirst(order, x, 1e-6, 1024)));
+ // }
+ //}
+ //printf("modified bessel function , first kind (order=3,x=48) = %f = %f\n", //ModBesselFirst(6, 48.0, 1e-6, 1024), exp(LogModBesselFirst(6, 48.0, 1e-6, 1024)));
  
  Py_INCREF(&MeanShiftType);
  PyModule_AddObject(mod, "MeanShift", (PyObject*)&MeanShiftType);

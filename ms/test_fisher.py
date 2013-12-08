@@ -53,12 +53,34 @@ ms.set_spatial(random.choice(ms.spatials()))
 
 
 
-# Make a mercator projection probability map, save it out...
-## Parameters...
+# Parameters for output images...
 scale = 128
 height = scale * 2
 width = int(2.0 * numpy.pi * scale)
 
+
+
+# Visualise the samples on a mercator projection...
+print 'Samples...'
+
+image = numpy.zeros((height, width, 3), dtype=numpy.float32)
+for vec in data:
+  x = numpy.arctan2(vec[1], vec[0])
+  if x<0.0: x += 2.0*numpy.pi
+  x = x * width / (2.0 * numpy.pi)
+  if x>=width: x -= width
+  
+  y = 0.5*(1.0+vec[2]) * height
+
+  image[y,x,:] = 255.0
+
+image = array2cv(image)
+cv.SaveImage('fisher_mercator_input.png', image)
+
+
+
+# Make a mercator projection probability map, save it out...
+print 'KDE...'
 ## Locations to sample...
 x_to_nx = numpy.cos(numpy.linspace(0.0, 2.0 * numpy.pi, width, False))
 x_to_ny = numpy.sin(numpy.linspace(0.0, 2.0 * numpy.pi, width, False))
@@ -77,23 +99,47 @@ prob = prob.reshape((height, width))
 
 ## Save it out...
 image = array2cv(255.0 * prob / prob.max())
-cv.SaveImage('great_circle_mercator_kde.png', image)
+cv.SaveImage('fisher_mercator_kde.png', image)
+
+
+
+# Draw a new set of samples; visualise them...
+print 'Draw...'
+
+draw = ms.draws(1024, 0)
+
+image = numpy.zeros((height, width, 3), dtype=numpy.float32)
+for vec in draw:
+  x = numpy.arctan2(vec[1], vec[0])
+  if x<0.0: x += 2.0*numpy.pi
+  x = x * width / (2.0 * numpy.pi)
+  if x>=width: x -= width
+  
+  y = 0.5*(1.0+vec[2]) * height
+  
+  print vec, x, y
+
+  image[y,x,:] = 255.0
+
+image = array2cv(image)
+cv.SaveImage('fisher_mercator_draw.png', image)
 
 
 
 # Do mean shift on it, output a colour coded set of regions, same projection...
-## Actual work...
-modes, indices = ms.cluster()
-clusters = ms.assign_clusters(block.reshape(-1,3))
+#print 'MS...'
+### Actual work...
+#modes, indices = ms.cluster()
+#clusters = ms.assign_clusters(block.reshape(-1,3))
 
-## Create an image...
-clusters = clusters.reshape((height, width))
-image = numpy.zeros((height, width, 3), dtype=numpy.float32)
+### Create an image...
+#clusters = clusters.reshape((height, width))
+#image = numpy.zeros((height, width, 3), dtype=numpy.float32)
 
-for i in xrange(clusters.max()+1):
-  colour = numpy.random.random(3)
-  image[clusters==i,:] = colour.reshape((1,3))
+#for i in xrange(clusters.max()+1):
+  #colour = numpy.random.random(3)
+  #image[clusters==i,:] = colour.reshape((1,3))
 
-## Save it...
-image = array2cv(255.0 * image)
-cv.SaveImage('great_circle_mercator_ms.png', image)
+### Save it...
+#image = array2cv(255.0 * image)
+#cv.SaveImage('fisher_mercator_ms.png', image)

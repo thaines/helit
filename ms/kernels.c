@@ -595,7 +595,7 @@ float Fisher_weight(int dims, float alpha, float * offset)
 
 float Fisher_norm(int dims, float alpha)
 {
- float ret = pow(alpha, 0.5 * dims -1);
+ float ret = pow(alpha, 0.5 * dims - 1);
  ret /= pow(2.0 * M_PI, 0.5 * dims);
  ret /= ModBesselFirst(dims-2, alpha, 1e-6, 1024);
  return ret;
@@ -659,9 +659,22 @@ void Fisher_draw(int dims, float alpha, const unsigned int index[3], const float
    random[3] = dims;
    philox(random);
   }
+  
+  // Below is horribly inefficient, but a planned future refactoring will fix this, so I am leaving it for now...
+   float log_alpha = log(alpha);
+   float log_norm = (0.5 * dims - 1) * log_alpha - (0.5 * dims) * log(2*M_PI) - LogModBesselFirst(dims-2, alpha, 1e-6, 1024);
    
-  out[0] = (alpha * uniform(random[3])) / Fisher_norm(dims, alpha); // Horribly inefficient, but a planned future refactoring will fix this, so I am leaving it for now.
-  out[0] = log(out[0] + 1.0) / alpha;
+   out[0] = log_alpha + log(uniform(random[3])) - log_norm;
+   
+   printf("uniform = %f; inner = %f; log norm = %f\n", uniform(random[3]), out[0], log_norm);
+   
+   if (out[0]>-alpha) out[0] += log(1.0 + exp(-alpha-out[0]));
+                 else out[0]  = -alpha + log(1.0 + exp(out[0]+alpha));
+                 
+   printf("p-a = %f\n", out[0]);
+   out[0] /= alpha;
+   
+   printf("dot = %f\n", out[0]);
 
  // Blend the first row of the basis with the random draw to obtain the drawn dot product - i.e. scale the uniform draw so that with the first element set to the drawn dot product the entire vector is of length 1...
   radius = sqrt(1.0 - out[0]*out[0]) / sqrt(radius);
