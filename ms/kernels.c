@@ -10,15 +10,41 @@
 
 #include "kernels.h"
 
+#include <stdlib.h>
 #include <math.h>
+#include <string.h>
 
 #include "philox.h"
 #include "bessel.h"
 
 
 
+// Most kernels don't need a configuration, and hecne use this dummy set of configuration handlers...
+KernelConfig Kernel_config_new(const char * config)
+{
+ return NULL; 
+}
+
+const char * Kernel_config_verify(const char * config, int * length)
+{
+ if (length!=NULL) *length = 0;
+ return NULL; 
+}
+
+void Kernel_config_acquire(KernelConfig config)
+{
+ // Noop 
+}
+
+void Kernel_config_release(KernelConfig config)
+{
+ // Noop 
+}
+
+
+
 // Most kernels use the same offset method, as provided by this implimentaiton...
-float Kernel_offset(int dims, float alpha, float * fv, const float * offset)
+float Kernel_offset(int dims, KernelConfig config, float * fv, const float * offset)
 {
  int i;
  float delta = 0.0;
@@ -35,7 +61,7 @@ float Kernel_offset(int dims, float alpha, float * fv, const float * offset)
 
 
 // The uniform kernel type...
-float Uniform_weight(int dims, float alpha, float * offset)
+float Uniform_weight(int dims, KernelConfig config, float * offset)
 {
  float dist_sqr = 0.0;
  
@@ -49,7 +75,7 @@ float Uniform_weight(int dims, float alpha, float * offset)
  return 1.0;
 }
 
-float Uniform_norm(int dims, float alpha)
+float Uniform_norm(int dims, KernelConfig config)
 {
  if ((dims&1)==0)
  {
@@ -81,12 +107,12 @@ float Uniform_norm(int dims, float alpha)
  }
 }
 
-float Uniform_range(int dims, float alpha, float quality)
+float Uniform_range(int dims, KernelConfig config, float quality)
 {
  return 1.0;
 }
 
-void Uniform_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
+void Uniform_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -138,6 +164,10 @@ const Kernel Uniform =
 {
  "uniform",
  "Provides a uniform kernel - all points within the unit hypersphere get a positive constant weight, all of those outside it get zero.",
+ Kernel_config_new,
+ Kernel_config_verify,
+ Kernel_config_acquire,
+ Kernel_config_release,
  Uniform_weight,
  Uniform_norm,
  Uniform_range,
@@ -148,7 +178,7 @@ const Kernel Uniform =
 
 
 // The triangular kernel type...
-float Triangular_weight(int dims, float alpha, float * offset)
+float Triangular_weight(int dims, KernelConfig config, float * offset)
 {
  float dist_sqr = 0.0;
  
@@ -162,17 +192,17 @@ float Triangular_weight(int dims, float alpha, float * offset)
  return 1.0 - sqrt(dist_sqr);
 }
 
-float Triangular_norm(int dims, float alpha)
+float Triangular_norm(int dims, KernelConfig config)
 {
- return (dims + 1.0) * Uniform_norm(dims, 0.0);
+ return (dims + 1.0) * Uniform_norm(dims, NULL);
 }
 
-float Triangular_range(int dims, float alpha, float quality)
+float Triangular_range(int dims, KernelConfig config, float quality)
 {
  return 1.0;
 }
 
-void Triangular_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
+void Triangular_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -224,6 +254,10 @@ const Kernel Triangular =
 {
  "triangular",
  "Provides a linear kernel - linear falloff from the centre of the unit hypersphere, to reach 0 at the edge.",
+ Kernel_config_new,
+ Kernel_config_verify,
+ Kernel_config_acquire,
+ Kernel_config_release,
  Triangular_weight,
  Triangular_norm,
  Triangular_range,
@@ -234,7 +268,7 @@ const Kernel Triangular =
 
 
 // The Epanechnikov kernel type...
-float Epanechnikov_weight(int dims, float alpha, float * offset)
+float Epanechnikov_weight(int dims, KernelConfig config, float * offset)
 {
  float dist_sqr = 0.0;
  
@@ -248,17 +282,17 @@ float Epanechnikov_weight(int dims, float alpha, float * offset)
  return 1.0 - dist_sqr;
 }
 
-float Epanechnikov_norm(int dims, float alpha)
+float Epanechnikov_norm(int dims, KernelConfig config)
 {
- return 0.5 * (dims + 2.0) * Uniform_norm(dims, 0.0);
+ return 0.5 * (dims + 2.0) * Uniform_norm(dims, NULL);
 }
 
-float Epanechnikov_range(int dims, float alpha, float quality)
+float Epanechnikov_range(int dims, KernelConfig config, float quality)
 {
  return 1.0;
 }
 
-void Epanechnikov_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
+void Epanechnikov_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -311,6 +345,10 @@ const Kernel Epanechnikov =
 {
  "epanechnikov",
  "Provides a kernel with a squared falloff, such that it hits 0 at the edge of the hyper-sphere. Probably the fastest to calculate other than the uniform kernel, and probably the best choice for a finite kernel.",
+ Kernel_config_new,
+ Kernel_config_verify,
+ Kernel_config_acquire,
+ Kernel_config_release,
  Epanechnikov_weight,
  Epanechnikov_norm,
  Epanechnikov_range,
@@ -321,7 +359,7 @@ const Kernel Epanechnikov =
 
 
 // The cosine kernel type...
-float Cosine_weight(int dims, float alpha, float * offset)
+float Cosine_weight(int dims, KernelConfig config, float * offset)
 {
  float dist_sqr = 0.0;
  
@@ -335,9 +373,9 @@ float Cosine_weight(int dims, float alpha, float * offset)
  return cos(0.5 * M_PI * sqrt(dist_sqr));
 }
 
-float Cosine_norm(int dims, float alpha)
+float Cosine_norm(int dims, KernelConfig config)
 {
- float mult = Uniform_norm(dims, 0.0) / dims;
+ float mult = Uniform_norm(dims, NULL) / dims;
  
  int i;
  for (i=2; i<dims; i++) mult /= i; 
@@ -358,12 +396,12 @@ float Cosine_norm(int dims, float alpha)
  return mult / sum;
 }
 
-float Cosine_range(int dims, float alpha, float quality)
+float Cosine_range(int dims, KernelConfig config, float quality)
 {
  return 1.0;
 }
 
-void Cosine_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
+void Cosine_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -415,6 +453,10 @@ const Kernel Cosine =
 {
  "cosine",
  "Kernel based on the cosine function, such that it hits zero at the edge of the unit hyper-sphere. Probably the smoothest of the kernels that have a hard edge beyond which they are zero; expensive to compute however.",
+ Kernel_config_new,
+ Kernel_config_verify,
+ Kernel_config_acquire,
+ Kernel_config_release,
  Cosine_weight,
  Cosine_norm,
  Cosine_range,
@@ -425,7 +467,7 @@ const Kernel Cosine =
 
 
 // The Gaussian kernel type...
-float Gaussian_weight(int dims, float alpha, float * offset)
+float Gaussian_weight(int dims, KernelConfig config, float * offset)
 {
  float dist_sqr = 0.0;
  
@@ -438,17 +480,17 @@ float Gaussian_weight(int dims, float alpha, float * offset)
  return exp(-0.5 * dist_sqr);
 }
 
-float Gaussian_norm(int dims, float alpha)
+float Gaussian_norm(int dims, KernelConfig config)
 {
  return pow(2.0 * M_PI, -0.5*dims);
 }
 
-float Gaussian_range(int dims, float alpha, float quality)
+float Gaussian_range(int dims, KernelConfig config, float quality)
 {
  return (1.0-quality)*1.5 + quality*3.5;
 }
 
-void Gaussian_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
+void Gaussian_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -476,6 +518,10 @@ const Kernel Gaussian =
 {
  "gaussian",
  "Standard Gaussian kernel; for range considers 1.5 standard deviations to be low quality, 3.5 to be high quality. More often than not the best choice, but very expensive and involves approximation.",
+ Kernel_config_new,
+ Kernel_config_verify,
+ Kernel_config_acquire,
+ Kernel_config_release,
  Gaussian_weight,
  Gaussian_norm,
  Gaussian_range,
@@ -486,7 +532,7 @@ const Kernel Gaussian =
 
 
 // The Cauchy kernel type...
-float Cauchy_weight(int dims, float alpha, float * offset)
+float Cauchy_weight(int dims, KernelConfig config, float * offset)
 {
  float dist_sqr = 0.0;
  
@@ -499,7 +545,7 @@ float Cauchy_weight(int dims, float alpha, float * offset)
  return 1.0 / (1.0 + dist_sqr);
 }
 
-float Cauchy_norm(int dims, float alpha)
+float Cauchy_norm(int dims, KernelConfig config)
 {
  float ret = 0.0;
  
@@ -512,15 +558,15 @@ float Cauchy_norm(int dims, float alpha)
    ret += pow(r, dims-1) / ((1.0+r*r) * samples);
   }
  
- return ret * Uniform_norm(dims, 0.0) / dims;
+ return ret * Uniform_norm(dims, NULL) / dims;
 }
 
-float Cauchy_range(int dims, float alpha, float quality)
+float Cauchy_range(int dims, KernelConfig config, float quality)
 {
  return (1.0-quality)*2.0 + quality*6.0;
 }
 
-void Cauchy_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
+void Cauchy_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
 {
  unsigned int random[4];
  
@@ -572,6 +618,10 @@ const Kernel Cauchy =
 {
  "cauchy",
  "Uses the Cauchy distribution pdf on distance from the origin in the hypersphere. A fatter distribution than the Gaussian due to its long tails. Requires very large ranges, making is quite expensive in practise, but its good at avoiding being overconfident.",
+ Kernel_config_new,
+ Kernel_config_verify,
+ Kernel_config_acquire,
+ Kernel_config_release,
  Cauchy_weight,
  Cauchy_norm,
  Cauchy_range,
@@ -582,32 +632,99 @@ const Kernel Cauchy =
 
 
 // The von-Mises Fisher kernel...
-float Fisher_weight(int dims, float alpha, float * offset)
+typedef struct FisherConfig FisherConfig;
+
+struct FisherConfig
 {
+ int ref_count; // Reference count.
+ float alpha; // Concentration parameter.
+};
+
+
+
+KernelConfig Fisher_config_new(const char * config)
+{
+ FisherConfig * ret = (FisherConfig*)malloc(sizeof(FisherConfig));
+ ret->ref_count = 1;
+ ret->alpha = atof(config+1); // +1 to skip the '('.
+ return (KernelConfig)ret;
+}
+
+const char * Fisher_config_verify(const char * config, int * length)
+{
+ if (config[0]!='(') return "von0-Mises Fisher configuration did not start with a (.";
+   
+ char * end;
+ float conc = strtof(config+1, &end);
+ 
+ if (end==config) return "No concentration parameter given to von-Mises Fisher distribution.";
+ if (conc<0.0) return "Negative concentration parameter given to von-Mises Fisher distribution.";
+ 
+ if ((end==NULL)||(*end!=')')) return "von-Mises Fisher configuration did not end with a ).";
+ 
+ if (length!=NULL)
+ {
+  if (end==NULL) *length = strlen(config);
+  else
+  {
+   *length = 1 + (end-config);
+  }
+ }
+ 
+ return NULL; 
+}
+
+void Fisher_config_acquire(KernelConfig config)
+{
+ FisherConfig * self = (FisherConfig*)config;
+ self->ref_count += 1;
+}
+
+void Fisher_config_release(KernelConfig config)
+{
+ FisherConfig * self = (FisherConfig*)config;
+ self->ref_count -= 1;
+ 
+ if (self->ref_count==0)
+ {
+  free(self); 
+ }
+}
+
+
+
+float Fisher_weight(int dims, KernelConfig config, float * offset)
+{
+ FisherConfig * self = (FisherConfig*)config;
+ 
  int i;
  float d_sqr = 0.0;
  for (i=0; i<dims; i++) d_sqr += offset[i] * offset[i];
  
  float cos_ang = 1.0 - 0.5*d_sqr; // Uses the law of cosines - how to calculate the dot product of unit vectors given their difference.
  
- return exp(alpha * cos_ang);
+ return exp(self->alpha * cos_ang);
 }
 
-float Fisher_norm(int dims, float alpha)
+float Fisher_norm(int dims, KernelConfig config)
 {
- float ret = pow(alpha, 0.5 * dims - 1);
+ FisherConfig * self = (FisherConfig*)config;
+ 
+ float ret = pow(self->alpha, 0.5 * dims - 1);
  ret /= pow(2.0 * M_PI, 0.5 * dims);
- ret /= ModBesselFirst(dims-2, alpha, 1e-6, 1024);
+ ret /= ModBesselFirst(dims-2, self->alpha, 1e-6, 1024);
  return ret;
 }
 
-float Fisher_range(int dims, float alpha, float quality)
+float Fisher_range(int dims, KernelConfig config, float quality)
 {
+ FisherConfig * self = (FisherConfig*)config;
+ 
  float inv_accuracy = pow(10.0, 1.0+quality*3.0);
- return 2.0 - 2.0 * log(inv_accuracy) / alpha;
+ return 2.0 - 2.0 * log(inv_accuracy) / self->alpha;
 }
 
-float Fisher_offset(int dims, float alpha, float * fv, const float * offset)
+float Fisher_offset(int dims, KernelConfig config, float * fv, const float * offset)
 {
  int i;
  float dist = 0.0;
@@ -625,8 +742,11 @@ float Fisher_offset(int dims, float alpha, float * fv, const float * offset)
  return delta;
 }
 
-void Fisher_draw(int dims, float alpha, const unsigned int index[3], const float * center, float * out)
+// This is wrong - does not work:-( Will fix after refactoring Kernel system to support composite kernels...
+void Fisher_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
 {
+ FisherConfig * self = (FisherConfig*)config;
+ 
  unsigned int random[4];
 
  // Generate a uniform draw into all but the first dimension of out, which is currently the mean direction...
@@ -661,20 +781,13 @@ void Fisher_draw(int dims, float alpha, const unsigned int index[3], const float
   }
   
   // Below is horribly inefficient, but a planned future refactoring will fix this, so I am leaving it for now...
-   float log_alpha = log(alpha);
-   float log_norm = (0.5 * dims - 1) * log_alpha - (0.5 * dims) * log(2*M_PI) - LogModBesselFirst(dims-2, alpha, 1e-6, 1024);
+   float log_alpha = log(self->alpha);
+   float log_norm = (0.5 * dims - 1) * log_alpha - (0.5 * dims) * log(2*M_PI) - LogModBesselFirst(dims-2, self->alpha, 1e-6, 1024);
    
    out[0] = log_alpha + log(uniform(random[3])) - log_norm;
-   
-   printf("uniform = %f; inner = %f; log norm = %f\n", uniform(random[3]), out[0], log_norm);
-   
-   if (out[0]>-alpha) out[0] += log(1.0 + exp(-alpha-out[0]));
-                 else out[0]  = -alpha + log(1.0 + exp(out[0]+alpha));
-                 
-   printf("p-a = %f\n", out[0]);
-   out[0] /= alpha;
-   
-   printf("dot = %f\n", out[0]);
+   if (out[0]>-self->alpha) out[0] += log(1.0 + exp(-self->alpha-out[0]));
+                 else out[0]  = -self->alpha + log(1.0 + exp(out[0]+self->alpha));
+   out[0] /= self->alpha;
 
  // Blend the first row of the basis with the random draw to obtain the drawn dot product - i.e. scale the uniform draw so that with the first element set to the drawn dot product the entire vector is of length 1...
   radius = sqrt(1.0 - out[0]*out[0]) / sqrt(radius);
@@ -713,6 +826,10 @@ const Kernel Fisher =
 {
  "fisher",
  "A kernel for dealing with directional data, using the von-Mises Fisher distribution as a kernel (Fisher is technically 3 dimensions only, but I like short names!). Requires that all feature vectors be on the unit-hypersphere, plus it uses the alpha parameter provided to the kernel as the concentration parameter of the distribution. To avoid numerical problems its best to avoid taking the concentration parameter much above 64.",
+ Fisher_config_new,
+ Fisher_config_verify,
+ Fisher_config_acquire,
+ Fisher_config_release,
  Fisher_weight,
  Fisher_norm,
  Fisher_range,

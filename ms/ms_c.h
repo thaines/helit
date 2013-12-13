@@ -33,7 +33,7 @@ struct MeanShift
   
  // The kernel to use, with an alpha parameter...
   const Kernel * kernel;
-  float alpha;
+  KernelConfig config;
   
  // The spatial indexing structure to use...
   const SpatialType * spatial_type;

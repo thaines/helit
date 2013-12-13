@@ -19,7 +19,7 @@
 void MeanShift_new(MeanShift * this)
 {
  this->kernel = &Uniform;
- this->alpha = 1.0;
+ this->config = NULL; // We know this is valid for the Uniform kernel.
  this->spatial_type = &KDTreeType;
  this->balls_type = &BallsHashType;
  DataMatrix_init(&this->dm);
@@ -40,6 +40,7 @@ void MeanShift_dealloc(MeanShift * this)
  DataMatrix_deinit(&this->dm);
  if (this->spatial!=NULL) Spatial_delete(this->spatial);
  if (this->balls!=NULL) Balls_delete(this->balls);
+ this->kernel->config_release(this->config);
 }
 
 
@@ -86,7 +87,7 @@ static PyObject * MeanShift_kernels_py(MeanShift * self, PyObject * args)
 
 static PyObject * MeanShift_get_kernel_py(MeanShift * self, PyObject * args)
 {
- return Py_BuildValue("s", self->kernel->name);
+ return Py_BuildValue("s", self->kernel->name); // ************ Needs to change - not necesarily this simple now! ***************************
 }
 
 
@@ -94,15 +95,26 @@ static PyObject * MeanShift_set_kernel_py(MeanShift * self, PyObject * args)
 {
  // Parse the parameters...
   char * kname;
-  if (!PyArg_ParseTuple(args, "s|f", &kname, &self->alpha)) return NULL;
+  if (!PyArg_ParseTuple(args, "s", &kname)) return NULL;
  
  // Try and find the relevant kernel - if found assign it and return...
   int i = 0;
   while (ListKernel[i]!=NULL)
   {
-   if (strcmp(ListKernel[i]->name, kname)==0)
+   int klength = strlen(ListKernel[i]->name);
+   if (strncmp(ListKernel[i]->name, kname, klength)==0)
    {
+    const char * error = ListKernel[i]->config_verify(kname+klength, NULL);
+    if (error!=NULL)
+    {
+     PyErr_SetString(PyExc_RuntimeError, error);
+     return NULL;
+    }
+    
+    self->kernel->config_release(self->config);
+    
     self->kernel = ListKernel[i];
+    self->config = self->kernel->config_new(kname+klength); // Need to verify this worked ****************************************
     self->norm = -1.0;
     
     Py_INCREF(Py_None);
@@ -737,11 +749,11 @@ static PyObject * MeanShift_loo_nll_py(MeanShift * self, PyObject * args)
  // Calculate the normalising term if needed...
   if (self->norm<0.0)
   {
-   self->norm = calc_norm(&self->dm, self->kernel, self->alpha, MeanShift_weight(self));
+   self->norm = calc_norm(&self->dm, self->kernel, self->config, MeanShift_weight(self));
   }
   
  // Calculate the probability...
-  float nll = loo_nll(self->spatial, self->kernel, self->alpha, self->norm, self->quality, limit);
+  float nll = loo_nll(self->spatial, self->kernel, self->config, self->norm, self->quality, limit);
  
  // Return it...
   return Py_BuildValue("f", nll);
@@ -773,7 +785,7 @@ static PyObject * MeanShift_prob_py(MeanShift * self, PyObject * args)
  // Calculate the normalising term if needed...
   if (self->norm<0.0)
   {
-   self->norm = calc_norm(&self->dm, self->kernel, self->alpha, MeanShift_weight(self));
+   self->norm = calc_norm(&self->dm, self->kernel, self->config, MeanShift_weight(self));
   }
  
  // Create a temporary to hold the feature vector...
@@ -785,7 +797,7 @@ static PyObject * MeanShift_prob_py(MeanShift * self, PyObject * args)
   }
   
  // Calculate the probability...
-  float p = prob(self->spatial, self->kernel, self->alpha, fv, self->norm, self->quality);
+  float p = prob(self->spatial, self->kernel, self->config, fv, self->norm, self->quality);
  
  // Return the calculated probability...
   return Py_BuildValue("f", p);
@@ -817,7 +829,7 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
  // Calculate the normalising term if needed...
   if (self->norm<0.0)
   {
-   self->norm = calc_norm(&self->dm, self->kernel, self->alpha, MeanShift_weight(self));
+   self->norm = calc_norm(&self->dm, self->kernel, self->config, MeanShift_weight(self));
   }
   
  // Create a temporary array of floats...
@@ -839,7 +851,7 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
     }
    
    // Calculate the probability...
-    float p = prob(self->spatial, self->kernel, self->alpha, fv, self->norm, self->quality);
+    float p = prob(self->spatial, self->kernel, self->config, fv, self->norm, self->quality);
    
    // Store it...
     *(float*)PyArray_GETPTR1(out, i) = p;
@@ -865,7 +877,7 @@ static PyObject * MeanShift_draw_py(MeanShift * self, PyObject * args)
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats, NPY_FLOAT32);
   
  // Generate the return...
-  draw(&self->dm, self->kernel, self->alpha, index, (float*)PyArray_DATA(ret));
+  draw(&self->dm, self->kernel, self->config, index, (float*)PyArray_DATA(ret));
   
  // Return the draw...
   return (PyObject*)ret;
@@ -888,7 +900,7 @@ static PyObject * MeanShift_draws_py(MeanShift * self, PyObject * args)
   for (index[2]=0; index[2]<shape[0]; index[2]++)
   {
    float * out = (float*)PyArray_GETPTR2(ret, index[2], 0);
-   draw(&self->dm, self->kernel, self->alpha, index, out);
+   draw(&self->dm, self->kernel, self->config, index, out);
   }
   
  // Return the draw...
@@ -960,7 +972,7 @@ static PyObject * MeanShift_mode_py(MeanShift * self, PyObject * args)
   
  // Run the agorithm; we need some temporary storage...
   float * temp = (float*)malloc(feats * sizeof(float));
-  mode(self->spatial, self->kernel, self->alpha, (float*)PyArray_DATA(ret), temp, self->quality, self->epsilon, self->iter_cap);
+  mode(self->spatial, self->kernel, self->config, (float*)PyArray_DATA(ret), temp, self->quality, self->epsilon, self->iter_cap);
   free(temp);
    // Undo the scale change...
   for (i=0; i<feats; i++)
@@ -1017,7 +1029,7 @@ static PyObject * MeanShift_modes_py(MeanShift * self, PyObject * args)
   {
    float * out = (float*)PyArray_GETPTR1(ret, i);
    
-   mode(self->spatial, self->kernel, self->alpha, out, temp, self->quality, self->epsilon, self->iter_cap);
+   mode(self->spatial, self->kernel, self->config, out, temp, self->quality, self->epsilon, self->iter_cap);
    
    for (j=0; j<dims[1]; j++) out[j] /= self->dm.mult[j];
   }
@@ -1075,7 +1087,7 @@ static PyObject * MeanShift_modes_data_py(MeanShift * self, PyObject * args)
     for (i=0; i<dims[nd-1]; i++) out[i] = fv[i];
    
    // Converge mean shift...
-    mode(self->spatial, self->kernel, self->alpha, out, temp, self->quality, self->epsilon, self->iter_cap);
+    mode(self->spatial, self->kernel, self->config, out, temp, self->quality, self->epsilon, self->iter_cap);
     
    // Undo any scale change...
     for (i=0; i<dims[nd-1]; i++) out[i] /= self->dm.mult[i];
@@ -1132,7 +1144,7 @@ static PyObject * MeanShift_cluster_py(MeanShift * self, PyObject * args)
   self->balls = Balls_new(self->balls_type, self->dm.feats, self->merge_range);
  
  // Do the work...
-  cluster(self->spatial, self->kernel, self->alpha, self->balls, (int*)PyArray_DATA(index), self->quality, self->epsilon, self->iter_cap, self->ident_dist, self->merge_range, self->merge_check_step);
+  cluster(self->spatial, self->kernel, self->config, self->balls, (int*)PyArray_DATA(index), self->quality, self->epsilon, self->iter_cap, self->ident_dist, self->merge_range, self->merge_check_step);
  
  // Extract the modes, which happen to be the centers of the balls...
   dims[0] = Balls_count(self->balls);
@@ -1199,7 +1211,7 @@ static PyObject * MeanShift_assign_cluster_py(MeanShift * self, PyObject * args)
   }
   
  // Run the algorithm...
-  int cluster = assign_cluster(self->spatial, self->kernel, self->alpha, self->balls, fv, temp, self->quality, self->epsilon, self->iter_cap, self->merge_check_step);
+  int cluster = assign_cluster(self->spatial, self->kernel, self->config, self->balls, fv, temp, self->quality, self->epsilon, self->iter_cap, self->merge_check_step);
   
  // Clean up...
   free(temp);
@@ -1258,7 +1270,7 @@ static PyObject * MeanShift_assign_clusters_py(MeanShift * self, PyObject * args
     }
    
    // Run it...
-    int c = assign_cluster(self->spatial, self->kernel, self->alpha, self->balls, fv, temp, self->quality, self->epsilon, self->iter_cap, self->merge_check_step);
+    int c = assign_cluster(self->spatial, self->kernel, self->config, self->balls, fv, temp, self->quality, self->epsilon, self->iter_cap, self->merge_check_step);
    
    // Store the result...
     *(int*)PyArray_GETPTR1(cluster, i) = c;
@@ -1494,7 +1506,6 @@ static PyObject * MeanShift_manifolds_data_py(MeanShift * self, PyObject * args)
 
 static PyMemberDef MeanShift_members[] =
 {
- {"alpha", T_FLOAT, offsetof(MeanShift, alpha), 0, "Arbitrary parameter that is passed through to the kernel - most kernels ignore it. Only current use is for the 'fisher' kernel, where it is the concentration of the von-Mises Fisher distribution."},
  {"quality", T_FLOAT, offsetof(MeanShift, quality), 0, "Value between 0 and 1, inclusive - for kernel types that have an infinite domain this controls how much of that domain to use for the calculations - 0 for lowest quality, 1 for the highest quality. (Ignored by kernel types that have a finite kernel.)"},
  {"epsilon", T_FLOAT, offsetof(MeanShift, epsilon), 0, "For convergance detection - when the step size is smaller than this it stops."},
  {"iter_cap", T_INT, offsetof(MeanShift, iter_cap), 0, "Maximum number of iterations to do before stopping, a hard limit on computation."},
@@ -1509,8 +1520,8 @@ static PyMemberDef MeanShift_members[] =
 static PyMethodDef MeanShift_methods[] =
 {
  {"kernels", (PyCFunction)MeanShift_kernels_py, METH_NOARGS | METH_STATIC, "A static method that returns a list of kernel types, as strings."},
- {"get_kernel", (PyCFunction)MeanShift_get_kernel_py, METH_NOARGS, "Returns the string that identifies the current kernel."},
- {"set_kernel", (PyCFunction)MeanShift_set_kernel_py, METH_VARARGS, "Sets the current kernel, as identified by a string. An optional second parameter exists, for the alpha parameter, which is passed through to the kernel. Most kernels ignore this parameter - right now only the 'fisher' kernel uses it, where it is the concentration parameter of the von-Mises Fisher distribution that is used."},
+ {"get_kernel", (PyCFunction)MeanShift_get_kernel_py, METH_NOARGS, "Returns the string that identifies the current kernel; for complex kernels this may be a complex string containing parameters etc."},
+ {"set_kernel", (PyCFunction)MeanShift_set_kernel_py, METH_VARARGS, "Sets the current kernel, as identified by a string. For complex kernels this will probably need to include extra information - e.g. the fisher kernel is given as fisher(alpha) where alpha is a floating point concentration parameter."},
  
  {"spatials", (PyCFunction)MeanShift_spatials_py, METH_NOARGS | METH_STATIC, "A static method that returns a list of spatial indexing structures you can use, as strings."},
  {"get_spatial", (PyCFunction)MeanShift_get_spatial_py, METH_NOARGS, "Returns the string that identifies the current spatial indexing structure."},
@@ -1521,6 +1532,7 @@ static PyMethodDef MeanShift_methods[] =
  {"set_balls", (PyCFunction)MeanShift_set_balls_py, METH_VARARGS, "Sets the current ball indexing structure, as identified by a string."},
  
  {"info", (PyCFunction)MeanShift_info_py, METH_VARARGS | METH_STATIC, "A static method that is given the name of a kernel, spatial or ball. It then returns a human readable description of that entity."},
+ // ***************** Ability to get info on directional and parameters for kernels.
  
  {"set_data", (PyCFunction)MeanShift_set_data_py, METH_VARARGS, "Sets the data matrix, which defines the probability distribution via a kernel density estimate that everything is using. The data matrix is used directly, so it should not be modified during use as it could break the data structures created to accelerate question answering. First parameter is a numpy matrix (Any normal numerical type), the second a string with its length matching the number of dimensions of the matrix. The characters in the string define the meaning of each dimension: 'd' (data) - changing the index into this dimension changes which exemplar you are indexing; 'f' (feature) - changing the index into this dimension changes which feature you are indexing; 'b' (both) - same as d, except it also contributes an item to the feature vector, which is essentially the position in that dimension (used on the dimensions of an image for instance, to include pixel position in the feature vector). The system unwraps all data indices and all feature indices in row major order to hallucinate a standard data matrix, with all 'both' features at the start of the feature vector. Note that calling this resets scale. A third optional parameter sets an index into the original feature vector (Including the dual dimensions, so you can use one of them to provide weight) that is to be the weight of the feature vector - this effectivly reduces the length of the feature vector, as used by all other methods, by one."}, 
  {"get_dm", (PyCFunction)MeanShift_get_dm_py, METH_NOARGS, "Returns the current data matrix, which will be some kind of numpy ndarray"},

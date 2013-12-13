@@ -33,10 +33,10 @@ float calc_weight(DataMatrix * dm)
 
 
 
-float calc_norm(DataMatrix * dm, const Kernel * kernel, float alpha, float weight)
+float calc_norm(DataMatrix * dm, const Kernel * kernel, KernelConfig config, float weight)
 {
  int features = DataMatrix_features(dm);
- float ret = kernel->norm(features, alpha) / weight;
+ float ret = kernel->norm(features, config) / weight;
  
  int i;
  for (i=0; i<features; i++) ret *= dm->mult[i];
@@ -46,13 +46,13 @@ float calc_norm(DataMatrix * dm, const Kernel * kernel, float alpha, float weigh
 
 
 
-float prob(Spatial spatial, const Kernel * kernel, float alpha, const float * fv, float norm, float quality)
+float prob(Spatial spatial, const Kernel * kernel, KernelConfig config, const float * fv, float norm, float quality)
 {
  // Extract a bunch of things...
   DataMatrix * dm = Spatial_dm(spatial);
   
   int feats = DataMatrix_features(dm);
-  float range = kernel->range(feats, alpha, quality);
+  float range = kernel->range(feats, config, quality);
   
  // Loop and sum the return value...
   float ret = 0.0;
@@ -68,7 +68,7 @@ float prob(Spatial spatial, const Kernel * kernel, float alpha, const float * fv
    
    int i;
    for (i=0; i<feats; i++) loc[i] -= fv[i];
-   w *= kernel->weight(feats, alpha, loc);
+   w *= kernel->weight(feats, config, loc);
    
    w *= norm;
    ret += w;
@@ -79,7 +79,7 @@ float prob(Spatial spatial, const Kernel * kernel, float alpha, const float * fv
 
 
 
-void draw(DataMatrix * dm, const Kernel * kernel, float alpha, const unsigned int index[3], float * out)
+void draw(DataMatrix * dm, const Kernel * kernel, KernelConfig config, const unsigned int index[3], float * out)
 {
  int feats = DataMatrix_features(dm);
  
@@ -96,7 +96,7 @@ void draw(DataMatrix * dm, const Kernel * kernel, float alpha, const unsigned in
   float * fv = DataMatrix_fv(dm, exemplar, NULL);
   
  // Draw from the kernel in question...
-  kernel->draw(feats, alpha, index, fv, out);
+  kernel->draw(feats, config, index, fv, out);
  
  // Convert from scaled space to normal space...
   int i;
@@ -105,14 +105,14 @@ void draw(DataMatrix * dm, const Kernel * kernel, float alpha, const unsigned in
 
 
 
-float loo_nll(Spatial spatial, const Kernel * kernel, float alpha, float norm, float quality, float limit)
+float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality, float limit)
 {
  // Extract a bunch of things...
   DataMatrix * dm = Spatial_dm(spatial);
   
   int exemplars = DataMatrix_exemplars(dm);
   int features = DataMatrix_features(dm);
-  float range = kernel->range(features, alpha, quality);
+  float range = kernel->range(features, config, quality);
   
  // Loop and do each exemplar in the data set in turn... 
   float ret = 0.0;
@@ -141,7 +141,7 @@ float loo_nll(Spatial spatial, const Kernel * kernel, float alpha, float norm, f
      float * fv = DataMatrix_fv(dm, targ, &w);
    
      for (j=0; j<features; j++) fv[j] -= fvi[j];
-     w *= kernel->weight(features, alpha, fv);
+     w *= kernel->weight(features, config, fv);
    
      w *= norm;
      prob += w;
@@ -159,13 +159,13 @@ float loo_nll(Spatial spatial, const Kernel * kernel, float alpha, float norm, f
 
 
 
-void mode(Spatial spatial, const Kernel * kernel, float alpha, float * fv, float * temp, float quality, float epsilon, int iter_cap)
+void mode(Spatial spatial, const Kernel * kernel, KernelConfig config, float * fv, float * temp, float quality, float epsilon, int iter_cap)
 {
  // Extract the many things we need... 
   DataMatrix * dm = Spatial_dm(spatial);
   
   int feats = DataMatrix_features(dm);
-  float range = kernel->range(feats, alpha, quality);
+  float range = kernel->range(feats, config, quality);
 
  // Loop until convergance...
   float delta = 2.0 * epsilon;
@@ -188,7 +188,7 @@ void mode(Spatial spatial, const Kernel * kernel, float alpha, float * fv, float
      float * loc = DataMatrix_fv(dm, targ, &w);
 
      for (i=0; i<feats; i++) loc[i] -= fv[i];
-     w *= kernel->weight(feats, alpha, loc);
+     w *= kernel->weight(feats, config, loc);
      
      if (w>1e-6)
      {
@@ -198,7 +198,7 @@ void mode(Spatial spatial, const Kernel * kernel, float alpha, float * fv, float
     }
    
    // Copy into the fv, calculating delta as well...
-    delta = kernel->offset(feats, alpha, fv, temp);
+    delta = kernel->offset(feats, config, fv, temp);
     
    // We just iterated...
     iters += 1;
@@ -207,14 +207,14 @@ void mode(Spatial spatial, const Kernel * kernel, float alpha, float * fv, float
 
 
 
-void cluster(Spatial spatial, const Kernel * kernel, float alpha, Balls balls, int * out, float quality, float epsilon, int iter_cap, float ident_dist, float merge_range, int check_step)
+void cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, Balls balls, int * out, float quality, float epsilon, int iter_cap, float ident_dist, float merge_range, int check_step)
 {
  // Extract some things that we need... 
   DataMatrix * dm = Spatial_dm(spatial);
   
   int exemplars = DataMatrix_exemplars(dm);
   int feats = DataMatrix_features(dm);
-  float range = kernel->range(feats, alpha, quality);
+  float range = kernel->range(feats, config, quality);
  
  // Create some temporary storage...
   float * fv   = (float*)malloc(feats * sizeof(float));
@@ -305,7 +305,7 @@ void cluster(Spatial spatial, const Kernel * kernel, float alpha, Balls balls, i
        loc = DataMatrix_fv(dm, targ, &w);
 
        for (i=0; i<feats; i++) loc[i] -= fv[i];
-       w *= kernel->weight(feats, alpha, loc);
+       w *= kernel->weight(feats, config, loc);
      
        if (w>1e-6)
        {
@@ -315,7 +315,7 @@ void cluster(Spatial spatial, const Kernel * kernel, float alpha, Balls balls, i
       }
    
      // Copy into the fv, calculating delta as well...
-      delta = kernel->offset(feats, alpha, fv, temp);
+      delta = kernel->offset(feats, config, fv, temp);
       
      // We just iterated...
       iters += 1; 
@@ -349,13 +349,13 @@ void cluster(Spatial spatial, const Kernel * kernel, float alpha, Balls balls, i
 
 
 
-int assign_cluster(Spatial spatial, const Kernel * kernel, float alpha, Balls balls, float * fv, float * temp, float quality, float epsilon, int iter_cap, int check_step)
+int assign_cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, Balls balls, float * fv, float * temp, float quality, float epsilon, int iter_cap, int check_step)
 {
  // Extract some things that we need... 
   DataMatrix * dm = Spatial_dm(spatial);
   
   int feats = DataMatrix_features(dm);
-  float range = kernel->range(feats, alpha, quality);
+  float range = kernel->range(feats, config, quality);
 
  // Converge the feature vector, regularly checking if its bumped into a ball...
   float delta = 2.0 * epsilon;
@@ -386,7 +386,7 @@ int assign_cluster(Spatial spatial, const Kernel * kernel, float alpha, Balls ba
      float * loc = DataMatrix_fv(dm, targ, &w);
 
      for (i=0; i<feats; i++) loc[i] -= fv[i];
-     w *= kernel->weight(feats, alpha, loc);
+     w *= kernel->weight(feats, config, loc);
      
      if (w>1e-6)
      {
@@ -396,7 +396,7 @@ int assign_cluster(Spatial spatial, const Kernel * kernel, float alpha, Balls ba
     }
    
    // Copy into the fv, calculating delta as well...
-    delta = kernel->offset(feats, alpha, fv, temp);
+    delta = kernel->offset(feats, config, fv, temp);
       
    // We just iterated...
     iters += 1; 
@@ -415,8 +415,8 @@ void manifold(Spatial spatial, int degrees, float * fv, float * grad, float * he
   DataMatrix * dm = Spatial_dm(spatial);
   
   int feats = DataMatrix_features(dm);
-  float range = Gaussian.range(feats, 1.0, quality);
-  float norm = Gaussian.norm(feats, 1.0);
+  float range = Gaussian.range(feats, NULL, quality);
+  float norm = Gaussian.norm(feats, NULL);
   
  // Converge the feature vector, one step at a time...
   int iters = 0;
@@ -446,7 +446,7 @@ void manifold(Spatial spatial, int degrees, float * fv, float * grad, float * he
       float * loc = DataMatrix_fv(dm, targ, &w);
       
       for (i=0; i<feats; i++) loc[i] -= fv[i];
-      w *= norm * Gaussian.weight(feats, 1.0, loc);
+      w *= norm * Gaussian.weight(feats, NULL, loc);
      
       if (w>1e-6)
       {
