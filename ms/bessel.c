@@ -103,3 +103,26 @@ float LogModBesselFirst(int orderX2, float x, float accuracy, int limit)
 
  return log_ret;
 }
+
+
+
+float LogGamma(int x2)
+{
+ float ret = 0.0;
+ int i = 4;
+ 
+ // Deal with the half... 
+  if ((x2&1)==1)
+  {
+   i = 1;
+   ret = 0.5 * log(M_PI);
+  }
+  
+ // Incrimentally do the rest...
+  for (; i<x2; i+=2)
+  {
+   ret += log(0.5*i);
+  }
+ 
+ return ret; 
+}

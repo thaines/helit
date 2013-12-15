@@ -21,4 +21,9 @@ float LogModBesselFirst(int orderX2, float x, float accuracy, int limit);
 
 
 
+// Ok, it has nothing to do with the Bessel function, but this seemed the best place to put it - calculates the log of the gamma function, where you provide the value as an integer that is twice x...
+float LogGamma(int x2);
+
+
+
 #endif

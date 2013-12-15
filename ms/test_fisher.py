@@ -25,7 +25,7 @@ from ms import MeanShift
 
 # Generate some data - do the 3 great circles on the coordinate system, with noise either side...
 data = []
-samples = 64
+samples = 128
 
 for ex_dim in xrange(3):
   theta = 2.0 * numpy.pi * numpy.random.random(samples)
@@ -48,8 +48,8 @@ data /= numpy.sqrt(numpy.square(data).sum(axis=1)).reshape((-1,1))
 ms = MeanShift()
 ms.set_data(data, 'df')
 
-ms.set_kernel('fisher', 32.0)
-ms.set_spatial(random.choice(ms.spatials()))
+ms.set_kernel('fisher(128.0)')
+ms.set_spatial('kd_tree')
 
 
 
@@ -106,7 +106,7 @@ cv.SaveImage('fisher_mercator_kde.png', image)
 # Draw a new set of samples; visualise them...
 print 'Draw...'
 
-draw = ms.draws(1024, 0)
+draw = ms.draws(8*1024, 0)
 
 image = numpy.zeros((height, width, 3), dtype=numpy.float32)
 for vec in draw:
@@ -116,8 +116,6 @@ for vec in draw:
   if x>=width: x -= width
   
   y = 0.5*(1.0+vec[2]) * height
-  
-  print vec, x, y
 
   image[y,x,:] = 255.0
 
@@ -127,19 +125,19 @@ cv.SaveImage('fisher_mercator_draw.png', image)
 
 
 # Do mean shift on it, output a colour coded set of regions, same projection...
-#print 'MS...'
-### Actual work...
-#modes, indices = ms.cluster()
-#clusters = ms.assign_clusters(block.reshape(-1,3))
+print 'MS...'
+## Actual work...
+modes, indices = ms.cluster()
+clusters = ms.assign_clusters(block.reshape(-1,3))
 
-### Create an image...
-#clusters = clusters.reshape((height, width))
-#image = numpy.zeros((height, width, 3), dtype=numpy.float32)
+## Create an image...
+clusters = clusters.reshape((height, width))
+image = numpy.zeros((height, width, 3), dtype=numpy.float32)
 
-#for i in xrange(clusters.max()+1):
-  #colour = numpy.random.random(3)
-  #image[clusters==i,:] = colour.reshape((1,3))
+for i in xrange(clusters.max()+1):
+  colour = numpy.random.random(3)
+  image[clusters==i,:] = colour.reshape((1,3))
 
-### Save it...
-#image = array2cv(255.0 * image)
-#cv.SaveImage('fisher_mercator_ms.png', image)
+## Save it...
+image = array2cv(255.0 * image)
+cv.SaveImage('fisher_mercator_ms.png', image)

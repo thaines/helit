@@ -104,7 +104,8 @@ static PyObject * MeanShift_set_kernel_py(MeanShift * self, PyObject * args)
    int klength = strlen(ListKernel[i]->name);
    if (strncmp(ListKernel[i]->name, kname, klength)==0)
    {
-    const char * error = ListKernel[i]->config_verify(kname+klength, NULL);
+    int dims = DataMatrix_features(&self->dm);
+    const char * error = ListKernel[i]->config_verify(dims, kname+klength, NULL);
     if (error!=NULL)
     {
      PyErr_SetString(PyExc_RuntimeError, error);
@@ -114,7 +115,7 @@ static PyObject * MeanShift_set_kernel_py(MeanShift * self, PyObject * args)
     self->kernel->config_release(self->config);
     
     self->kernel = ListKernel[i];
-    self->config = self->kernel->config_new(kname+klength); // Need to verify this worked ****************************************
+    self->config = self->kernel->config_new(dims, kname+klength);
     self->norm = -1.0;
     
     Py_INCREF(Py_None);
@@ -1521,7 +1522,7 @@ static PyMethodDef MeanShift_methods[] =
 {
  {"kernels", (PyCFunction)MeanShift_kernels_py, METH_NOARGS | METH_STATIC, "A static method that returns a list of kernel types, as strings."},
  {"get_kernel", (PyCFunction)MeanShift_get_kernel_py, METH_NOARGS, "Returns the string that identifies the current kernel; for complex kernels this may be a complex string containing parameters etc."},
- {"set_kernel", (PyCFunction)MeanShift_set_kernel_py, METH_VARARGS, "Sets the current kernel, as identified by a string. For complex kernels this will probably need to include extra information - e.g. the fisher kernel is given as fisher(alpha) where alpha is a floating point concentration parameter."},
+ {"set_kernel", (PyCFunction)MeanShift_set_kernel_py, METH_VARARGS, "Sets the current kernel, as identified by a string. For complex kernels this will probably need to include extra information - e.g. the fisher kernel is given as fisher(alpha) where alpha is a floating point concentration parameter. Note that some kernels (e.g. fisher) take into account the number of features in the data when set - in such cases you must set the kernel type after calling set_data."},
  
  {"spatials", (PyCFunction)MeanShift_spatials_py, METH_NOARGS | METH_STATIC, "A static method that returns a list of spatial indexing structures you can use, as strings."},
  {"get_spatial", (PyCFunction)MeanShift_get_spatial_py, METH_NOARGS, "Returns the string that identifies the current spatial indexing structure."},
@@ -1653,6 +1654,12 @@ PyMODINIT_FUNC initms_c(void)
  // }
  //}
  //printf("modified bessel function , first kind (order=3,x=48) = %f = %f\n", //ModBesselFirst(6, 48.0, 1e-6, 1024), exp(LogModBesselFirst(6, 48.0, 1e-6, 1024)));
+ 
+ //int x2;
+ //for (x2=0; x2<9; x2++)
+ //{
+ // printf("log gamma (%f) = %f\n", 0.5*x2, LogGamma(x2));
+ //}
  
  Py_INCREF(&MeanShiftType);
  PyModule_AddObject(mod, "MeanShift", (PyObject*)&MeanShiftType);
