@@ -738,7 +738,7 @@ KernelConfig Fisher_config_new(int dims, const char * config)
 
 const char * Fisher_config_verify(int dims, const char * config, int * length)
 {
- if (config[0]!='(') return "von0-Mises Fisher configuration did not start with a (.";
+ if (config[0]!='(') return "von-Mises Fisher configuration did not start with a (.";
    
  char * end;
  float conc = strtof(config+1, &end);
@@ -930,6 +930,288 @@ const Kernel Fisher =
 
 
 
+// The composite kernel - allows you to have different kernels on different dimensions...
+typedef struct CompositeChild CompositeChild;
+typedef struct CompositeConfig CompositeConfig;
+
+struct CompositeChild
+{
+ int dims; // How many dimensions this kernel is responsible for.
+ const Kernel * kernel;
+ KernelConfig config;
+};
+
+struct CompositeConfig
+{
+ int ref_count;
+ int children; // Number of children.
+ CompositeChild child[0];
+};
+
+
+
+KernelConfig Composite_config_new(int dims, const char * config)
+{
+ int child;
+ 
+ // First pass to count how many child kernels there are...
+  int children = 0;
+  char * targ = (char*)(config + 1); // Skip starting (
+  while (targ[0]!=')')
+  {
+   children += 1;
+   
+   // Skip dims...
+    child = strtol(targ, &targ, 0); // Compiler warns if I don't assign it to something:-/
+    ++targ; // Skip :
+    
+   // Skip kernel spec...
+    int i = 0;
+    while (ListKernel[i]!=NULL)
+    {
+     int nlength = strlen(ListKernel[i]->name);
+     if (strncmp(ListKernel[i]->name, targ, nlength)==0)
+     {
+      targ += nlength;
+      ListKernel[i]->config_verify(dims, targ, &nlength);
+      targ += nlength;
+      
+      break;
+     }
+   
+     ++i; 
+    }
+   
+   // Skip comma if needed...
+    if (targ[0]==',') ++targ;
+  }
+ 
+ // Create the data structure...
+  CompositeConfig * ret = (CompositeConfig*)malloc(sizeof(CompositeConfig) + children * sizeof(CompositeChild));
+  
+  ret->ref_count = 1;
+  ret->children = children;
+ 
+ // Second pass to fill in the data structure...
+  targ = (char*)(config + 1); // Skip starting (
+  
+  for (child=0; child<children; child++)
+  {
+   ret->child[child].dims = strtol(targ, &targ, 0);
+   ++targ; // Skip :
+   
+   int i = 0;
+   while (ListKernel[i]!=NULL)
+   {
+    int nlength = strlen(ListKernel[i]->name);
+    if (strncmp(ListKernel[i]->name, targ, nlength)==0)
+    {
+     targ += nlength;
+     ListKernel[i]->config_verify(dims, targ, &nlength);
+     
+     ret->child[child].kernel = ListKernel[i];
+     ret->child[child].config = ListKernel[i]->config_new(ret->child[child].dims, targ);
+     
+     targ += nlength;
+     break;
+    }
+   
+    ++i; 
+   }
+    
+   ++targ; // Skip ,
+  }
+ 
+ // Return...
+  return (KernelConfig)ret;
+}
+
+const char * Composite_config_verify(int dims, const char * config, int * length)
+{
+ char * targ = (char*)config;
+ 
+ if (targ[0]!='(') return "composite configuration string did not start with (.";
+ ++targ;
+ 
+ int count = 0;
+ while ((targ[0]!=')')&&(targ[0]!=0))
+ {
+  // Count how many dimensions this kernel covers...
+   int dims = strtol(targ, &targ, 0);
+   if (dims<1) return "dimensions of child kernel must be at least 1.";
+   if (targ==NULL) return "unexpected end of string.";
+   if (targ[0]!=':') return "did not get an expected :.";
+   ++targ;
+   
+  // Find out which kernel it is, then handle it...
+   int i = 0;
+   while (ListKernel[i]!=NULL)
+   {
+    int nlength = strlen(ListKernel[i]->name);
+    if (strncmp(ListKernel[i]->name, targ, nlength)==0)
+    {
+     // We have found a matching kernel - run its verification method, and use that to find the end, or throw a wobbly if verification fails...
+      ++count;
+      targ += nlength;
+     
+      const char * error = ListKernel[i]->config_verify(dims, targ, &nlength);
+      if (error!=NULL) return error;
+      
+      targ += nlength;
+      
+     break;
+    }
+   
+    ++i; 
+   }
+   if (ListKernel[i]==NULL) return "unrecognised child kernel.";
+   
+  // Move to next bit...
+   if ((targ[0]!=',')&&(targ[0]!=')')) return "error processing list of child kernels";
+   if (targ[0]==',') ++targ;
+ }
+ 
+ if (targ[0]!=')') return "composite configuration string did not end with (.";
+ ++targ;
+ 
+ if (count==0) return "composite configuration needs at least 1 child kernel.";
+ 
+ if (length!=NULL) *length = targ - config;
+ 
+ return NULL;
+}
+
+void Composite_config_acquire(KernelConfig config)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+ self->ref_count += 1;
+}
+
+void Composite_config_release(KernelConfig config)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+ self->ref_count -= 1;
+ 
+ if (self->ref_count==0)
+ {
+  int i;
+  for (i=0; i<self->children; i++)
+  {
+   self->child[i].kernel->config_release(self->child[i].config);
+  }
+   
+  free(self); 
+ }
+}
+
+
+float Composite_weight(int dims, KernelConfig config, float * offset)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+ 
+ float ret = 1.0;
+ 
+ int child;
+ for (child=0; child<self->children; child++)
+ {
+  ret *= self->child[child].kernel->weight(self->child[child].dims, self->child[child].config, offset);
+  
+  offset += self->child[child].dims;
+ }
+ 
+ return ret;
+}
+
+float Composite_norm(int dims, KernelConfig config)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+ 
+ float ret = 1.0;
+ 
+ int child;
+ for (child=0; child<self->children; child++)
+ {
+  ret *= self->child[child].kernel->norm(self->child[child].dims, self->child[child].config);
+ }
+ 
+ return ret;
+}
+
+float Composite_range(int dims, KernelConfig config, float quality)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+ 
+ float ret = 0.0;
+ 
+ // The system does not support ranges that vary by dimension, so the output has to be the maximum of the children - not computationally optimal, but unavoidable, and as long as all the dimensions are useful for filtering should not be too painful...
+  int child;
+  for (child=0; child<self->children; child++)
+  {
+  float range = self->child[child].kernel->range(self->child[child].dims, self->child[child].config, quality);
+  if (range>ret) ret = range;
+ }
+ 
+ return ret;
+}
+
+float Composite_offset(int dims, KernelConfig config, float * fv, const float * offset)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+ 
+ float ret = 0.0;
+ 
+ int child;
+ for (child=0; child<self->children; child++)
+ {
+  ret += self->child[child].kernel->offset(self->child[child].dims, self->child[child].config, fv, offset);
+   
+  fv += self->child[child].dims;
+  offset += self->child[child].dims;
+ }
+ 
+ return ret;
+}
+
+void Composite_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+ 
+ unsigned int pos[3];
+ pos[0] = index[0];
+ pos[1] = index[1];
+ pos[2] = index[2];
+ 
+ int child;
+ for (child=0; child<self->children; child++)
+ {
+  self->child[child].kernel->draw(self->child[child].dims, self->child[child].config, pos, center, out);
+   
+  center += self->child[child].dims;
+  out    += self->child[child].dims;
+  pos[2] += 1;
+ }
+}
+
+
+
+const Kernel Composite =
+{
+ "composite",
+ "Allows you to use different kernels on different features, by specifying a list of kernels and how many dimensions each child kernel applies to. For instance, you could have a Gaussian on the first three features then a Fisher on the last three features. Note that this assumes that the number of dims in the data matches the number specificed in the kernel - if this is not the case brown stuff will interact with the spining blades of cooling.",
+ "Configured with a comma seperated list of kernel specifications, where any kernel can be used; each kernel is proceded by the  number of features/dimensions it covers then a colon before giving the actual kernel spec. For example: composite(3:gaussian,3:fisher(48.0)) to have a Gaussian kernel on the first three dimensions then a Fisher kernel on the last three.",
+ Composite_config_new,
+ Composite_config_verify,
+ Composite_config_acquire,
+ Composite_config_release,
+ Composite_weight,
+ Composite_norm,
+ Composite_range,
+ Composite_offset,
+ Composite_draw,
+};
+
+
+
 // The list of known kernels...
 const Kernel * ListKernel[] =
 {
@@ -940,5 +1222,6 @@ const Kernel * ListKernel[] =
  &Gaussian,
  &Cauchy,
  &Fisher,
+ &Composite,
  NULL
 };

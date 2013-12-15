@@ -28,7 +28,7 @@ data = numpy.concatenate((a,b))
 ms = MeanShift()
 ms.set_data(data, 'd')
 
-ms.set_kernel(random.choice(filter(lambda s: s!='fisher', ms.kernels())))
+ms.set_kernel(random.choice(filter(lambda s: ms.info_config(s)==None, ms.kernels())))
 ms.set_spatial(random.choice(ms.spatials()))
 
 
