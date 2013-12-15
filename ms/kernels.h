@@ -61,6 +61,7 @@ struct Kernel
 {
  const char * name;
  const char * description;
+ const char * configuration; // NULL if it requires no configuration, otherwise a human readable string describing what is required. If NULL the kernel is assumed to be initialised with its name alone.
  
  KernelConfigNew     config_new;
  KernelConfigVerify  config_verify;

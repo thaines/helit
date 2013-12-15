@@ -164,6 +164,7 @@ const Kernel Uniform =
 {
  "uniform",
  "Provides a uniform kernel - all points within the unit hypersphere get a positive constant weight, all of those outside it get zero.",
+ NULL,
  Kernel_config_new,
  Kernel_config_verify,
  Kernel_config_acquire,
@@ -254,6 +255,7 @@ const Kernel Triangular =
 {
  "triangular",
  "Provides a linear kernel - linear falloff from the centre of the unit hypersphere, to reach 0 at the edge.",
+ NULL,
  Kernel_config_new,
  Kernel_config_verify,
  Kernel_config_acquire,
@@ -345,6 +347,7 @@ const Kernel Epanechnikov =
 {
  "epanechnikov",
  "Provides a kernel with a squared falloff, such that it hits 0 at the edge of the hyper-sphere. Probably the fastest to calculate other than the uniform kernel, and probably the best choice for a finite kernel.",
+ NULL,
  Kernel_config_new,
  Kernel_config_verify,
  Kernel_config_acquire,
@@ -453,6 +456,7 @@ const Kernel Cosine =
 {
  "cosine",
  "Kernel based on the cosine function, such that it hits zero at the edge of the unit hyper-sphere. Probably the smoothest of the kernels that have a hard edge beyond which they are zero; expensive to compute however.",
+ NULL,
  Kernel_config_new,
  Kernel_config_verify,
  Kernel_config_acquire,
@@ -518,6 +522,7 @@ const Kernel Gaussian =
 {
  "gaussian",
  "Standard Gaussian kernel; for range considers 1.5 standard deviations to be low quality, 3.5 to be high quality. More often than not the best choice, but very expensive and involves approximation.",
+ NULL,
  Kernel_config_new,
  Kernel_config_verify,
  Kernel_config_acquire,
@@ -618,6 +623,7 @@ const Kernel Cauchy =
 {
  "cauchy",
  "Uses the Cauchy distribution pdf on distance from the origin in the hypersphere. A fatter distribution than the Gaussian due to its long tails. Requires very large ranges, making is quite expensive in practise, but its good at avoiding being overconfident.",
+ NULL,
  Kernel_config_new,
  Kernel_config_verify,
  Kernel_config_acquire,
@@ -882,6 +888,7 @@ void Fisher_draw(int dims, KernelConfig config, const unsigned int index[3], con
    // Calculate the rotation matrix that leaves tail at the value in the center vector...
     float cos_theta = center[i] / tail;
     float sin_theta = sqrt(1.0  - cos_theta*cos_theta);
+    if (sin_theta!=sin_theta) sin_theta = 0.0; // NaN safety
    
    // Apply the rotation matrix to the tail, but offset to the row below, ready for the next time around the loop...
     tail *= sin_theta;
@@ -908,7 +915,8 @@ void Fisher_draw(int dims, KernelConfig config, const unsigned int index[3], con
 const Kernel Fisher =
 {
  "fisher",
- "A kernel for dealing with directional data, using the von-Mises Fisher distribution as a kernel (Fisher is technically 3 dimensions only, but I like short names!). Requires that all feature vectors be on the unit-hypersphere, plus it uses the alpha parameter provided to the kernel as the concentration parameter of the distribution. To avoid numerical problems its best to avoid taking the concentration parameter much above 64.",
+ "A kernel for dealing with directional data, using the von-Mises Fisher distribution as a kernel (Fisher is technically 3 dimensions only, but I like short names! - this will do anything from 2 dimensions upwards). Requires that all feature vectors be on the unit-hypersphere, plus it uses the alpha parameter provided to the kernel as the concentration parameter of the distribution. Be careful with the merge_range parameter when using this kernel - unlike the other kernels it won't default to anything sensible, and will have to be manually set.",
+ "Specified as fisher(alpha), e.g. fisher(10), where alpha is the concentration parameter",
  Fisher_config_new,
  Fisher_config_verify,
  Fisher_config_acquire,

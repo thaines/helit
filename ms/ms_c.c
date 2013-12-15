@@ -12,7 +12,10 @@
 
 #include <string.h>
 
+
+
 // Note to anyone reading this code - the atof function used throughout is not related to the normal function with that name - try not to get confused!
+static PyTypeObject MeanShiftType;
 
 
 
@@ -20,6 +23,7 @@ void MeanShift_new(MeanShift * this)
 {
  this->kernel = &Uniform;
  this->config = NULL; // We know this is valid for the Uniform kernel.
+ this->name = NULL; // Only contains a value if it differs from the kernel name.
  this->spatial_type = &KDTreeType;
  this->balls_type = &BallsHashType;
  DataMatrix_init(&this->dm);
@@ -87,7 +91,15 @@ static PyObject * MeanShift_kernels_py(MeanShift * self, PyObject * args)
 
 static PyObject * MeanShift_get_kernel_py(MeanShift * self, PyObject * args)
 {
- return Py_BuildValue("s", self->kernel->name); // ************ Needs to change - not necesarily this simple now! ***************************
+ if (self->name==NULL)
+ {
+  return Py_BuildValue("s", self->kernel->name);
+ }
+ else
+ {
+  Py_INCREF(self->name);
+  return self->name; 
+ }
 }
 
 
@@ -118,6 +130,17 @@ static PyObject * MeanShift_set_kernel_py(MeanShift * self, PyObject * args)
     self->config = self->kernel->config_new(dims, kname+klength);
     self->norm = -1.0;
     
+    if (self->name!=NULL)
+    {
+     Py_DECREF(self->name);
+     self->name = NULL;
+    }
+    
+    if (self->kernel->configuration!=NULL)
+    {
+     self->name = Py_BuildValue("s", kname);
+    }
+    
     Py_INCREF(Py_None);
     return Py_None;
    }
@@ -128,6 +151,39 @@ static PyObject * MeanShift_set_kernel_py(MeanShift * self, PyObject * args)
  // Was not succesful - throw an error...
   PyErr_SetString(PyExc_RuntimeError, "unrecognised kernel type");
   return NULL; 
+}
+
+
+static PyObject * MeanShift_copy_kernel_py(MeanShift * self, PyObject * args)
+{
+ // Get the parameters - another mean shift object...
+  MeanShift * other;
+  if (!PyArg_ParseTuple(args, "O!", &MeanShiftType, &other)) return NULL;
+  
+ // Clean up current...
+  self->kernel->config_release(self->config);
+  
+  if (self->name!=NULL)
+  {
+   Py_DECREF(self->name);
+   self->name = NULL;
+  }
+  
+ // Copy across...
+  self->kernel = other->kernel;
+  
+  self->config = other->config;
+  self->kernel->config_acquire(self->config);
+  
+  if (other->name!=NULL)
+  {
+   self->name = other->name;
+   Py_INCREF(self->name);
+  }
+ 
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
 }
 
 
@@ -298,6 +354,39 @@ static PyObject * MeanShift_info_py(MeanShift * self, PyObject * args)
   
  // Was not succesful - throw an error...
   PyErr_SetString(PyExc_RuntimeError, "unrecognised entity name");
+  return NULL; 
+}
+
+
+static PyObject * MeanShift_info_config_py(MeanShift * self, PyObject * args)
+{
+ // Parse the parameters...
+  char * name;
+  if (!PyArg_ParseTuple(args, "s", &name)) return NULL;
+  int i;
+  
+ // Try and find the relevant entity - if found assign it and return...
+  i = 0;
+  while (ListKernel[i]!=NULL)
+  {
+   if (strcmp(ListKernel[i]->name, name)==0)
+   {
+    if (ListKernel[i]->configuration!=NULL)
+    {
+     return PyString_FromString(ListKernel[i]->configuration);
+    }
+    else
+    {
+     Py_INCREF(Py_None);
+     return Py_None;
+    }
+   }
+   
+   ++i; 
+  }
+
+ // Was not succesful - throw an error...
+  PyErr_SetString(PyExc_RuntimeError, "unrecognised kernel name");
   return NULL; 
 }
 
@@ -1523,6 +1612,7 @@ static PyMethodDef MeanShift_methods[] =
  {"kernels", (PyCFunction)MeanShift_kernels_py, METH_NOARGS | METH_STATIC, "A static method that returns a list of kernel types, as strings."},
  {"get_kernel", (PyCFunction)MeanShift_get_kernel_py, METH_NOARGS, "Returns the string that identifies the current kernel; for complex kernels this may be a complex string containing parameters etc."},
  {"set_kernel", (PyCFunction)MeanShift_set_kernel_py, METH_VARARGS, "Sets the current kernel, as identified by a string. For complex kernels this will probably need to include extra information - e.g. the fisher kernel is given as fisher(alpha) where alpha is a floating point concentration parameter. Note that some kernels (e.g. fisher) take into account the number of features in the data when set - in such cases you must set the kernel type after calling set_data."},
+ {"copy_kernel", (PyCFunction)MeanShift_copy_kernel_py, METH_VARARGS, "Given another MeanShift object this copies the settings from it. This is highly recomended when speed matters and you have lots of kernels, as it copies pointers to the internal configuration object and reference counts - for objects with complex configurations this can be an order of magnitude faster. It can also save a lot of memory, via shared caches."},
  
  {"spatials", (PyCFunction)MeanShift_spatials_py, METH_NOARGS | METH_STATIC, "A static method that returns a list of spatial indexing structures you can use, as strings."},
  {"get_spatial", (PyCFunction)MeanShift_get_spatial_py, METH_NOARGS, "Returns the string that identifies the current spatial indexing structure."},
@@ -1533,7 +1623,7 @@ static PyMethodDef MeanShift_methods[] =
  {"set_balls", (PyCFunction)MeanShift_set_balls_py, METH_VARARGS, "Sets the current ball indexing structure, as identified by a string."},
  
  {"info", (PyCFunction)MeanShift_info_py, METH_VARARGS | METH_STATIC, "A static method that is given the name of a kernel, spatial or ball. It then returns a human readable description of that entity."},
- // ***************** Ability to get info on directional and parameters for kernels.
+ {"info_config", (PyCFunction)MeanShift_info_config_py, METH_VARARGS | METH_STATIC, "Given the name of a kernel this returns None if the kernel does not require any configuration, or a string describing how to configure it if it does."},
  
  {"set_data", (PyCFunction)MeanShift_set_data_py, METH_VARARGS, "Sets the data matrix, which defines the probability distribution via a kernel density estimate that everything is using. The data matrix is used directly, so it should not be modified during use as it could break the data structures created to accelerate question answering. First parameter is a numpy matrix (Any normal numerical type), the second a string with its length matching the number of dimensions of the matrix. The characters in the string define the meaning of each dimension: 'd' (data) - changing the index into this dimension changes which exemplar you are indexing; 'f' (feature) - changing the index into this dimension changes which feature you are indexing; 'b' (both) - same as d, except it also contributes an item to the feature vector, which is essentially the position in that dimension (used on the dimensions of an image for instance, to include pixel position in the feature vector). The system unwraps all data indices and all feature indices in row major order to hallucinate a standard data matrix, with all 'both' features at the start of the feature vector. Note that calling this resets scale. A third optional parameter sets an index into the original feature vector (Including the dual dimensions, so you can use one of them to provide weight) that is to be the weight of the feature vector - this effectivly reduces the length of the feature vector, as used by all other methods, by one."}, 
  {"get_dm", (PyCFunction)MeanShift_get_dm_py, METH_NOARGS, "Returns the current data matrix, which will be some kind of numpy ndarray"},

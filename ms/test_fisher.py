@@ -25,7 +25,7 @@ from ms import MeanShift
 
 # Generate some data - do the 3 great circles on the coordinate system, with noise either side...
 data = []
-samples = 128
+samples = 512
 
 for ex_dim in xrange(3):
   theta = 2.0 * numpy.pi * numpy.random.random(samples)
@@ -54,7 +54,7 @@ ms.set_spatial('kd_tree')
 
 
 # Parameters for output images...
-scale = 128
+scale = 256
 height = scale * 2
 width = int(2.0 * numpy.pi * scale)
 
@@ -116,8 +116,11 @@ for vec in draw:
   if x>=width: x -= width
   
   y = 0.5*(1.0+vec[2]) * height
-
-  image[y,x,:] = 255.0
+  
+  try:
+    image[y,x,:] = 255.0
+  except:
+    print 'Bad draw:', vec
 
 image = array2cv(image)
 cv.SaveImage('fisher_mercator_draw.png', image)
@@ -127,6 +130,7 @@ cv.SaveImage('fisher_mercator_draw.png', image)
 # Do mean shift on it, output a colour coded set of regions, same projection...
 print 'MS...'
 ## Actual work...
+ms.merge_range = 0.1
 modes, indices = ms.cluster()
 clusters = ms.assign_clusters(block.reshape(-1,3))
 

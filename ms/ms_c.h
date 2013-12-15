@@ -34,6 +34,7 @@ struct MeanShift
  // The kernel to use, with an alpha parameter...
   const Kernel * kernel;
   KernelConfig config;
+  PyObject * name; // String identifying the kernel.
   
  // The spatial indexing structure to use...
   const SpatialType * spatial_type;

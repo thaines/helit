@@ -1,10 +1,12 @@
 Mean Shift
 
-Primarily provides a mean shift implementation, but also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Includes multiple spatial indexing schemes and kernel types, including one for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario.
+Primarily provides a mean shift implementation, but also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Has support for multiplication, such that this can be used as the message model in nonparametric belief propagation. Includes multiple spatial indexing schemes and kernel types, including one for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario.
 
 If you are reading readme.txt then you can generate documentation by running make_doc.py
 Note that this module includes a setup.py that allows you to package/install it (The dependency on utils is only for the tests and automatic compilation if you have not installed it - it is not required.)
 It is strongly recommended that you look through the various test* files to see examples of how to use the system.
+
+Pay particular attention to info.py, which queries and returns all the various options for things such as kernel type and spatial acceleration structures.
 
 
 Contains the following key files:

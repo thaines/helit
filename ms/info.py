@@ -24,6 +24,15 @@ for kernel in ms.MeanShift.kernels():
   for i in xrange(0, len(d), 60):
     print '    %s' % d[i:i+60].strip()
   print
+  
+  c = ms.MeanShift.info_config(kernel)
+  if c==None:
+    print '    Kernel does not require configuring'
+  else:
+    print '    Requires configuration:'
+    for i in xrange(0, len(c), 60):
+      print '    %s' % c[i:i+60].strip()
+  print
 
 
 
