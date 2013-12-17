@@ -160,6 +160,36 @@ void Uniform_draw(int dims, KernelConfig config, const unsigned int index[3], co
 
 
 
+float Uniform_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ return mult_area_mci(&Uniform, config, dims, terms, fv, scale, cache);
+}
+
+void Uniform_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ if (fake==2)
+ {
+  // We can do the average of feature vector positions option... 
+   int i, j;
+   for (i=0; i<dims; i++) out[i] = 0.0;
+   
+   for (j=0; j<terms; j++)
+   {
+    for (i=0; i<dims; i++)
+    {
+     out[i] += ((fv[j][i] / scale[j][i]) - out[i]) / (j+1);
+    }
+   }
+ }
+ else
+ {
+  // For options 0 and 1 do a proper draw...   
+   mult_draw_mh(&Uniform, config, dims, terms, fv, scale, out, cache);
+ }
+}
+
+
+
 const Kernel Uniform =
 {
  "uniform",
@@ -174,6 +204,8 @@ const Kernel Uniform =
  Uniform_range,
  Kernel_offset,
  Uniform_draw,
+ Uniform_mult_mass,
+ Uniform_mult_draw,
 };
 
 
@@ -251,6 +283,36 @@ void Triangular_draw(int dims, KernelConfig config, const unsigned int index[3],
 
 
 
+float Triangular_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ return mult_area_mci(&Triangular, config, dims, terms, fv, scale, cache);
+}
+
+void Triangular_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ if (fake==2)
+ {
+  // We can do the average of feature vector positions option... 
+   int i, j;
+   for (i=0; i<dims; i++) out[i] = 0.0;
+   
+   for (j=0; j<terms; j++)
+   {
+    for (i=0; i<dims; i++)
+    {
+     out[i] += ((fv[j][i] / scale[j][i]) - out[i]) / (j+1);
+    }
+   }
+ }
+ else
+ {
+  // For options 0 and 1 do a proper draw...   
+   mult_draw_mh(&Triangular, config, dims, terms, fv, scale, out, cache);
+ }
+}
+
+
+
 const Kernel Triangular =
 {
  "triangular",
@@ -265,6 +327,8 @@ const Kernel Triangular =
  Triangular_range,
  Kernel_offset,
  Triangular_draw,
+ Triangular_mult_mass,
+ Triangular_mult_draw,
 };
 
 
@@ -343,6 +407,36 @@ void Epanechnikov_draw(int dims, KernelConfig config, const unsigned int index[3
 
 
 
+float Epanechnikov_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ return mult_area_mci(&Epanechnikov, config, dims, terms, fv, scale, cache);
+}
+
+void Epanechnikov_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ if (fake==2)
+ {
+  // We can do the average of feature vector positions option... 
+   int i, j;
+   for (i=0; i<dims; i++) out[i] = 0.0;
+   
+   for (j=0; j<terms; j++)
+   {
+    for (i=0; i<dims; i++)
+    {
+     out[i] += ((fv[j][i] / scale[j][i]) - out[i]) / (j+1);
+    }
+   }
+ }
+ else
+ {
+  // For options 0 and 1 do a proper draw...   
+   mult_draw_mh(&Epanechnikov, config, dims, terms, fv, scale, out, cache);
+ }
+}
+
+
+
 const Kernel Epanechnikov =
 {
  "epanechnikov",
@@ -357,6 +451,8 @@ const Kernel Epanechnikov =
  Epanechnikov_range,
  Kernel_offset,
  Epanechnikov_draw,
+ Epanechnikov_mult_mass,
+ Epanechnikov_mult_draw,
 };
 
 
@@ -452,6 +548,36 @@ void Cosine_draw(int dims, KernelConfig config, const unsigned int index[3], con
 
 
 
+float Cosine_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ return mult_area_mci(&Cosine, config, dims, terms, fv, scale, cache);
+}
+
+void Cosine_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ if (fake==2)
+ {
+  // We can do the average of feature vector positions option... 
+   int i, j;
+   for (i=0; i<dims; i++) out[i] = 0.0;
+   
+   for (j=0; j<terms; j++)
+   {
+    for (i=0; i<dims; i++)
+    {
+     out[i] += ((fv[j][i] / scale[j][i]) - out[i]) / (j+1);
+    }
+   }
+ }
+ else
+ {
+  // For options 0 and 1 do a proper draw...   
+   mult_draw_mh(&Cosine, config, dims, terms, fv, scale, out, cache);
+ }
+}
+
+
+
 const Kernel Cosine =
 {
  "cosine",
@@ -466,6 +592,8 @@ const Kernel Cosine =
  Cosine_range,
  Kernel_offset,
  Cosine_draw,
+ Cosine_mult_mass,
+ Cosine_mult_draw,
 };
 
 
@@ -518,6 +646,36 @@ void Gaussian_draw(int dims, KernelConfig config, const unsigned int index[3], c
 
 
 
+float Gaussian_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ return mult_area_mci(&Gaussian, config, dims, terms, fv, scale, cache);
+}
+
+void Gaussian_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ if (fake==2)
+ {
+  // We can do the average of feature vector positions option... 
+   int i, j;
+   for (i=0; i<dims; i++) out[i] = 0.0;
+   
+   for (j=0; j<terms; j++)
+   {
+    for (i=0; i<dims; i++)
+    {
+     out[i] += ((fv[j][i] / scale[j][i]) - out[i]) / (j+1);
+    }
+   }
+ }
+ else
+ {
+  // For options 0 and 1 do a proper draw...   
+   mult_draw_mh(&Gaussian, config, dims, terms, fv, scale, out, cache);
+ }
+}
+
+
+
 const Kernel Gaussian =
 {
  "gaussian",
@@ -532,6 +690,8 @@ const Kernel Gaussian =
  Gaussian_range,
  Kernel_offset,
  Gaussian_draw,
+ Gaussian_mult_mass,
+ Gaussian_mult_draw,
 };
 
 
@@ -619,6 +779,36 @@ void Cauchy_draw(int dims, KernelConfig config, const unsigned int index[3], con
 
 
 
+float Cauchy_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ return mult_area_mci(&Cauchy, config, dims, terms, fv, scale, cache);
+}
+
+void Cauchy_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ if (fake==2)
+ {
+  // We can do the average of feature vector positions option... 
+   int i, j;
+   for (i=0; i<dims; i++) out[i] = 0.0;
+   
+   for (j=0; j<terms; j++)
+   {
+    for (i=0; i<dims; i++)
+    {
+     out[i] += ((fv[j][i] / scale[j][i]) - out[i]) / (j+1);
+    }
+   }
+ }
+ else
+ {
+  // For options 0 and 1 do a proper draw...   
+   mult_draw_mh(&Cauchy, config, dims, terms, fv, scale, out, cache);
+ }
+}
+
+
+
 const Kernel Cauchy =
 {
  "cauchy",
@@ -633,6 +823,8 @@ const Kernel Cauchy =
  Cauchy_range,
  Kernel_offset,
  Cauchy_draw,
+ Cauchy_mult_mass,
+ Cauchy_mult_draw,
 };
 
 
@@ -912,6 +1104,18 @@ void Fisher_draw(int dims, KernelConfig config, const unsigned int index[3], con
 
 
 
+float Fisher_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ return mult_area_mci(&Fisher, config, dims, terms, fv, scale, cache);
+}
+
+void Fisher_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ mult_draw_mh(&Fisher, config, dims, terms, fv, scale, out, cache);
+}
+
+
+
 const Kernel Fisher =
 {
  "fisher",
@@ -926,6 +1130,8 @@ const Kernel Fisher =
  Fisher_range,
  Fisher_offset,
  Fisher_draw,
+ Fisher_mult_mass,
+ Fisher_mult_draw,
 };
 
 
@@ -1194,6 +1400,72 @@ void Composite_draw(int dims, KernelConfig config, const unsigned int index[3], 
 
 
 
+float Composite_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ float ret = 1.0;
+ CompositeConfig * self = (CompositeConfig*)config;
+ 
+ int i;
+ int child;
+ 
+ int total = 0;
+ for (child=0; child<self->children; child++)
+ {
+  // Factor in the current child...
+   ret *= self->child[child].kernel->mult_mass(dims, self->child[child].config, terms, fv, scale, cache);
+  
+  // Move array pointers to the next item...
+   for (i=0; i<terms; i++)
+   {
+    fv[i] += self->child[child].dims;
+    scale[i] += self->child[child].dims;
+   }
+   total += self->child[child].dims;
+ }
+ 
+ // Put fv and scale back how they were...
+  for (i=0; i<terms; i++)
+  {
+   fv[i] -= total;
+   scale[i] -= total;
+  }
+  
+ return ret;
+}
+
+void Composite_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+ 
+ int i;
+ int child;
+ 
+ int total = 0;
+ for (child=0; child<self->children; child++)
+ {
+  // Draw for the current child...
+   self->child[child].kernel->mult_draw(dims, self->child[child].config, terms, fv, scale, out, cache, fake);
+  
+  // Move array pointers to the next item...
+   for (i=0; i<terms; i++)
+   {
+    fv[i] += self->child[child].dims;
+    scale[i] += self->child[child].dims;
+   }
+   out += self->child[child].dims;
+   total += self->child[child].dims;
+ }
+ 
+ // Put fv and scale back how they were...
+  for (i=0; i<terms; i++)
+  {
+   fv[i] -= total;
+   scale[i] -= total;
+  }
+}
+
+
+
 const Kernel Composite =
 {
  "composite",
@@ -1208,6 +1480,8 @@ const Kernel Composite =
  Composite_range,
  Composite_offset,
  Composite_draw,
+ Composite_mult_mass,
+ Composite_mult_draw,
 };
 
 

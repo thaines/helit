@@ -13,6 +13,8 @@
 
 #include <stddef.h>
 
+#include "mult.h"
+
 // Defines the kernels that mean shift uses - as a set of structures containing function pointers that define the functionality, so they can easily be swapped out...
 
 
@@ -52,6 +54,12 @@ typedef float (*KernelOffset)(int dims, KernelConfig config, float * fv, const f
 // Allows you to draw from the kernel (At position centre in the scaled space) - you provide the first 3 indices for the philox rng (It then has the entire range of the 4th value for its own use, whilst remaining entirly predictable.), and also provide an output vector, as well as the configuration as per usual...
 typedef void (*KernelDraw)(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out);
 
+// Given a set of feature vectors, each the centre of an instance of this kernel type, with different scales, this returns how much probability mass is in the multiplication of them - 1 if they all perfectly overlap, 0 if there is no overlap. It is the weight assigned to the multiplication of components if constructing a mixture model via multiplication. In addition to the usual takes as input pointers to arrays of feature vectors and scales, plus a MultCache, which controls how it behaves...
+typedef float (*KernelMultMass)(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache);
+
+// Given a set of features vectors, each the centre of an instance of this kernel type, with different scales, this outputs a draw from the distribution created by multiplying them together. The parameter fake indicates how fake it can be - 0 means it must be a proper draw, 1 means a mode of the resulting distribution is an acceptable alternative, 2 means the 'average' of the locations is allowed (If the distribution is not on Euclidean space this may still be complex.). Only mode 0 has to be truly supported - the others are optional optimisations. Rest of the parameters are identical to KernelMultMass, except for the new 'out' parameter - this must be of length dims so the draw can be dumped into it; note that the draw is output in unscaled space...
+typedef void (*KernelMultDraw)(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake);
+
 
 
 // Define the struct that defines a kernel type...
@@ -73,6 +81,9 @@ struct Kernel
  KernelRange  range;
  KernelOffset offset;
  KernelDraw   draw;
+ 
+ KernelMultMass mult_mass;
+ KernelMultDraw mult_draw;
 };
 
 
@@ -99,6 +110,9 @@ const Kernel Cauchy;
 
 // A kernel based on the von-Mises-Fisher distribution, for dealing with directional data. Requires all samples be on the unit circle. Uses the alpha parameter as the concentration of the kernel being used...
 const Kernel Fisher;
+
+// A kernel that allows you to combine kernels, so you can have different kernels on different features within a feature vector.
+const Kernel Composite;
 
 
 
