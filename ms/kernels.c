@@ -1499,3 +1499,11 @@ const Kernel * ListKernel[] =
  &Composite,
  NULL
 };
+
+
+
+// Dummy function, to make a warning go away because it was annoying me...
+void KernelsModule_IgnoreMe(void)
+{
+ import_array();  
+}

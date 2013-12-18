@@ -1594,6 +1594,53 @@ static PyObject * MeanShift_manifolds_data_py(MeanShift * self, PyObject * args)
 
 
 
+static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject * kw)
+{
+ // Handle the parameters...
+  PyObject * multiplicands;
+  PyArrayObject * output;
+  
+  unsigned int rng0 = 0;
+  unsigned int rng1 = 0;
+  int gibbs = 1;
+  int mci = 1000;
+  int mh = 8;
+  
+  static char * kw_list[] = {"multiplicands", "output", "rng0", "rng1", "gibbs", "mci", "mh", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kw, "O!O!|IIiii", kw_list, &PyList_Type, &multiplicands, &PyArray_Type, &output, &rng0, &rng1, &gibbs, &mci, &mh)) return NULL;
+  
+ // Verify the parameters are all good...
+  if (PyList_Size(multiplicands)<1)
+  {
+   PyErr_SetString(PyExc_RuntimeError, "Need some MeanShift objects to multiply");
+   return NULL;
+  }
+  
+  if (PyObject_IsInstance(PyList_GetItem(multiplicands, 0), (PyObject*)&MeanShiftType)!=1)
+  {
+   PyErr_SetString(PyExc_RuntimeError, "First item in multiplicand list is not a MeanShift object");
+   return NULL; 
+  }
+  
+  // ***************************************
+  
+ 
+ // Create the MultCache, fill in parameters from the args...
+ 
+  
+ // Make sure all the MeanShift object have a Spatial initialised, create the list of Spatials...
+ 
+ 
+ // Call the multiplication method for each draw and let it do the work...
+ 
+ 
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+
 static PyMemberDef MeanShift_members[] =
 {
  {"quality", T_FLOAT, offsetof(MeanShift, quality), 0, "Value between 0 and 1, inclusive - for kernel types that have an infinite domain this controls how much of that domain to use for the calculations - 0 for lowest quality, 1 for the highest quality. (Ignored by kernel types that have a finite kernel.)"},
@@ -1661,6 +1708,8 @@ static PyMethodDef MeanShift_methods[] =
  {"manifold", (PyCFunction)MeanShift_manifold_py, METH_VARARGS, "Given a feature vector and the dimensionality of the manifold projects the feature vector onto the manfold using subspace constrained mean shift. Returns an array with the same shape as the input. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
  {"manifolds", (PyCFunction)MeanShift_manifolds_py, METH_VARARGS, "Given a data matrix [exemplar, feature] and the dimensionality of the manifold projects the feature vectors onto the manfold using subspace constrained mean shift. Returns a data matrix with the same shape as the input. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
  {"manifolds_data", (PyCFunction)MeanShift_manifolds_data_py, METH_VARARGS, "Given the dimensionality of the manifold projects the feature vectors that are defining the density estimate onto the manfold using subspace constrained mean shift. The return value will be indexed in the same way as the provided data matrix, but without the feature dimensions, with an extra dimension at the end to index features. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
+ 
+ {"mult", (PyCFunction)MeanShift_mult_py, METH_KEYWORDS | METH_VARARGS | METH_STATIC, "A static method that allows you to multiply a bunch of kernel density estimates, and draw some samples from the resulting distribution, outputing the samples into an array. The first input must be a list of MeanShift objects (At least of length 1, though if length 1 it just resamples the input), the second a numpy array for the output - it must be 2D and have the same number of columns as all the MeanShift objects have features/dims. Its row count is how many samples will be drawn from the distribution implied by multiplying the KDEs together. Note that the first object in the MeanShift object list gets to set the kernel - it is assumed that all further objects have the same kernel, though if they don't it will still run through under that assumption just fine. Further to the first two inputs dictionary parameters it allows parameters to be set by name: {'rng0': Controls the deterministic random number generator, 'rng1': Ditto, 'gibbs': Number of Gibbs samples to do, noting its multiplied by the length of the multiplication list and is the number of complete passes through the state, 'mci': Number of samples to do if it has to do monte carlo integration, 'mh': Number of Metropolis-Hastings steps it will do if it has to, multiplied by the length of the multiplicand list.}"},
  
  {NULL}
 };

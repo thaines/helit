@@ -11,6 +11,10 @@
 
 
 
+#include "spatial.h"
+
+
+
 // Definitions of a kernel, repeated to handle loops in the dependencies...
 typedef void * KernelConfig;
 typedef struct Kernel Kernel;
@@ -22,28 +26,40 @@ typedef struct MultCache MultCache;
 
 struct MultCache
 {
- int max_dims;
- int max_terms;
+ // Maximum sizes supported...
+  int max_dims;
+  int max_terms;
  
- float * temp_dims1;
- float * temp_dims2;
- float * temp_terms1;
- float * temp_terms2;
+ // Caches that may be used by the inner mult methods...
+  float * temp_dims1;
+  float * temp_dims2;
+  float * temp_terms1;
+  float * temp_terms2;
+  
+ // Caches reserved for the outer Gibbs sampling component (all terms length, except for the scaled, which is dims)...
+  float * scaled;
+  const float ** fv;
+  const float ** scale;
  
- unsigned int rng_index[2];
+ // Random number generation index...
+  unsigned int rng_index[3];
  
- int gibbs_samples;
- int mci_samples;
- int mh_proposals;
+ // Parameters for the various samplers...
+  int gibbs_samples; // Defaults to 1, scaled by the number of terms.
+  int mci_samples; // Default to 1000.
+  int mh_proposals; // Defaults to 8, scaled by number of terms.
 };
 
 
 // Constructor & destructor...
-void MultCache_new(MultCache * self); // Sets samples/proposals to -1!
+void MultCache_new(MultCache * self); // Sets sample counts to default values.
 void MultCache_delete(MultCache * self);
 
 // Makes sure it has enough cache for the given size, re-allocating it if need be...
 void MultCache_ensure(MultCache * self, int dims, int terms);
+
+// Each time the rng_index is used this is called, to move it to the next location...
+void MultCache_inc_rng(MultCache * self);
 
 
 
@@ -57,6 +73,12 @@ float mult_area_mci(const Kernel * kernel, KernelConfig config, int dims, int te
 // Draws from the distribution implied by the multiplication of a bunch of distributions (kernels) - uses Metropolis-Hastings, where the proposal distribution is taken as one of the multiplicands, with no dependence on the current state (This is mathematically elegant, as stuff cancels out and there is no worry about tuning a proposal distribution to get a reasonable accept rate (which is not to say you will get a good accept rate, but under typical usage you probably will).)...
 // First parameters are the kernel, the kernel configuration, the number of dimensions (features) and how many terms are in the multiplicand. The feature vectors and the scale that has been applied to them are the next two parameters, followed by the output array (length # of features), which will output without a scale applied (unlike the inputs, which do have scale applied!). Following that is an initialised MultCache. It returns the number of accepts that occured, for curiosities sake.
 int mult_draw_mh(const Kernel * kernel, KernelConfig config, int dims, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache);
+
+
+
+// This generates a sample from the multiplication of an arbitrary number of kernel density estimates, under the constraint that they all have the same kernel. You provide the kernel and its configuration, then a list of spatials of length terms, where each spatial represents a kernel density estimate. The output is dropped into the so named variable, whilst the MultCache provides caches, indices for deterministic random number generation and parameters for any sampling that may occur. The two temps are arrays, length equal to the largest number of exemplars amung the provided Spatial inputs. quality is the parameter for the kernel range method, fake is the parameter passed to the KernelMultDraw method...
+// (Note: Assumes no repetitions - if any of the spatials has the same data matrix it will break.)
+void mult(const Kernel * kernel, KernelConfig config, int terms, Spatial * spatials, float * out, MultCache * cache, int * temp1, float * temp2, float quality, int fake);
 
 
 
