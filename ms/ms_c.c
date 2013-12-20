@@ -1602,8 +1602,8 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   
   unsigned int rng0 = 0;
   unsigned int rng1 = 0;
-  int gibbs = 1;
-  int mci = 1000;
+  int gibbs = 16;
+  int mci = 64;
   int mh = 8;
   int fake = 0;
   

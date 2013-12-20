@@ -347,7 +347,7 @@ void mult(const Kernel * kernel, KernelConfig config, int terms, Spatial * spati
      }
     
     // Record it...
-     cache->fv[t] = DataMatrix_fv(Spatial_dm(spatials[t]), low, NULL);
+     cache->fv[t] = DataMatrix_fv(Spatial_dm(spatials[t]), index[low], NULL);
    }
   }
   
