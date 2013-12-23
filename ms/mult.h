@@ -70,9 +70,19 @@ float mult_area_mci(const Kernel * kernel, KernelConfig config, int dims, int te
 
 
 
+// Calculates the area under the multiplication of the probability functions, but only when they are Gaussian - an analytic version of mult_area_mci for this special case...
+float mult_area_gaussian(int dims, int terms, const float ** fv, const float ** scale, MultCache * cache);
+
+
+
 // Draws from the distribution implied by the multiplication of a bunch of distributions (kernels) - uses Metropolis-Hastings, where the proposal distribution is taken as one of the multiplicands, with no dependence on the current state (This is mathematically elegant, as stuff cancels out and there is no worry about tuning a proposal distribution to get a reasonable accept rate (which is not to say you will get a good accept rate, but under typical usage you probably will).)...
 // First parameters are the kernel, the kernel configuration, the number of dimensions (features) and how many terms are in the multiplicand. The feature vectors and the scale that has been applied to them are the next two parameters, followed by the output array (length # of features), which will output without a scale applied (unlike the inputs, which do have scale applied!). Following that is an initialised MultCache. It returns the number of accepts that occured, for curiosities sake.
 int mult_draw_mh(const Kernel * kernel, KernelConfig config, int dims, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache);
+
+
+
+// Draw for when the kernel is Gaussian, as we can do that analytically - obviously much faster than using mult_draw_mh. If mode is 0 it does the right thing, otherwise it outputs the mean of the multiplied distribution, which saves a bit of time...
+void mult_draw_gaussian(int dims, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int mode);
 
 
 

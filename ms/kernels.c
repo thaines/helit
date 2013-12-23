@@ -648,30 +648,13 @@ void Gaussian_draw(int dims, KernelConfig config, const unsigned int index[3], c
 
 float Gaussian_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
- return mult_area_mci(&Gaussian, config, dims, terms, fv, scale, cache);
+ return mult_area_gaussian(dims, terms, fv, scale, cache);
 }
 
 void Gaussian_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
 {
- if (fake==2)
- {
-  // We can do the average of feature vector positions option... 
-   int i, j;
-   for (i=0; i<dims; i++) out[i] = 0.0;
-   
-   for (j=0; j<terms; j++)
-   {
-    for (i=0; i<dims; i++)
-    {
-     out[i] += ((fv[j][i] / scale[j][i]) - out[i]) / (j+1);
-    }
-   }
- }
- else
- {
-  // For options 0 and 1 do a proper draw...   
-   mult_draw_mh(&Gaussian, config, dims, terms, fv, scale, out, cache);
- }
+ // Ignore fake==2 option as its computationaly near as the same cost as outputing the mean - call through...
+  mult_draw_gaussian(dims, terms, fv, scale, out, cache, fake);
 }
 
 

@@ -123,7 +123,10 @@ cv.SaveImage('mult_input_draw.png', img)
   
 
 # Iterate and do each of the normal kernels in turn - we want to really dig into this...
-for kernel in filter(lambda k: MeanShift.info_config(k)==None, MeanShift.kernels()):
+kernels = filter(lambda k: MeanShift.info_config(k)==None, MeanShift.kernels())
+kernels = ['gaussian'] + filter(lambda k: k!='gaussian', kernels)
+
+for kernel in kernels:
   print 'Processing', kernel
   # Create the four MeanShift objects...
   def to_ms(data):
