@@ -392,6 +392,89 @@ static PyObject * MeanShift_info_config_py(MeanShift * self, PyObject * args)
 
 
 
+static PyObject * MeanShift_copy_all_py(MeanShift * self, PyObject * args)
+{
+ // Get the parameters - another mean shift object...
+  MeanShift * other;
+  if (!PyArg_ParseTuple(args, "O!", &MeanShiftType, &other)) return NULL;
+  
+ // Clean up current stuff...
+  self->kernel->config_release(self->config);
+  
+  if (self->name!=NULL)
+  {
+   Py_DECREF(self->name);
+   self->name = NULL;
+  }
+  
+  self->weight = -1.0;
+  self->norm = -1.0;
+  
+  if (self->spatial!=NULL)
+  {
+   Spatial_delete(self->spatial);
+   self->spatial = NULL;
+  }
+  
+  if (self->balls!=NULL)
+  {
+   Balls_delete(self->balls); 
+   self->balls = NULL;
+  }
+  
+ // Copy across...
+  self->kernel = other->kernel;
+  
+  self->config = other->config;
+  self->kernel->config_acquire(self->config);
+  
+  if (other->name!=NULL)
+  {
+   self->name = other->name;
+   Py_INCREF(self->name);
+  }
+  
+  self->spatial_type = other->spatial_type;
+  self->balls_type = other->balls_type;
+  
+  self->quality = other->quality;
+  self->epsilon = other->epsilon;
+  self->iter_cap = other->iter_cap;
+  self->ident_dist = other->ident_dist;
+  self->merge_range = other->merge_range;
+  self->merge_check_step = other->merge_check_step;
+  
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+static PyObject * MeanShift_reset_py(MeanShift * self, PyObject * args)
+{
+ // Trash everything dependent on the contents of the data matrix...
+  self->weight = -1.0;
+  self->norm = -1.0;
+  
+  if (self->spatial!=NULL)
+  {
+   Spatial_delete(self->spatial);
+   self->spatial = NULL;
+  }
+  
+  if (self->balls!=NULL)
+  {
+   Balls_delete(self->balls); 
+   self->balls = NULL;
+  }
+  
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None; 
+}
+
+
+
 static PyObject * MeanShift_set_data_py(MeanShift * self, PyObject * args)
 {
  // Extract the parameters...
@@ -1794,6 +1877,9 @@ static PyMethodDef MeanShift_methods[] =
  
  {"info", (PyCFunction)MeanShift_info_py, METH_VARARGS | METH_STATIC, "A static method that is given the name of a kernel, spatial or ball. It then returns a human readable description of that entity."},
  {"info_config", (PyCFunction)MeanShift_info_config_py, METH_VARARGS | METH_STATIC, "Given the name of a kernel this returns None if the kernel does not require any configuration, or a string describing how to configure it if it does."},
+ 
+ {"copy_all", (PyCFunction)MeanShift_copy_all_py, METH_VARARGS, "Copies everything from another mean shift object except for the data structure - kernel, spatial, balls and all exposed parameters. Faster than doing things manually, including the sharing of caches - if you are making lots of MeanShift objects with the same parameters it is strongly recomended to use this."},
+ {"reset", (PyCFunction)MeanShift_reset_py, METH_VARARGS, "Changing the contents of the numpy array that contains the samples wrapped by a MeanShift object will break things, potentially even causing a crash. However, you can change the contents of the array then call this - it will reset all data structures that are built on assumptions about the numpy array. Note that this only works for changing the contents - resizing it will not do anything as the MeanShift object will still have a pointer to the original."},
  
  {"set_data", (PyCFunction)MeanShift_set_data_py, METH_VARARGS, "Sets the data matrix, which defines the probability distribution via a kernel density estimate that everything is using. The data matrix is used directly, so it should not be modified during use as it could break the data structures created to accelerate question answering. First parameter is a numpy matrix (Any normal numerical type), the second a string with its length matching the number of dimensions of the matrix. The characters in the string define the meaning of each dimension: 'd' (data) - changing the index into this dimension changes which exemplar you are indexing; 'f' (feature) - changing the index into this dimension changes which feature you are indexing; 'b' (both) - same as d, except it also contributes an item to the feature vector, which is essentially the position in that dimension (used on the dimensions of an image for instance, to include pixel position in the feature vector). The system unwraps all data indices and all feature indices in row major order to hallucinate a standard data matrix, with all 'both' features at the start of the feature vector. Note that calling this resets scale. A third optional parameter sets an index into the original feature vector (Including the dual dimensions, so you can use one of them to provide weight) that is to be the weight of the feature vector - this effectivly reduces the length of the feature vector, as used by all other methods, by one."}, 
  {"get_dm", (PyCFunction)MeanShift_get_dm_py, METH_NOARGS, "Returns the current data matrix, which will be some kind of numpy ndarray"},

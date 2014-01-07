@@ -73,13 +73,13 @@ int Spatial_next(Spatial this);
 // The various spatial index implimentations provided by this module...
 
 // Stupid spatial index - does nothing and just returns everything every time...
-const SpatialType BruteForceType;
+extern const SpatialType BruteForceType;
 
 // This makes use of dual dimensions in the data matrix, and just brute forces within the range; often however the dual dimensions can cut down the amount of data that needs processing rather drammatically. Note that if there are no dual dimensions it ends up equivalent to brute forcing...
-const SpatialType IterDualType;
+extern const SpatialType IterDualType;
 
 // A classic - the binary kd tree...
-const SpatialType KDTreeType;
+extern const SpatialType KDTreeType;
 
 
 

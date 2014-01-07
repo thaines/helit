@@ -24,7 +24,8 @@ data = numpy.array(map(lambda _: random.normalvariate(0.0, 2.0), xrange(1000)))
 ms = MeanShift()
 ms.set_data(data, 'd')
 
-ms.set_kernel(random.choice(filter(lambda s: s!='fisher', ms.kernels())))
+normal_kernels = [k for k in MeanShift.kernels() if MeanShift.info_config(k)==None]
+ms.set_kernel(random.choice(normal_kernels))
 ms.set_spatial(random.choice(ms.spatials()))
 
 

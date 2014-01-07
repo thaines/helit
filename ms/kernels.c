@@ -1089,7 +1089,10 @@ void Fisher_draw(int dims, KernelConfig config, const unsigned int index[3], con
 
 float Fisher_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
- return mult_area_mci(&Fisher, config, dims, terms, fv, scale, cache);
+ FisherConfig * self = (FisherConfig*)config;
+ return mult_area_fisher(self->alpha, self->log_norm, dims, terms, fv, scale, cache);
+
+ //return mult_area_mci(&Fisher, config, dims, terms, fv, scale, cache);
 }
 
 void Fisher_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
@@ -1395,15 +1398,16 @@ float Composite_mult_mass(int dims, KernelConfig config, int terms, const float 
  for (child=0; child<self->children; child++)
  {
   // Factor in the current child...
-   ret *= self->child[child].kernel->mult_mass(dims, self->child[child].config, terms, fv, scale, cache);
+   int c_dims = self->child[child].dims;
+   ret *= self->child[child].kernel->mult_mass(c_dims, self->child[child].config, terms, fv, scale, cache);
   
   // Move array pointers to the next item...
    for (i=0; i<terms; i++)
    {
-    fv[i] += self->child[child].dims;
-    scale[i] += self->child[child].dims;
+    fv[i] += c_dims;
+    scale[i] += c_dims;
    }
-   total += self->child[child].dims;
+   total += c_dims;
  }
  
  // Put fv and scale back how they were...
@@ -1427,16 +1431,17 @@ void Composite_mult_draw(int dims, KernelConfig config, int terms, const float *
  for (child=0; child<self->children; child++)
  {
   // Draw for the current child...
-   self->child[child].kernel->mult_draw(dims, self->child[child].config, terms, fv, scale, out, cache, fake);
+   int c_dims = self->child[child].dims;
+   self->child[child].kernel->mult_draw(c_dims, self->child[child].config, terms, fv, scale, out, cache, fake);
   
   // Move array pointers to the next item...
    for (i=0; i<terms; i++)
    {
-    fv[i] += self->child[child].dims;
-    scale[i] += self->child[child].dims;
+    fv[i] += c_dims;
+    scale[i] += c_dims;
    }
-   out += self->child[child].dims;
-   total += self->child[child].dims;
+   out += c_dims;
+   total += c_dims;
  }
  
  // Put fv and scale back how they were...

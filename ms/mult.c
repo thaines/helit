@@ -12,6 +12,7 @@
 
 #include "kernels.h"
 #include "philox.h"
+#include "bessel.h"
 
 #include <stdlib.h>
 
@@ -195,6 +196,50 @@ float mult_area_gaussian(int dims, int terms, const float ** fv, const float ** 
    }
   
  return exp(0.5 * half_exp_me - log(norm));
+}
+
+
+
+float mult_area_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ MultCache_ensure(cache, dims, terms);
+ 
+ // Calculate the direction and concentration of the multiplication of the terms - simple vector addition followed by normalisation at the end basically...
+  float * dir = cache->temp_dims1;
+  
+  int i;
+  for (i=0; i<dims; i++) dir[i] = 0.0;
+
+  int j;
+  for (j=0; j<terms; j++)
+  {
+   for (i=0; i<dims; i++) dir[i] += conc * fv[j][i];
+  }
+  
+  float mult_conc = 0.0;
+  for (i=0; i<dims; i++) mult_conc += dir[i] * dir[i];
+  mult_conc = sqrt(mult_conc);
+  
+  for (i=0; i<dims; i++) dir[i] /= mult_conc;
+  
+ // Choose a point - the mode of the multiplied distributions (dir) is safe - and work out the ratio between the area one value and multiplication value, as this gives us the area under the multiplication of the distributions...
+  float exp_me = 0.0;
+  
+  // Put in the value of the normalised distribution...
+   exp_me -= mult_conc;
+   exp_me -= (0.5 * dims - 1) * log(mult_conc);
+   exp_me += (0.5 * dims) * log(2 * M_PI);
+   exp_me += LogModBesselFirst(dims-2, mult_conc, 1e-6, 1024);
+   
+  // Loop through and divide by each Fisher in turn...
+   for (j=0; j<terms; j++)
+   {
+    float dot = 0.0;
+    for (i=0; i<dims; i++) dot += dir[i] * fv[j][i];
+    exp_me += conc * dot + log_norm;
+   }
+  
+ return exp(exp_me);
 }
 
 

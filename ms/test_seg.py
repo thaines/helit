@@ -39,7 +39,8 @@ image = cv2array(image)
 ms = MeanShift()
 ms.set_data(image, 'bbf')
 
-ms.set_kernel(random.choice(filter(lambda s: s!='fisher', ms.kernels())))
+normal_kernels = [k for k in MeanShift.kernels() if MeanShift.info_config(k)==None]
+ms.set_kernel(random.choice(normal_kernels))
 ms.set_spatial('iter_dual')
 ms.set_balls('hash')
 

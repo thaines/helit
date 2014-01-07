@@ -77,7 +77,8 @@ cv.SaveImage('draw_input.png', image)
 # Setup the mean shift object...
 ms = MeanShift()
 ms.set_data(data, 'df')
-ms.set_kernel(random.choice(filter(lambda s: s!='fisher', ms.kernels())))
+normal_kernels = [k for k in MeanShift.kernels() if MeanShift.info_config(k)==None]
+ms.set_kernel(random.choice(normal_kernels))
 ms.set_spatial('kd_tree')
 
 print 'kernel = %s' % ms.get_kernel()

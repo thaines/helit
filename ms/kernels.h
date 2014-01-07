@@ -91,28 +91,28 @@ struct Kernel
 // Kernels provided by this code...
 
 // Most basic of kernels - constant value if its within a hypersphere, zero if its outside...
-const Kernel Uniform;
+extern const Kernel Uniform;
 
 // Basic linear falloff from the centre of the hyper-sphere...
-const Kernel Triangular;
+extern const Kernel Triangular;
 
 // Basically triangular where the distance is squared - creates a nice bump...
-const Kernel Epanechnikov;
+extern const Kernel Epanechnikov;
 
 // Uses a  consine curve - a slightly smoother version of epanechnikov, though considerably more expensive to compute...
-const Kernel Cosine;
+extern const Kernel Cosine;
 
 // Probably the most popular kernel - the Gaussian, in this case symmetric as its on the distance from the centre. Cutoff is required for this kernel...
-const Kernel Gaussian;
+extern const Kernel Gaussian;
 
 // A fat tailed one - the Cauchy distribution on distance from the centre. Cutoff is required for this kernel - can be quite expensive as you need a fairly distant cutoff...
-const Kernel Cauchy;
+extern const Kernel Cauchy;
 
 // A kernel based on the von-Mises-Fisher distribution, for dealing with directional data. Requires all samples be on the unit circle. Uses the alpha parameter as the concentration of the kernel being used...
-const Kernel Fisher;
+extern const Kernel Fisher;
 
 // A kernel that allows you to combine kernels, so you can have different kernels on different features within a feature vector.
-const Kernel Composite;
+extern const Kernel Composite;
 
 
 

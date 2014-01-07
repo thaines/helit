@@ -84,10 +84,10 @@ int Balls_within(Balls this, const float * pos);
 // The various implimentations provided by this module...
 
 // Simple list - does a brute force search each time...
-const BallsType BallsListType;
+extern const BallsType BallsListType;
 
 // Spatial hashing version - divides the space into grid cells, storing each hyper-sphere into all grid cells with which it collides. Makes within tests very fast...
-const BallsType BallsHashType;
+extern const BallsType BallsHashType;
 
 
 

@@ -27,7 +27,8 @@ data = numpy.concatenate((x.reshape((-1,1)), y.reshape((-1,1))), axis=1)
 ms = MeanShift()
 ms.set_data(data, 'df')
 
-ms.set_kernel(random.choice(filter(lambda s: s!='fisher', ms.kernels())))
+normal_kernels = [k for k in MeanShift.kernels() if MeanShift.info_config(k)==None]
+ms.set_kernel(random.choice(normal_kernels))
 ms.set_spatial(random.choice(ms.spatials()))
 ms.set_scale(numpy.ones(2), 1)
 

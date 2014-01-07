@@ -51,7 +51,8 @@ data *= scale
 ms = MeanShift()
 ms.set_data(data, 'df')
 
-ms.set_kernel(random.choice(filter(lambda s: s!='fisher', ms.kernels())))
+normal_kernels = [k for k in MeanShift.kernels() if MeanShift.info_config(k)==None]
+ms.set_kernel(random.choice(normal_kernels))
 ms.set_spatial(random.choice(ms.spatials()))
 
 
