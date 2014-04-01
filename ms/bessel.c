@@ -61,6 +61,63 @@ float ModBesselFirst(int orderX2, float x, float accuracy, int limit)
 
 float LogModBesselFirst(int orderX2, float x, float accuracy, int limit)
 {
+ // Special case problem values...
+  if (orderX2==0) return LogModBesselFirstAlt(orderX2, x, accuracy, limit);
+  if (x<1e-12) return -1e32;
+ 
+ accuracy = log(accuracy);
+ 
+ // Create the very first term, set ret to be it...
+  float term = x - 0.5 * log(2.0 * M_PI * x) - LogGamma(orderX2+1);
+
+  float inc_gam = LogLowerIncompleteGamma(orderX2 + 1, 2.0 * x);
+  term += inc_gam;
+  int sign = 1;
+  
+  float ret = term;
+
+ // Keep summing in terms until the desired accuracy is reached, or we obtain a term with zero in, meaning we have obtained 100% accuracy and can stop...
+  int n;
+  float log2x = log(2.0 * x);
+  for (n=1; n<limit; n++)
+  {
+   // Move to next inc_gam, factoring it into the term...
+    term -= inc_gam;
+   
+    float smo = 0.5 * (orderX2 + 2*n - 1);
+    inc_gam += log(smo);
+    inc_gam += log(1.0 - exp(smo * log2x - 2.0 * x - inc_gam));
+    
+    term += inc_gam;
+    
+   // Update term...
+    int mult2X = 1 - orderX2 + 2 * (n - 1);
+    if (mult2X==0) break; // Term has zero in - this term and all further add nil.
+    
+    if (mult2X<0)
+    {
+     sign *= -1;
+     mult2X = -mult2X;
+    }
+    
+    term += log(0.5 * mult2X);
+    term -= log(n) + log2x;
+
+   // Add in or subtract in term - we can always assume its less than the previous...
+    ret += log(1.0 + sign * exp(term - ret));
+   
+   // If the accuracy is high enough, terminate...
+    if (term<accuracy) break;
+  }
+ 
+ // Return...
+  return ret;
+}
+
+
+
+float LogModBesselFirstAlt(int orderX2, float x, float accuracy, int limit)
+{
  accuracy = log(accuracy);
  
  // Various simple things...
@@ -125,4 +182,60 @@ float LogGamma(int x2)
   }
  
  return ret; 
+}
+
+
+
+float ERF(float x)
+{
+ float t = 1.0 / (1.0 + 0.5 * fabs(x));
+ float t2 = t * t;
+ float t3 = t2 * t;
+ float t4 = t2 * t2;
+ float t5 = t2 * t3;
+ float t6 = t3 * t3;
+ float t7 = t3 * t4;
+ float t8 = t4 * t4;
+ float t9 = t3 * t6;
+ 
+ float inner = -x * x - 1.26551223 + 1.00002368 * t + 0.37409196 * t2 + 0.09678418 * t3 - 0.18628806 * t4 + 0.27886807 * t5 - 1.13520398 * t6 + 1.48851587 * t7 - 0.82215223 * t8 + 0.17087277 * t9;
+ 
+ if (x>=0.0) return 1.0 - exp(inner + log(t));
+        else return exp(inner + log(t)) - 1.0;
+}
+
+
+
+float LogLowerIncompleteGamma(int x2, float limit)
+{
+ float ret;
+ 
+ // Zero case...
+  if (x2==0) return 0.0 / 0.0; // Not defined.
+ 
+ // Handle the half/integer component...
+  int i;
+  if (x2%2==0)
+  {
+   // Integer... 
+    ret = log(1.0 - exp(-limit));
+    i = 2;
+  }
+  else
+  {
+   // Half...
+    ret = 0.5 * log(M_PI) + log(ERF(sqrt(limit)));
+    i = 1;
+  }
+
+ // Iterate to upgrade it to the actual requested value via the recursive relationship between offsets of 1...
+  float log_limit = log(limit);
+  for (;i<x2; i+=2)
+  {
+   float smo = 0.5 * i;
+   ret += log(smo);
+   ret += log(1.0 - exp(smo * log_limit - limit - ret));
+  }
+ 
+ return ret;
 }

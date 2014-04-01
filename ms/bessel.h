@@ -16,13 +16,26 @@ float ModBesselFirst(int orderX2, float x, float accuracy, int limit);
 
 
 
-// Returns the log of ModBesselFirst - much more numerically stable, and highly recomended, though takes a touch more computation...
+// Returns the log of ModBesselFirst - much more numerically stable, and highly recomended, though takes a touch more computation. Can work with arbitrary values as it does everything in log space...
 float LogModBesselFirst(int orderX2, float x, float accuracy, int limit);
 
+// Alternate version of the above - really an older version that is slower that I am not terminating yet as its principally faster for really low values and capable of greater accuracy...
+float LogModBesselFirstAlt(int orderX2, float x, float accuracy, int limit);
 
 
-// Ok, it has nothing to do with the Bessel function, but this seemed the best place to put it - calculates the log of the gamma function, where you provide the value as an integer that is twice x...
+
+// Ok, it has nothing to do with the Bessel function (well, they are related), but this seemed the best place to put it - calculates the log of the gamma function, where you provide the value as an integer that is twice x...
 float LogGamma(int x2);
+
+
+
+// As above - this time we are doing the error function. Note that an approximation that is accurate to about 6 digits is being used...
+float ERF(float x);
+
+
+
+// Just to complete the set - you provide the value to calculate for as an integer, that is twice the value, so you can do the integers and halfs, plus the limit as to how high in the integral it goes...
+float LogLowerIncompleteGamma(int x2, float limit);
 
 
 

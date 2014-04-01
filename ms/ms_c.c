@@ -1977,7 +1977,7 @@ static PyMethodDef ms_c_methods[] =
 
 
 
-//#include "bessel.h"
+#include "bessel.h"
 
 
 
@@ -1992,22 +1992,29 @@ PyMODINIT_FUNC initms_c(void)
  import_array();
  
  if (PyType_Ready(&MeanShiftType) < 0) return;
+
+//  printf("lower incomplete gamma function: (0.5, 0.2) -> %f\n", exp(LogLowerIncompleteGamma(1, 0.2)));
+//  printf("lower incomplete gamma function: (1, 1.8) -> %f\n", exp(LogLowerIncompleteGamma(2, 1.8)));
+//  printf("lower incomplete gamma function: (1.5, 7.4) -> %f\n", exp(LogLowerIncompleteGamma(3, 7.4)));
+//  printf("lower incomplete gamma function: (2, 3.2) -> %f\n", exp(LogLowerIncompleteGamma(4, 3.2)));
+//  printf("lower incomplete gamma function: (2.5, 5.2) -> %f\n", exp(LogLowerIncompleteGamma(5, 5.2)));
+//  printf("lower incomplete gamma function: (8, 7.1) -> %f\n", exp(LogLowerIncompleteGamma(16, 7.1)));
  
- //int order, x;
- //for (order=0; order<7; order++)
- //{
- // for (x=0; x<9; x++)
- // {
- //  printf("modified bessel function , first kind (order=%f,x=%f) = %f = %f\n", (float)(0.5*order), (float)x, ModBesselFirst(order, x, 1e-6, 1024), exp(LogModBesselFirst(order, x, 1e-6, 1024)));
- // }
- //}
- //printf("modified bessel function , first kind (order=3,x=48) = %f = %f\n", //ModBesselFirst(6, 48.0, 1e-6, 1024), exp(LogModBesselFirst(6, 48.0, 1e-6, 1024)));
+ int order, x;
+ for (order=0; order<7; order++)
+ {
+  for (x=0; x<9; x++)
+  {
+   printf("modified bessel function , first kind (order=%f,x=%f) = %f = %f\n", (float)(0.5*order), (float)x, ModBesselFirst(order, x, 1e-6, 1024), exp(LogModBesselFirst(order, x, 1e-6, 1024)));
+  }
+ }
+ printf("modified bessel function , first kind (order=3,x=48) = %f = %f\n", ModBesselFirst(6, 48.0, 1e-6, 1024), exp(LogModBesselFirst(6, 48.0, 1e-6, 1024)));
  
- //int x2;
- //for (x2=0; x2<9; x2++)
- //{
- // printf("log gamma (%f) = %f\n", 0.5*x2, LogGamma(x2));
- //}
+//  int x2;
+//  for (x2=0; x2<9; x2++)
+//  {
+//   printf("log gamma (%f) = %f\n", 0.5*x2, LogGamma(x2));
+//  }
  
  Py_INCREF(&MeanShiftType);
  PyModule_AddObject(mod, "MeanShift", (PyObject*)&MeanShiftType);
