@@ -14,6 +14,7 @@
 // Pre-declerations...
 typedef struct Node Node;
 typedef struct HalfEdge HalfEdge;
+typedef struct Block Block;
 typedef struct GBP GBP;
 
 
@@ -47,6 +48,15 @@ struct HalfEdge
 
 
 
+// A block - a big lump of HalfEdge structures so we don't malloc too often.
+struct Block
+{
+ Block * next;
+ HalfEdge data[0]; 
+};
+
+
+
 // The actual object...
 struct GBP
 {
@@ -55,10 +65,12 @@ struct GBP
  int node_count;
  Node * node;
  
- int half_edge_count; // No list - access by looping nodes.
+ int edge_count; // No list - access by looping nodes.
+ 
+ HalfEdge * gc; // Linked list of half edge pairs that can be recycled; use next pointer.
  
  int block_size; // Number of half edge pairs to malloc at a time.
- HalfEdge * gc; // Linked list of half edge pairs that can be recycled; use next pointer.
+ Block * storage;
 };
 
 
