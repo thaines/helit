@@ -324,6 +324,8 @@ static PyObject * GBP_reset_pairwise_py(GBP * self, PyObject * args)
      
      targ->next = self->gc;
      self->gc = self->node[i].first;
+     
+     self->node[i].first = NULL;
     }
    }
    
@@ -484,7 +486,7 @@ static PyObject * GBP_reset_pairwise_py(GBP * self, PyObject * args)
       }
       else
       {
-       HalfEdge * t = targ_a->first;
+       HalfEdge * t = targ_b->first;
        while (t->next->dest!=targ_a)
        {
         t = t->next;  
