@@ -33,7 +33,7 @@ static inline float HalfEdge_offset_prec(HalfEdge * he)
 }
 
 // Allows you to multiply the existing offset with another one - this is equivalent to set in the first instance when its initialised to a zero precision...
-static float HalfEdge_offset_mult(HalfEdge * he, float offset, float prec)
+static void HalfEdge_offset_mult(HalfEdge * he, float offset, float prec)
 {
  if (he < he->reverse)
  {
@@ -45,6 +45,91 @@ static float HalfEdge_offset_mult(HalfEdge * he, float offset, float prec)
   he->pairwise += prec;
   he->reverse->pairwise -= offset * prec; 
  }
+}
+
+
+// Returns a new edge, as an edge with the reverse pointer set (leaves dest and next to the user to initialise)...
+static HalfEdge * GBP_new_edge(GBP * this)
+{
+ // Get one half edge (we know we always deal with HalfEdge-s in pairs, hence why the below is safe)...
+  if (this->gc==NULL)
+  {
+   Block * nb = (Block*)malloc(sizeof(Block) + sizeof(HalfEdge) * 2 * this->block_size);
+   nb->next = this->storage;
+   this->storage = nb;
+   
+   int i;
+   for (i=this->block_size*2-1; i>=0; i--)
+   {
+    nb->data[i].next = this->gc;
+    this->gc = nb->data + i;
+   }
+  }
+
+  HalfEdge * a = this->gc;
+  this->gc = a->next;
+  
+  HalfEdge * b = this->gc;
+  this->gc = b->next;
+  
+ // Do a basic initialisation on them...
+  a->reverse = b;
+  a->pairwise = 0.0;
+  a->pmean = 0.0;
+  a->prec = 0.0;
+  
+  b->reverse = a;
+  b->pairwise = 0.0;
+  b->pmean = 0.0;
+  b->prec = 0.0;
+  
+ // Return a...
+  this->edge_count += 1;
+  return a;
+}
+
+
+// If a requested edge exists return it, otherwise return NULL...
+static inline HalfEdge * GBP_get_edge(GBP * this, int a, int b)
+{
+ Node * from = this->node + a;
+ Node * to   = this->node + b;
+  
+ HalfEdge * targ = from->first;
+ while (targ!=NULL)
+ {
+  if (targ->dest==to) return targ; 
+ }
+}
+
+
+// Given a pair of node indices returns the edge connecting them, noting that if it does not exist it creates it. b will be the returned half edges destination...
+static HalfEdge * GBP_always_get_edge(GBP * this, int a, int b)
+{
+ Node * from = this->node + a;
+ Node * to   = this->node + b;
+  
+ // Check if it already exists, and return if so...
+  HalfEdge * targ = from->first;
+  while (targ!=NULL)
+  {
+   if (targ->dest==to) return targ; 
+  }
+  
+ // Does not exist, so create it...
+  targ = GBP_new_edge(this);
+  
+  targ->dest = to;
+  targ->reverse->dest = from;
+  
+  targ->next = from->first;
+  from->first = targ;
+  
+  targ->reverse->next = to->first;
+  to->first = targ->reverse;
+  
+ // Return the newly created edge...
+  return targ;
 }
 
 
@@ -68,7 +153,7 @@ void GBP_new(GBP * this, int node_count)
  
  this->gc = NULL;
  
- this->block_size = 1024;
+ this->block_size = 512;
  this->storage = NULL;
 }
 
@@ -109,6 +194,159 @@ static void GBP_dealloc_py(GBP * self)
 
 
 
+// Helper function - given a numpy object to mean a range of nodes this outputs information to allow that loop to be done. Allways outputs a standard set of slice details (start, step, length), and also optionally outputs an numpy array to be checked at each position in the slice loop if its not NULL. Note that if the array is output it must be reference decrimented after use. Returns 0 on success, -1 on failure (in which case an error will have been set and arr will definitely be NULL). Note that it doesn't range check if an array is involved...
+int GBP_index(GBP * this, PyObject * arg, Py_ssize_t * start, Py_ssize_t * step, Py_ssize_t * length, PyArrayObject ** arr)
+{
+ *arr = NULL;
+ 
+ if (arg==NULL)
+ {
+  *start = 0;
+  *step = 1;
+  *length = this->node_count;
+  
+  return 0;
+ }
+ 
+ if (PyInt_Check(arg)!=0)
+ {
+  *start = PyNumber_AsSsize_t(arg, NULL); 
+  
+  if ((*start<0)||(*start>=this->node_count))
+  {
+   PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+   return -1; 
+  }
+  
+  *step = 1;
+  *length = 1;
+  
+  return 0;
+ }
+ 
+ if (PySlice_Check(arg)!=0)
+ {
+  Py_ssize_t stop;
+    
+  if (PySlice_GetIndicesEx((PySliceObject*)arg, this->node_count, start, &stop, step, length)!=0)
+  {
+   PyErr_SetString(PyExc_IndexError, "Slice doesn't play with the length.");
+   return -1;
+  }
+  
+  return 0;
+ }
+ 
+ *arr = (PyArrayObject*)PyArray_ContiguousFromAny(arg, NPY_INTP, 1, 1);
+ if (*arr!=NULL)
+ {
+  *start = 0;
+  *step = 1;
+  *length = PyArray_DIMS(*arr)[0];
+  
+  return 0;
+ }
+ 
+ PyErr_SetString(PyExc_TypeError, "Don't know how to index with that!");
+ return -1;
+}
+
+
+
+static PyObject * GBP_reset_unary_py(GBP * self, PyObject * args)
+{
+ // Fetch the parameter...
+  PyObject * index = NULL;
+  if (!PyArg_ParseTuple(args, "|O", &index)) return NULL;
+  
+ // Convert the input into something we can dance with...
+  Py_ssize_t start;
+  Py_ssize_t step;
+  Py_ssize_t length;
+  PyArrayObject * arr;
+  
+  if (GBP_index(self, index, &start, &step, &length, &arr)!=0) return NULL; 
+  
+ // Do the loop...
+  int i, ii, iii; // I need better names for these!..
+  for (i=0, ii=start; i<length; i++, ii+=step)
+  {
+   // Handle the array scenario...
+    iii = ii;
+    if (arr!=NULL)
+    {
+     iii = *(int*)PyArray_GETPTR1(arr, ii);
+     if ((iii<0)||(iii>=self->node_count))
+     {
+      Py_DECREF(arr);
+      PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+      return NULL;
+     }
+    }
+   
+   // Store some zeroes...
+    self->node[iii].unary_p_mean = 0.0;
+    self->node[iii].unary_prec   = 0.0;
+  }
+  
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+static PyObject * GBP_reset_pairwise_py(GBP * self, PyObject * args)
+{
+ // Fetch the parameters...
+  PyObject * index_a = NULL;
+  PyObject * index_b = NULL;
+  if (!PyArg_ParseTuple(args, "|OO", &index_a)) return NULL;
+
+ // Special case two NULLs - i.e. delete everything...
+  if ((index_a==NULL)&&(index_b==NULL))
+  {
+   int i;
+   for (i=0; i<self->node_count; i++)
+   {
+    if (self->node[i].first!=NULL)
+    {
+     HalfEdge * targ = self->node[i].first;
+     while (targ->next!=NULL)
+     {
+      targ = targ->next; 
+     }
+     
+     targ->next = self->gc;
+     self->gc = self->node[i].first;
+    }
+   }
+   
+   self->edge_count = 0;
+   
+   Py_INCREF(Py_None);
+   return Py_None;
+  }
+  
+ // Interpret the index_a indices...
+  
+
+ // Special case one null, i.e. terminate all edges leaving given nodes...
+ 
+ 
+ // Interpret the index_b indices...
+ 
+ 
+ // Do the loop - above means we only have to code one double loop...
+
+ 
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+
+
 static PyMemberDef GBP_members[] =
 {
  {"node_count", T_INT, offsetof(GBP, node_count), 0, "Number of nodes in the graph"},
@@ -120,10 +358,10 @@ static PyMemberDef GBP_members[] =
 
 static PyMethodDef GBP_methods[] =
 {
- //{"reset_unary", (PyCFunction)GBP_reset_unary_py, METH_VARARGS, "Given array indexing (integer, slice or numpy array) this resets the unary term for all of the given node indices, back to 'no information'."},
- //{"reset_pairwise", (PyCFunction)GBP_reset_pairwise_py, METH_VARARGS, "Given two inputs, as indices of nodes between an edge this resets that edge to provide 'no relationship' between the nodes. Can do one edge with two integers or a set of edges with two numpy arrays. Can give one input as an integer and another as a numpy array to do a list of edges that all include the same node. Can omit the second parameter to wipe out all edges for a given node or set of nodes."},
+ {"reset_unary", (PyCFunction)GBP_reset_unary_py, METH_VARARGS, "Given array indexing (integer, slice, numpy array or something that can be interpreted as an array) this resets the unary term for all of the given node indices, back to 'no information'."},
+ {"reset_pairwise", (PyCFunction)GBP_reset_pairwise_py, METH_VARARGS, "Given two inputs, as indices of nodes between an edge this resets that edge to provide 'no relationship' between the nodes. Can do one edge with two integers or a set of edges with two numpy arrays. Can give one input as an integer and another as a numpy array to do a list of edges that all include the same node. Can omit the second parameter to wipe out all edges for a given node or set of nodes, or both to wipe them all up."},
  
- //{"unary", (PyCFunction)GBP_unary_py, METH_VARARGS, "Given three parameters - the node indices, then the means and then the precision values (inverse variance/inverse squared standard deviation). It then updates the nodes by multiplying the unary term already in the node with the given, noting that this is a set for a node that has not yet had unary called on it/been reset. For the node indicies it accepts an integer, a slice or a numpy array. For the mean and precision it accepts either floats or a numpy array, noting that if an array is too small it will be accessed modulus the number of nodes provided."},
+ //{"unary", (PyCFunction)GBP_unary_py, METH_VARARGS, "Given three parameters - the node indices, then the means and then the precision values (inverse variance/inverse squared standard deviation). It then updates the nodes by multiplying the unary term already in the node with the given, noting that this is a set for a node that has not yet had unary called on it/been reset. For the node indicies it accepts an integer, a slice, a numpy array or something that can be converted into a numpy array. For the mean and precision it accepts either floats or a numpy array, noting that if an array is too small it will be accessed modulus the number of nodes provided."},
  //{"pairwise", (PyCFunction)GBP_pairwise_py, METH_VARARGS, "Given four parameters - the from node index, the too node index, the expected offset in the implied direction and the precision. Has the same amount of flexability as the unary method, except it insists that the two node index objects have the same length."},
  
  //{"solve", (PyCFunction)GBP_solve_py, METH_VARARGS, "Solves the model - optionally given two parameters - the iteration cap and the epsilon, which default to 1024 and 1e-4 respectivly. Returns how many iterations have been performed."},
