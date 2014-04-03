@@ -529,8 +529,28 @@ static PyObject * GBP_unary_py(GBP * self, PyObject * args)
   
   if (GBP_index(self, index, &start, &step, &length, &arr, NULL)!=0) return NULL;
   
-  PyArrayObject * mean = (PyArrayObject*)PyArray_ContiguousFromAny(mean_obj, NPY_DOUBLE, 1, 1);
-  PyArrayObject * prec = (PyArrayObject*)PyArray_ContiguousFromAny(prec_obj, NPY_DOUBLE, 1, 1);
+  PyArrayObject * mean = NULL;
+  if ((PyInt_Check(mean_obj)==0)&&(PyFloat_Check(mean_obj)==0))
+  {
+   mean = (PyArrayObject*)PyArray_ContiguousFromAny(mean_obj, NPY_DOUBLE, 1, 1);
+   if (mean==NULL)
+   {
+    Py_XDECREF(arr);
+    return NULL;
+   }
+  }
+  
+  PyArrayObject * prec = NULL;
+  if ((PyInt_Check(prec_obj)==0)&&(PyFloat_Check(prec_obj)==0))
+  {
+   prec = (PyArrayObject*)PyArray_ContiguousFromAny(prec_obj, NPY_DOUBLE, 1, 1); 
+   if (prec==NULL)
+   {
+    Py_XDECREF(arr);
+    Py_XDECREF(mean);
+    return NULL;
+   }
+  }
   
  // Loop through and set the required values...
   int i, ii, iii;
@@ -618,8 +638,30 @@ static PyObject * GBP_pairwise_py(GBP * self, PyObject * args)
   }
 
  // Now offset and precision...
-  PyArrayObject * offset = (PyArrayObject*)PyArray_ContiguousFromAny(offset_obj, NPY_DOUBLE, 1, 1);
-  PyArrayObject * prec = (PyArrayObject*)PyArray_ContiguousFromAny(prec_obj, NPY_DOUBLE, 1, 1);
+  PyArrayObject * offset = NULL;
+  if ((PyInt_Check(offset_obj)==0)&&(PyFloat_Check(offset_obj)==0))
+  {
+   offset = (PyArrayObject*)PyArray_ContiguousFromAny(offset_obj, NPY_DOUBLE, 1, 1);
+   if (offset==NULL)
+   {
+    Py_XDECREF(arr_from);
+    Py_XDECREF(arr_to);
+    return NULL;
+   }
+  }
+   
+  PyArrayObject * prec = NULL;
+  if ((PyInt_Check(prec_obj)==0)&&(PyFloat_Check(prec_obj)==0))
+  {
+   prec = (PyArrayObject*)PyArray_ContiguousFromAny(prec_obj, NPY_DOUBLE, 1, 1);
+   if (prec==NULL)
+   {
+    Py_XDECREF(arr_from);
+    Py_XDECREF(arr_to);
+    Py_XDECREF(offset);
+    return NULL;
+   }
+  }
   
  // Loop through and set the required values...
   int i, from_ii, to_ii, from_iii, to_iii;
@@ -823,7 +865,7 @@ static PyObject * GBP_result_py(GBP * self, PyObject * args)
   }
   else
   {
-   if ((PyArray_NDIM(mean)!=1)||(PyArray_DIMS(mean)[0]!=length)||(PyArray_DESCR(mean)->kind!='f'))
+   if ((PyArray_NDIM(mean)!=1)||(PyArray_DIMS(mean)[0]!=length)||(PyArray_DESCR(mean)->kind!='f')||(PyArray_DESCR(mean)->elsize!=sizeof(float)))
    {
     PyErr_SetString(PyExc_TypeError, "Provided mean array did not satisfy the requirements");
     Py_XDECREF(arr);
@@ -840,7 +882,7 @@ static PyObject * GBP_result_py(GBP * self, PyObject * args)
   }
   else
   {
-   if ((PyArray_NDIM(prec)!=1)||(PyArray_DIMS(prec)[0]!=length)||(PyArray_DESCR(prec)->kind!='f'))
+   if ((PyArray_NDIM(prec)!=1)||(PyArray_DIMS(prec)[0]!=length)||(PyArray_DESCR(prec)->kind!='f')||(PyArray_DESCR(prec)->elsize!=sizeof(float)))
    {
     PyErr_SetString(PyExc_TypeError, "Provided prec array did not satisfy the requirements");
     Py_XDECREF(arr);
@@ -872,25 +914,10 @@ static PyObject * GBP_result_py(GBP * self, PyObject * args)
     
    // Store the relevant values for this entry...
     float p = self->node[iii].prec;
-    if (PyArray_DESCR(prec)->elsize==sizeof(float))
-    {
-     *(float*)PyArray_GETPTR1(prec, i) = p;
-    }
-    else
-    {
-     // Assume double - its not like I can handle any otehr floating point type!
-      *(double*)PyArray_GETPTR1(prec, i) = p; 
-    }
-    
+    *(float*)PyArray_GETPTR1(prec, i) = p;
+
     float m = self->node[iii].pmean / ((p>1e-6)?(p):(1e-6));
-    if (PyArray_DESCR(mean)->elsize==sizeof(float))
-    {
-     *(float*)PyArray_GETPTR1(mean, i) = m;
-    }
-    else
-    {
-     *(double*)PyArray_GETPTR1(mean, i) = m; 
-    }
+    *(float*)PyArray_GETPTR1(mean, i) = m;
   }
  
  // Clean up and return... 
@@ -902,8 +929,9 @@ static PyObject * GBP_result_py(GBP * self, PyObject * args)
 
 static PyMemberDef GBP_members[] =
 {
- {"node_count", T_INT, offsetof(GBP, node_count), 0, "Number of nodes in the graph"},
- {"edge_count", T_INT, offsetof(GBP, edge_count), 0, "Number of edges in the graph"},
+ {"node_count", T_INT, offsetof(GBP, node_count), READONLY, "Number of nodes in the graph"},
+ {"edge_count", T_INT, offsetof(GBP, edge_count), READONLY, "Number of edges in the graph"},
+ {"block_size", T_INT, offsetof(GBP, block_size), 0, "Number of edges worth of memory to allocate each time it runs out of space for more."},
  {NULL}
 };
 
