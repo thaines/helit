@@ -24,7 +24,7 @@ struct Node
 {
  HalfEdge * first; // First half edge leaving this node. 
  
- float unary_p_mean; // p-mean for the unary term.
+ float unary_pmean; // p-mean for the unary term.
  float unary_prec; // Precision for the unary term; can be zero.
  
  float pmean; // Estimated p-mean for this random variable.

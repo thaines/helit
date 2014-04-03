@@ -12,6 +12,21 @@ import numpy
 
 
 
+# Setup a simple problem...
 solver = GBP(8)
 
+solver.unary(0, 0.0, 5.0)
+solver.unary(7, 10.0, 5.0)
+solver.pairwise(slice(None,-1), slice(1, None), 0.0, 1.0)
 
+
+
+# Solve it and print out the means and precisions...
+iters = solver.solve()
+print 'iters =', iters
+
+mean, prec = solver.result()
+print 'Mean:'
+print mean
+print 'Precison:'
+print prec
