@@ -1,3 +1,5 @@
+#! /usr/bin/env python
+
 # Copyright 2014 Tom SF Haines
 
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
@@ -6,13 +8,21 @@
 
 # Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 
-
-try:
-  from utils.make import make_mod
-  import os.path
-
-  make_mod('gbp_c', os.path.dirname(__file__), ['gbp_c.h', 'gbp_c.c'])
-except: pass
+from distutils.core import setup, Extension
 
 
-from gbp_c import *
+
+depends = ['gbp_c.h']
+code = ['gbp_c.c']
+
+ext = Extension('gbp_c', code, depends=depends)
+
+setup(name='gbp',
+      version='1.0.0',
+      description='Gaussian belief propagation',
+      author='Tom SF Haines',
+      author_email='thaines@gmail.com',
+      url='http://code.google.com/p/haines/',
+      py_modules=['gbp'],
+      ext_modules=[ext],
+     )
