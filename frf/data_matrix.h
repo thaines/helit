@@ -13,8 +13,6 @@
 
 // Provides a wrapper around numpy objects that allows you to stitch several together to make a data matrix with both continuous and discrete values in...
 
-
-
 #include <Python.h>
 #include <structmember.h>
 
@@ -93,7 +91,6 @@ struct DataMatrix
 // New and delete for a DataMatrix - its flexibility means that it has varying malloc sizes, so this gets complicated internally. Constructor accepts a single numpy array or a list of numpy arrays, where the arrays would typically be 2D. 1D arrays can be accepted under the assumption that the feature dimension is of size 1. New will return null with an error set if something is pear shaped...
 DataMatrix * DataMatrix_new(PyObject * obj);
 void DataMatrix_delete(DataMatrix * this);
-
 
 
 // Accessors for the DataMatrix object - pretty straight forward really...
