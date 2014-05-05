@@ -30,7 +30,7 @@ typedef void * Summary;
 
 // Creates a new Summary object of the given type - requires a DataMatrix to summarise, an exemplar index view to tell it which exemplars to summarise and a feature index of which index to summarise...
 typedef Summary (*SummaryNew)(DataMatrix * dm, IndexView * view, int feature);
-  
+
 // Standard delete...
 typedef void (*SummaryDelete)(Summary this);
 
@@ -40,6 +40,12 @@ typedef PyObject * (*SummaryMergePy)(int trees, Summary * sums, int offset);
 // As above, but for multiple test exemplars, point being the Python summary can give a datamatrix-like response and be much more efficient this way. Outer is exemplars, inner is trees when going through the sums array...
 typedef PyObject * (*SummaryMergeManyPy)(int exemplars, int trees, Summary * sums, int offset);
 
+// Load from a pointer to a memory block, optionally outputs how many bytes its read. On error will return null and set a python error...
+typedef Summary (*SummaryFromBytes)(void * in, size_t * ate);
+
+// For converting the object into a blob of bytes - first returns how many bytes are required, second outputs them...
+typedef size_t (*SummarySize)(Summary this);
+typedef void (*SummaryToBytes)(Summary this, void * out);
 
 
 // The summary type - basically all the function pointers and documentation required to run a summary object...
@@ -52,11 +58,14 @@ struct SummaryType
  const char * description;
  
  SummaryNew init;
- SummaryClone clone;
  SummaryDelete deinit;
  
  SummaryMergePy merge_py;
- SummaryMergePy merge_many_py;
+ SummaryMergeManyPy merge_many_py;
+ 
+ SummaryFromBytes from_bytes;
+ SummarySize size;
+ SummaryToBytes to_bytes;
 };
 
 
@@ -69,6 +78,10 @@ const SummaryType * Summary_type(Summary this);
 
 PyObject * Summary_merge_py(int trees, Summary * sums, int offset);
 PyObject * Summary_merge_many_py(int exemplars, int trees, Summary * sums, int offset);
+
+Summary Summary_from_bytes(void * in, size_t * ate);
+size_t Summary_size(Summary this);
+void Summary_to_bytes(Summary this, void * out);
 
 
 
@@ -114,6 +127,13 @@ PyObject * SummarySet_merge_py(int trees, SummarySet ** sum_sets);
 
 // As above, but for when we are processing an entire data matrix and hence have an exemplars x trees array of SummarySet pointers, indexed with exemplars in the outer loop, trees in the inner...
 PyObject * SummarySet_merge_many_py(int exemplars, int trees, SummarySet ** sum_sets);
+
+// Given a buffer of bytes saved from a summary set this loads it and returns a new summary set; cna optionally provide a pointer to have the number of bytes read written into. Will return null and set a python error if there is a problem...
+SummarySet * SummarySet_from_bytes(void * in, size_t * ate);
+
+// Converts a summary set into bytes - first gives how many, second does the deed...
+size_t SummarySet_size(SummarySet this);
+void SummarySet_to_bytes(SummarySet this, void * out);
 
 
 

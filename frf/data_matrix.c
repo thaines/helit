@@ -249,8 +249,6 @@ void FeatureBlock_deinit(FeatureBlock * this)
  this->array = NULL;
 }
 
-
-
 int FeatureBlock_GetDiscrete(FeatureBlock * this, int exemplar, int feature)
 {
  switch (PyArray_NDIM(this->array))
@@ -315,10 +313,11 @@ float FeatureBlock_GetContinuous(FeatureBlock * this, int exemplar, int feature)
 
 
 
-DataMatrix * DataMatrix_new(PyObject * obj)
+DataMatrix * DataMatrix_new(PyObject * obj, PyArrayObject * max)
 {
  // Check that the provided object is one we can play with - it must either be a numpy array or a list/tuple etc. of them...
   int fbc = 1;
+  int feats = 0;
   int i;
   
   if (PyArray_Check(obj)==0)
@@ -335,6 +334,7 @@ DataMatrix * DataMatrix_new(PyObject * obj)
     {
      PyObject * member = PySequence_GetItem(obj, i);
      int res = PyArray_Check(member);
+     feats += (PyArray_NDIM(member)>1) ? PyArray_DIMS(member)[1] : 1;
      Py_DECREF(member);
      
      if (res==0)
@@ -344,10 +344,20 @@ DataMatrix * DataMatrix_new(PyObject * obj)
      }
     }
   }
+  else
+  {
+   feats = (PyArray_NDIM(obj)>1) ? PyArray_DIMS(obj)[1] : 1;
+  }
+  
+  if ((max!=NULL)&&((PyArray_NDIM(max)!=1)||(PyArray_DIMS(max)[0]!=feats)))
+  {
+   PyErr_SetString(PyExc_TypeError, "Array of maximum discrete values does not match input feature configuration");
+  }
   
  // Checks passed - malloc the object...
-  DataMatrix * this = (DataMatrix*)malloc(sizeof(DataMatrix) + fbc*sizeof(FeatureBlock));
+  DataMatrix * this = (DataMatrix*)malloc(sizeof(DataMatrix) + fbc*sizeof(FeatureBlock) + feats*sizeof(int));
   this->blocks = fbc;
+  this->max = NULL; // Note that we allocate the memory above - this pointer is in effect a boolean switch to indicate if its been calculated/set or not, as its set to point to the already allocated block when initialised. Yeah, I'm an arsehole:-P
   
  // Fill in the feature blocks...
   for (i=0; i<this->blocks; i++)
@@ -382,6 +392,18 @@ DataMatrix * DataMatrix_new(PyObject * obj)
    
    this->block[i].offset = this->features;
    this->features += this->block[i].features;
+  }
+  
+ // If a maximum has been provided fill it in...
+  if (max!=NULL)
+  {
+   ToDiscrete td = KindToDiscreteFunc(PyArray_DESCR(max));
+   this->max = (int*)((char*)this + sizeof(DataMatrix) + fbc*sizeof(FeatureBlock));
+   
+   for (i=0; i<this->features; i++)
+   {
+    this->max[i] = td(PyArray_GETPTR1(max, i)); 
+   }
   }
   
  // Return it...
@@ -456,6 +478,30 @@ float DataMatrix_GetContinuous(DataMatrix * this, int exemplar, int feature)
 
  // Do the block lookup...
   return FeatureBlock_GetContinuous(this->block + block, exemplar, offset);
+}
+
+int DataMatrix_Max(DataMatrix * this, int feature)
+{
+ // Create the max array automatically if required...
+  if (this->max==NULL)
+  {
+   this->max = (int*)((char*)this + sizeof(DataMatrix) + this->blocks*sizeof(FeatureBlock));
+   
+   int i, j;
+   for (i=0; i<this->features; i++) this->max[i] = 0;
+   
+   for (j=0; j<this->exemplars; j++)
+   {
+    for (i=0; i<this->features; i++)
+    {
+     int val = DataMatrix_GetDiscrete(this, j, i);
+     if (val>this->max[i]) this->max[i] = val;
+    }
+   }
+  }
+ 
+ // Return whatever is recorded...
+  return this->max[feature];
 }
 
 

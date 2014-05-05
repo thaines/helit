@@ -9,3 +9,11 @@
 
 
 #include "index_set.h"
+
+
+
+// Makes a warning go away...
+void DoNotUse_index_set_h(void)
+{
+ import_array();  
+}

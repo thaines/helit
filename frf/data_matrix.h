@@ -81,15 +81,18 @@ struct DataMatrix
  // Dimensions...
   int exemplars;
   int features;
-  
+ 
+ // Maximum values, for making categorical distributions...
+  int * max;
+ 
  // Feature blocks...
   int blocks;
   FeatureBlock block[0];
 };
 
 
-// New and delete for a DataMatrix - its flexibility means that it has varying malloc sizes, so this gets complicated internally. Constructor accepts a single numpy array or a list of numpy arrays, where the arrays would typically be 2D. 1D arrays can be accepted under the assumption that the feature dimension is of size 1. New will return null with an error set if something is pear shaped...
-DataMatrix * DataMatrix_new(PyObject * obj);
+// New and delete for a DataMatrix - its flexibility means that it has varying malloc sizes, so this gets complicated internally. Constructor accepts a single numpy array or a list of numpy arrays, where the arrays would typically be 2D. 1D arrays can be accepted under the assumption that the feature dimension is of size 1. New will return null with an error set if something is pear shaped. max is optional but if not null then it must be an array of maximum discrete values for each channel, noting that it will be ignored for continuous values - for sizing categorical distributions created from the data...
+DataMatrix * DataMatrix_new(PyObject * obj, PyArrayObject * max);
 void DataMatrix_delete(DataMatrix * this);
 
 
@@ -98,6 +101,8 @@ NumberType DataMatrix_Type(DataMatrix * this, int feature);
 int DataMatrix_GetDiscrete(DataMatrix * this, int exemplar, int feature);
 float DataMatrix_GetContinuous(DataMatrix * this, int exemplar, int feature);
 
+// Returns the maximum value of a discrete feature, noting that it always includes zero and can be fixed in construction if the user wants space for extra values/to ignore values past a fixed point - its basically how big to make categorical distributions from the data...
+int DataMatrix_Max(DataMatrix * this, int feature);
 
 
 #endif
