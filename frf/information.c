@@ -366,8 +366,144 @@ const InfoType GaussianInfo =
 
 
 // The bivariate-Gaussian information type...
+typedef struct BiGaussian BiGaussian;
 
-// ******************************
+struct BiGaussian
+{
+ const InfoType * type;
+ 
+ DataMatrix * dm;
+ int feature;
+ 
+ int exemplars; // Number of exemplars in the system.
+ 
+ float mean[2];
+ float scatter_var[2]; // i.e. variance multiplied by exemplars.
+ float scatter_co; // i.e. the covariance multiplied by exemplars.
+};
+
+
+static Info BiGaussian_new(DataMatrix * dm, int feature)
+{
+ BiGaussian * this = (BiGaussian*)malloc(sizeof(BiGaussian));
+ this->type = &BiGaussianInfo;
+ 
+ this->dm = dm;
+ this->feature = feature;
+ 
+ this->exemplars = 0;
+ 
+ int i;
+ for (i=0; i<2; i++)
+ {
+  this->mean[i] = 0.0;
+  this->scatter_var[i] = 0.0;
+ }
+ this->scatter_co = 0.0;
+ 
+ return this;  
+}
+
+static void BiGaussian_reset(Info self)
+{
+ BiGaussian * this = (BiGaussian*)self;
+ 
+ this->exemplars = 0;
+ 
+ int i;
+ for (i=0; i<2; i++)
+ {
+  this->mean[i] = 0.0;
+  this->scatter_var[i] = 0.0;
+ }
+ this->scatter_co = 0.0;
+}
+
+static void BiGaussian_delete(Info this)
+{
+ free(this);
+}
+
+static void BiGaussian_add(Info self, int exemplar)
+{
+ BiGaussian * this = (BiGaussian*)self;
+ 
+ float val[2];
+ val[0] = DataMatrix_GetContinuous(this->dm, exemplar, this->feature);
+ val[1] = DataMatrix_GetContinuous(this->dm, exemplar, this->feature+1);
+ 
+ this->exemplars += 1;
+ 
+ int i;
+ float delta[2];
+ 
+ for (i=0; i<2; i++)
+ {
+  delta[i] = val[i] - this->mean[i];
+  this->mean[i] += delta[i] / this->exemplars;
+  this->scatter_var[i] += delta[i] * (val[i] - this->mean[i]);
+ }
+ 
+ this->scatter_co += delta[0] * (val[1] - this->mean[1]);
+}
+
+static void BiGaussian_remove(Info self, int exemplar)
+{
+ BiGaussian * this = (BiGaussian*)self;
+ 
+ float val[2];
+ val[0] = DataMatrix_GetContinuous(this->dm, exemplar, this->feature);
+ val[1] = DataMatrix_GetContinuous(this->dm, exemplar, this->feature+1);
+ 
+ this->exemplars -= 1;
+ 
+ int i;
+ float delta[2];
+ 
+ for (i=0; i<2; i++)
+ {
+  delta[i] = val[i] - this->mean[i];
+  this->mean[i] -= delta[i] / this->exemplars;
+  this->scatter_var[i] -= delta[i] * (val[i] - this->mean[i]);
+ }
+ 
+ this->scatter_co -= delta[0] * (val[1] - this->mean[1]);
+}
+
+static int BiGaussian_count(Info self)
+{
+ BiGaussian * this = (BiGaussian*)self;
+ return this->exemplars; 
+}
+
+static float BiGaussian_entropy(Info self)
+{
+ BiGaussian * this = (BiGaussian*)self;
+ if (this->exemplars==0) return 0.0;
+ 
+ float covar = this->scatter_co / this->exemplars;
+ float det = (this->scatter_var[0] / this->exemplars) * (this->scatter_var[1] / this->exemplars) - covar*covar;
+ 
+ det *= 2 * M_PI * M_E;
+ if (det<1e-6) det = 1e-6; // To avoid log zero.
+
+ return 0.5 * log(det);
+}
+
+
+const InfoType BiGaussianInfo =
+{
+ 'B',
+ "BiGaussian",
+ "Gaussian of two variables - first is the feature index its at, the second is the next one along - don't put in the last slot as that will go wrong.",
+ BiGaussian_new,
+ BiGaussian_reset,
+ BiGaussian_delete,
+ BiGaussian_add,
+ BiGaussian_remove,
+ BiGaussian_count,
+ BiGaussian_entropy,
+};
 
 
 
@@ -377,15 +513,187 @@ const InfoType * ListInfo[] =
  &NothingInfo,
  &CategoricalInfo,
  &GaussianInfo,
- //&BiGaussianInfo,
+ &BiGaussianInfo,
  NULL
 };
 
 
 
 // Info set methods...
+InfoSet * InfoSet_new(DataMatrix * dm, const char * codes, PyArrayObject * ratios)
+{
+ // Get the number of features, verify the inputs...
+  int feats = dm->features;
+  if ((codes!=NULL)&&(strlen(codes)!=feats))
+  {
+   PyErr_SetString(PyExc_ValueError, "Information measure codes wrong length for data matrix");
+   return NULL; 
+  }
+  
+  if (ratios!=NULL)
+  {
+   if (PyArray_NDIM(ratios)!=2)
+   {
+    PyErr_SetString(PyExc_TypeError, "Ratio matrix for information measure must be 2D, indexed [depth, feature]."); 
+    return NULL;
+   }
+   
+   if (PyArray_DIMS(ratios)[1]!=feats)
+   {
+    PyErr_SetString(PyExc_TypeError, "2nd dimension of ratio matrix must match number of features in data matrix."); 
+    return NULL;
+   }
+  }
+ 
+ // Create the object...
+  InfoSet * this = (InfoSet*)malloc(sizeof(InfoSet) + feats * sizeof(InfoPair));
+  this->ratios = ratios;
+  Py_XINCREF(this->ratios);
+  if (this->ratios!=NULL) this->rat_func = KindToContinuousFunc(PyArray_DESCR(this->ratios));
+    
+  this->features = feats;
+  
+ // Zero out the array of info objects (makes error handling easier...)...
+  int i;
+  for (i=0; i<feats; i++)
+  {
+   this->pair[i].pass = NULL;
+   this->pair[i].fail = NULL;
+  }
+  
+ // Fill in the array of Info objects - need to be ready to rollback on error...
+  int error = 0;
+  
+  for (i=0; i<feats; i++)
+  {
+   if (codes!=NULL)
+   {
+    this->pair[i].pass = Info_new(codes[i], dm, i);
+    if (this->pair[i].pass==NULL) {error = 1; break;}
+    
+    this->pair[i].fail = Info_new(codes[i], dm, i);
+    if (this->pair[i].fail==NULL) {error = 1; break;}
+   }
+   else
+   {
+    if (DataMatrix_Type(dm, i)==DISCRETE)
+    {
+     this->pair[i].pass = CategoricalInfo.init(dm, i);
+     this->pair[i].fail = CategoricalInfo.init(dm, i);
+    }
+    else
+    {
+     this->pair[i].pass = GaussianInfo.init(dm, i);
+     this->pair[i].fail = GaussianInfo.init(dm, i);
+    }
+   }
+  }
+  
+ // If there has been a problem clean up and error...
+  if (error!=0)
+  {
+   for (i=0; i<feats; i++)
+   {
+    if (this->pair[i].pass!=NULL) Info_delete(this->pair[i].pass);
+    if (this->pair[i].fail!=NULL) Info_delete(this->pair[i].fail);
+   }
+   
+   Py_XDECREF(this->ratios);
+   free(this);
+   
+   return NULL; 
+  }
+  
+ // Return...
+  return this;
+}
 
-// **********************************
+void InfoSet_delete(InfoSet * this)
+{
+ int i;
+ for (i=0; i<this->features; i++)
+ {
+  Info_delete(this->pair[i].pass);
+  Info_delete(this->pair[i].fail);
+ }
+   
+ Py_XDECREF(this->ratios);
+ free(this); 
+}
+
+void InfoSet_reset(InfoSet * this)
+{
+ int i;
+ for (i=0; i<this->features; i++)
+ {
+  Info_reset(this->pair[i].pass);
+  Info_reset(this->pair[i].fail);
+ }
+}
+
+void InfoSet_pass_add(InfoSet * this, int exemplar)
+{
+ int i;
+ for (i=0; i<this->features; i++)
+ {
+  Info_add(this->pair[i].pass, exemplar);
+ }
+}
+
+void InfoSet_pass_remove(InfoSet * this, int exemplar)
+{
+ int i;
+ for (i=0; i<this->features; i++)
+ {
+  Info_remove(this->pair[i].pass, exemplar);
+ }
+}
+
+void InfoSet_fail_add(InfoSet * this, int exemplar)
+{
+ int i;
+ for (i=0; i<this->features; i++)
+ {
+  Info_add(this->pair[i].fail, exemplar);
+ }
+}
+
+void InfoSet_fail_remove(InfoSet * this, int exemplar)
+{
+ int i;
+ for (i=0; i<this->features; i++)
+ {
+  Info_remove(this->pair[i].fail, exemplar);
+ }
+}
+
+float InfoSet_entropy(InfoSet * this, int depth)
+{
+ float ret = 0.0;
+ 
+ int i;
+ for (i=0; i<this->features; i++)
+ {
+  float ratio = 1.0;
+  if (this->ratios!=NULL)
+  {
+   ratio = this->rat_func(PyArray_GETPTR2(this->ratios, depth % PyArray_DIMS(this->ratios)[0], i));
+  }
+  
+  if (ratio>1e-6)
+  {
+   int fail_total = Info_count(this->pair[i].fail);
+   int pass_total = Info_count(this->pair[i].pass);
+   float total = fail_total + pass_total;
+   
+   float entropy = (fail_total / total) * Info_entropy(this->pair[i].fail) + (pass_total / total) * Info_entropy(this->pair[i].pass);
+   
+   ret += ratio * entropy;
+  }
+ }
+   
+ return ret;
+}
 
 
 

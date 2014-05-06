@@ -119,6 +119,9 @@ typedef struct InfoSet InfoSet;
 
 struct InfoSet
 {
+ PyArrayObject * ratios;
+ ToContinuous rat_func;
+ 
  int features;
  InfoPair pair[0];
 };
@@ -138,8 +141,8 @@ void InfoSet_pass_remove(InfoSet * this, int exemplar);
 void InfoSet_fail_add(InfoSet * this, int exemplar);
 void InfoSet_fail_remove(InfoSet * this, int exemplar);
 
-// Returns the entropy of the current split, weighted by the number of samples in each half
-float InfoSet_entropy(InfoSet * this);
+// Returns the entropy of the current split, weighted by the number of samples in each half. If ratios is provided then depth is used to index and weight the outputed entropy...
+float InfoSet_entropy(InfoSet * this, int depth);
 
 
 
