@@ -11,7 +11,7 @@
 from utils.make import make_mod
 import os.path
 
-make_mod('frf_c', os.path.dirname(__file__), ['philox.h', 'philox.c', 'data_matrix.h', 'data_matrix.c', 'summary.h', 'summary.c', 'index_set.h', 'index_set.c', 'frf_c.h', 'frf_c.c'])
+make_mod('frf_c', os.path.dirname(__file__), ['philox.h', 'philox.c', 'data_matrix.h', 'data_matrix.c', 'summary.h', 'summary.c', 'information.h', 'information.c', 'tests.h', 'tests.c', 'index_set.h', 'index_set.c', 'frf_c.h', 'frf_c.c'])
 
 
 

@@ -87,16 +87,16 @@ void Summary_to_bytes(Summary this, void * out);
 
 // The SummaryType objects provided by the system...
 // Does nothing - mostly useful if using something like the BiGaussianType...
-const SummaryType NothingType; // Code = N
+const SummaryType NothingSummary; // Code = N
 
 // Default for dealing with discrete variables...
-const SummaryType CategoricalType; // Code = C
+const SummaryType CategoricalSummary; // Code = C
 
 // Default for dealing with continuous variables...
-const SummaryType GaussianType; // Code = G
+const SummaryType GaussianSummary; // Code = G
 
 // Does a bivariate Gaussian, on the provided feature index and the following one (A type code vector with this as the last entry will cause a crash.)...
-const SummaryType BiGaussianType; // Code = B
+const SummaryType BiGaussianSummary; // Code = B
 
 
 
@@ -122,7 +122,7 @@ SummarySet * SummarySet_new(DataMatrix * dm, IndexView * view, const char * code
 // Delete...
 void SummarySet_delete(SummarySet * this);
 
-// Returns a new reference to a Python object that is returned to the user to summarise the many summary sets provided - a list indexed by feature, with the actual objects in the list defined by the actual summary types. This exists to be given the summary sets at the leaves of a forest that an exemplar falls into...
+// Returns a new reference to a Python object that is returned to the user to summarise the many summary sets provided - a tuple indexed by feature, with the actual objects in the tuple defined by the actual summary types. This exists to be given the summary sets at the leaves of a forest that an exemplar falls into...
 PyObject * SummarySet_merge_py(int trees, SummarySet ** sum_sets);
 
 // As above, but for when we are processing an entire data matrix and hence have an exemplars x trees array of SummarySet pointers, indexed with exemplars in the outer loop, trees in the inner...
@@ -132,8 +132,8 @@ PyObject * SummarySet_merge_many_py(int exemplars, int trees, SummarySet ** sum_
 SummarySet * SummarySet_from_bytes(void * in, size_t * ate);
 
 // Converts a summary set into bytes - first gives how many, second does the deed...
-size_t SummarySet_size(SummarySet this);
-void SummarySet_to_bytes(SummarySet this, void * out);
+size_t SummarySet_size(SummarySet * this);
+void SummarySet_to_bytes(SummarySet * this, void * out);
 
 
 

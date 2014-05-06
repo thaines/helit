@@ -334,7 +334,7 @@ DataMatrix * DataMatrix_new(PyObject * obj, PyArrayObject * max)
     {
      PyObject * member = PySequence_GetItem(obj, i);
      int res = PyArray_Check(member);
-     feats += (PyArray_NDIM(member)>1) ? PyArray_DIMS(member)[1] : 1;
+     feats += (PyArray_NDIM((PyArrayObject*)member)>1) ? PyArray_DIMS((PyArrayObject*)member)[1] : 1;
      Py_DECREF(member);
      
      if (res==0)
@@ -346,7 +346,7 @@ DataMatrix * DataMatrix_new(PyObject * obj, PyArrayObject * max)
   }
   else
   {
-   feats = (PyArray_NDIM(obj)>1) ? PyArray_DIMS(obj)[1] : 1;
+   feats = (PyArray_NDIM((PyArrayObject*)obj)>1) ? PyArray_DIMS((PyArrayObject*)obj)[1] : 1;
   }
   
   if ((max!=NULL)&&((PyArray_NDIM(max)!=1)||(PyArray_DIMS(max)[0]!=feats)))
