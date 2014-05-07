@@ -764,7 +764,7 @@ const SummaryType * ListSummary[] =
  &GaussianSummary,
  &BiGaussianSummary,
  NULL
-}; 
+};
 
 
 
