@@ -26,4 +26,9 @@ float box_muller(unsigned int pa, unsigned int pb, float * second);
 
 
 
+// Incriments the given out, handling wraparound - for moving to the next value...
+void inc(unsigned int out[4]);
+
+
+
 #endif

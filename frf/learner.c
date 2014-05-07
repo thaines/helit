@@ -8,4 +8,17 @@
 
 
 
-#include "tests.h"
+#include "philox.h"
+#include "data_matrix.h"
+#include "index_set.h"
+#include "information.h"
+
+#include "learner.h"
+
+
+
+// Makes a warning go away...
+void DoNotUse_learner_h(void)
+{
+ import_array();  
+}

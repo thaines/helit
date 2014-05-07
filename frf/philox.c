@@ -73,3 +73,19 @@ float box_muller(unsigned int pa, unsigned int pb, float * second)
  if (second!=NULL) *second = mult * sin(inner);
  return mult * cos(inner);
 }
+
+
+
+void inc(unsigned int out[4])
+{
+ out[3] += 1;
+ if (out[3]!=0) return;
+ 
+ out[2] += 1;
+ if (out[2]!=0) return;
+ 
+ out[1] += 1;
+ if (out[1]!=0) return;
+ 
+ out[0] += 1;
+}
