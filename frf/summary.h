@@ -34,6 +34,9 @@ typedef Summary (*SummaryNew)(DataMatrix * dm, IndexView * view, int feature);
 // Standard delete...
 typedef void (*SummaryDelete)(Summary this);
 
+// Calculates the error of the given nodes reaching this summary, as some kind of floating point value summed for all entries...
+typedef float (*SummaryError)(Summary this, DataMatrix * dm, IndexView * view, int feature);
+
 // Converts a set of summaries (trees is the number) into a python object that the user can dance with; returns a new reference. Can in principal return NULL and raise an error. For combining the summaries from the leaves of multiple trees into a single entity for a user to play with. offset is normally set to 0 and a little strange - its the number of bytes to add to each pointer to get the true pointer to the summary object, so Summary = *(bytes(sums[tree]) + offset) - allows for some fun optimisation when used within a SummarySet...
 typedef PyObject * (*SummaryMergePy)(int trees, Summary * sums, int offset);
 
@@ -60,6 +63,8 @@ struct SummaryType
  SummaryNew init;
  SummaryDelete deinit;
  
+ SummaryError error;
+ 
  SummaryMergePy merge_py;
  SummaryMergeManyPy merge_many_py;
  
@@ -75,6 +80,7 @@ Summary Summary_new(char code, DataMatrix * dm, IndexView * view, int feature);
 void Summary_delete(Summary this);
 
 const SummaryType * Summary_type(Summary this);
+float Summary_error(Summary this, DataMatrix * dm, IndexView * view, int feature);
 
 PyObject * Summary_merge_py(int trees, Summary * sums, int offset);
 PyObject * Summary_merge_many_py(int exemplars, int trees, Summary * sums, int offset);
@@ -121,6 +127,9 @@ SummarySet * SummarySet_new(DataMatrix * dm, IndexView * view, const char * code
 
 // Delete...
 void SummarySet_delete(SummarySet * this);
+
+// Outputs the error of the summary set when applied to the given exemplars - used for calculating the OOB error - outputs a value for each feature, into an array of floats (length must be number of features), so the user can decide what they care about and weight them accordingly. It adds its value to whatever is already in the array...
+void SummarySet_error(SummarySet * this, DataMatrix * dm, IndexView * view, float * out);
 
 // Returns a new reference to a Python object that is returned to the user to summarise the many summary sets provided - a tuple indexed by feature, with the actual objects in the tuple defined by the actual summary types. This exists to be given the summary sets at the leaves of a forest that an exemplar falls into...
 PyObject * SummarySet_merge_py(int trees, SummarySet ** sum_sets);

@@ -16,7 +16,7 @@ void philox(unsigned int out[4]);
 
 
 
-// Converts the output of philox (any of the 4 output unisgned ints) into a uniform draw in [0, 1)...
+// Converts the output of philox (any of the 4 output unsigned ints) into a uniform draw in [0, 1)...
 float uniform(unsigned int ui);
 
 

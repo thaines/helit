@@ -382,7 +382,159 @@ const LearnerType * ListLearner[] =
 
 
 // Methods for LearnerSet...
-// ********************
+LearnerSet * LearnerSet_new(DataMatrix * dm, const char * codes)
+{
+ // Verify that the codes array is the right length...
+  if ((codes!=NULL)&&(strlen(codes)!=dm->features))
+  {
+   PyErr_SetString(PyExc_ValueError, "Learner codes do not match datamatrix feature count");
+   return NULL; 
+  }
+  
+ // Create the object...
+  LearnerSet  * this = (LearnerSet*)malloc(sizeof(LearnerSet) + dm->features * (sizeof(Learner) + sizeof(int)));
+ 
+ // Fill in the basics...
+  this->best = -1;
+  this->feat = (int*)((char*)this + sizeof(LearnerSet) + dm->features*sizeof(Learner));
+  this->features = dm->features;
+  
+ // Fill it all in, creating the required learners...
+  int i;
+  for (i=0; i<this->features; i++)
+  {
+   if (codes!=NULL)
+   {
+    this->learn[i] = Learner_new(codes[i], dm, i);
+    
+    if (this->learn[i]==NULL)
+    {
+     // Error - unrecognised code - back out...
+      i -= 1;
+      for (; i>=0; i--)
+      {
+       Learner_delete(this->learn[i]);
+      }
+      free(this);
+     
+     return NULL;
+    }
+   }
+   else
+   {
+    if (DataMatrix_Type(dm, i)==DISCRETE)
+    {
+     this->learn[i] = OneCat_new(dm, i);
+    }
+    else
+    {
+     this->learn[i] = Split_new(dm, i);
+    }
+   }
+  }
+ 
+ // Dump the indices into the feat array...
+  for (i=0; i<this->features; i++)
+  {
+   this->feat[i] = i; 
+  }
+ 
+ // Return this...
+ return this;
+}
+
+void LearnerSet_delete(LearnerSet * this)
+{
+ int i;
+ for (i=0; i<this->features; i++)
+ {
+  Learner_delete(this->learn[i]); 
+ }
+ free(this);
+}
+
+int LearnerSet_optimise(LearnerSet * this, InfoSet * info, IndexView * view, int features, int depth, float improve, unsigned int key[4])
+{
+ int i;
+ 
+ // Decide which features to optimise...
+  if (features<this->features)
+  {
+   // We are not doing all of them - shuffle the feat array, at least enough entries for the later loop...
+    unsigned int rand[4];
+    int rand_index = 4;
+    
+    for (i=0; i<features; i++)
+    {
+     // Get some random data...
+      if (rand_index>=4)
+      {
+       int j;
+       for (j=0; j<4; j++) rand[j] = key[j];
+       inc(key);
+       
+       philox(rand);       
+       rand_index = 0; 
+      }
+      
+      unsigned int r = rand[rand_index];
+      rand_index += 1;
+      
+     // Select an index in feat to swap into the current position...
+      int target = i + (r % (this->features - i));
+
+     // Perform the swap...
+      int temp = this->feat[i];
+      this->feat[i] = this->feat[target];
+      this->feat[target] = temp;
+    }
+  }
+  else
+  {
+   features = this->features; 
+  }
+  
+ // Loop and optimise each selected feature in turn, to choose the best...
+  this->best = -1;
+  
+  for (i=0; i<features; i++)
+  {
+   int tf = this->feat[i];
+   if (Learner_optimise(this->learn[tf], info, view, depth, improve, key)!=0)
+   {
+    float entropy = Learner_entropy(this->learn[tf]);
+    if (entropy<improve)
+    {
+     improve = entropy;
+     this->best = tf;
+    }
+   }
+  }
+  
+ // Return success, as long as at least one optimisation was sucessful...
+  if (this->best>=0) return 1;
+                else return 0;
+}
+
+float LearnerSet_entropy(LearnerSet * this)
+{
+ return Learner_entropy(this->learn[this->best]); 
+}
+
+char LearnerSet_code(LearnerSet * this)
+{
+ return Learner_test_code(this->learn[this->best]); 
+}
+
+size_t LearnerSet_size(LearnerSet * this)
+{
+ return Learner_size(this->learn[this->best]); 
+}
+
+void LearnerSet_fetch(LearnerSet * this, void * out)
+{
+ Learner_fetch(this->learn[this->best], out); 
+}
 
 
 
@@ -397,6 +549,11 @@ static int DoContinuousSplit(const void * test, DataMatrix * dm, int exemplar)
                  else return 1;
 }
 
+static size_t SizeContinuousSplit(const void * test)
+{
+ return sizeof(ContinuousSplit);
+}
+
 static int DoDiscreteSelect(const void * test, DataMatrix * dm, int exemplar)
 {
  const DiscreteSelect * this = test;
@@ -407,23 +564,41 @@ static int DoDiscreteSelect(const void * test, DataMatrix * dm, int exemplar)
                    else return 0;
 }
 
+static size_t SizeDiscreteSelect(const void * test)
+{
+ return sizeof(DiscreteSelect);
+}
+
 
 
 // Test calling management code...
-DoTest CodeToTest[256];
+DoTest   CodeToTest[256];
+TestSize CodeToSize[256];
 
 int Test(char code, void * test, DataMatrix * dm, int exemplar)
 {
  return CodeToTest[(unsigned char)code](test, dm, exemplar);
 }
 
+size_t TestSize(char code, void * test)
+{
+ return CodeToSize[(unsigned char)code](test);
+}
+
 void SetupCodeToTest(void)
 {
  int i;
- for (i=0; i<256; i++) CodeToTest[i] = NULL;
+ for (i=0; i<256; i++)
+ {
+  CodeToTest[i] = NULL;
+  CodeToSize[i] = NULL;
+ }
  
  CodeToTest['C'] = DoContinuousSplit;
  CodeToTest['D'] = DoDiscreteSelect;
+ 
+ CodeToSize['C'] = SizeContinuousSplit;
+ CodeToSize['D'] = SizeDiscreteSelect;
 }
 
 

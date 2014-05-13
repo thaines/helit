@@ -43,6 +43,12 @@ const SummaryType * Summary_type(Summary this)
  return *(const SummaryType**)this;
 }
 
+float Summary_error(Summary this, DataMatrix * dm, IndexView * view, int feature)
+{
+ const SummaryType * type = *(const SummaryType**)this;
+ return type->error(this, dm, view, feature);
+}
+
 PyObject * Summary_merge_py(int trees, Summary * sums, int offset)
 {
  Summary * first = (Summary)((char*)sums[0] + offset);
@@ -111,6 +117,11 @@ static void Nothing_delete(Summary this)
  free(this); 
 }
 
+static float Nothing_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
+{
+ return 0.0;  
+}
+
 static PyObject * Nothing_merge_py(int trees, Summary * sums, int offset)
 {
  Py_INCREF(Py_None);
@@ -149,6 +160,7 @@ const SummaryType NothingSummary =
  "A summary type that does nothing - does not in any way summarise the feature index it is assigned to. For if you either have a multi-index summary type on an earlier feature, and hence don't need to summarise this feature index twice, or have some excess feature in your data structure and just want to ignore it.",
  Nothing_new,
  Nothing_delete,
+ Nothing_error,
  Nothing_merge_py,
  Nothing_merge_many_py,
  Nothing_from_bytes,
@@ -221,6 +233,30 @@ static Summary Categorical_new(DataMatrix * dm, IndexView * view, int feature)
 static void Categorical_delete(Summary this)
 {
  free(this); 
+}
+
+static float Categorical_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
+{
+ Categorical * this = (Categorical*)self;
+ 
+ int best = 0;
+ int i;
+ for (i=1; i<this->cats; i++)
+ {
+  if (this->prob[i]>this->prob[best])
+  {
+   best = i;
+  }
+ }
+ 
+ float ret = 0.0;
+ for (i=0; i<view->size; i++)
+ {
+  int v = DataMatrix_GetDiscrete(dm, view->vals[i], feature);
+  if (best!=v) ret += 1.0;
+ }
+ 
+ return ret;
 }
 
 static PyObject * Categorical_merge_py(int trees, Summary * sums, int offset)
@@ -350,9 +386,10 @@ const SummaryType CategoricalSummary =
 {
  'C',
  "Categorical",
- "A standard categorical distribution for discrete features. The indices are taken to go from 1 to the maximum given by the datamatrix, inclusive - any value outside this is ignored, effectivly being treated as unknown. Output when converted to a python object is a dictionary - the key 'count' gets the number of samples that went into the distribution, whilst 'prob' gets an array, indexed by category, of the probabilities of each. For the array case the count gets a 1D array and cat becomes 2D, indexed [exemplar, cat].",
+ "A standard categorical distribution for discrete features. The indices are taken to go from 1 to the maximum given by the datamatrix, inclusive - any value outside this is ignored, effectivly being treated as unknown. Output when converted to a python object is a dictionary - the key 'count' gets the number of samples that went into the distribution, whilst 'prob' gets an array, indexed by category, of the probabilities of each. For the array case the count gets a 1D array and cat becomes 2D, indexed [exemplar, cat]. The error calculation is simply zero for most probable value matching, 1 for it not matching.",
  Categorical_new,
  Categorical_delete,
+ Categorical_error,
  Categorical_merge_py,
  Categorical_merge_many_py,
  Categorical_from_bytes,
@@ -404,6 +441,22 @@ static Summary Gaussian_new(DataMatrix * dm, IndexView * view, int feature)
 static void Gaussian_delete(Summary this)
 {
  free(this); 
+}
+
+static float Gaussian_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
+{
+ Gaussian * this = (Gaussian*)self;
+ 
+ float ret = 0.0;
+ 
+ int i;
+ for (i=0; i<view->size; i++)
+ {
+  float v = DataMatrix_GetContinuous(dm, view->vals[i], feature);
+  ret += fabs(v - this->mean);
+ }
+ 
+ return ret;
 }
 
 static PyObject * Gaussian_merge_py(int trees, Summary * sums, int offset)
@@ -502,9 +555,10 @@ const SummaryType GaussianSummary =
 {
  'G',
  "Gaussian",
- "Expects continuous valued values, which it models with a Gaussian distribution. For output it dumps a dictionary - indexed by 'count' for the number of samples that went into the calculation, 'mean' for the mean and 'var' for the variance. For a single sample these will go to standard python floats, for an array evaluation to numpy arrays.",
+ "Expects continuous valued values, which it models with a Gaussian distribution. For output it dumps a dictionary - indexed by 'count' for the number of samples that went into the calculation, 'mean' for the mean and 'var' for the variance. For a single sample these will go to standard python floats, for an array evaluation to numpy arrays. When returning errors it returns the absolute difference between the mean and actual value.",
  Gaussian_new,
  Gaussian_delete,
+ Gaussian_error,
  Gaussian_merge_py,
  Gaussian_merge_many_py,
  Gaussian_from_bytes,
@@ -581,6 +635,28 @@ static void BiGaussian_delete(Summary this)
 {
  free(this); 
 }
+
+static float BiGaussian_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
+{
+ BiGaussian * this = (BiGaussian*)self;
+ 
+ float ret = 0.0;
+ 
+ int i;
+ for (i=0; i<view->size; i++)
+ {
+  int ei = view->vals[i];
+  float v1 = DataMatrix_GetContinuous(dm, ei, feature);
+  float v2 = DataMatrix_GetContinuous(dm, ei, feature+1);
+  
+  float d1 = v1 - this->mean[0];
+  float d2 = v2 - this->mean[1];
+  ret += sqrt(d1*d1 + d2*d2);
+ }
+ 
+ return ret;
+}
+
 
 static PyObject * BiGaussian_merge_py(int trees, Summary * sums, int offset)
 {
@@ -744,9 +820,10 @@ const SummaryType BiGaussianSummary =
 {
  'B',
  "BiGaussian",
- "A bivariate verison of Gaussian - uses the given feature index and the next one as well. Same output format-ish, except you get a length 2 array for mean and a 2x2 array indexed by 'covar' intead of the var entry, with one variable, and those with the extra dimension for the array version.",
+ "A bivariate verison of Gaussian - uses the given feature index and the next one as well. Same output format-ish, except you get a length 2 array for mean and a 2x2 array indexed by 'covar' intead of the var entry, with one variable, and those with the extra dimension for the array version. Error is the Euclidean distance from the mean.",
  BiGaussian_new,
  BiGaussian_delete,
+ BiGaussian_error,
  BiGaussian_merge_py,
  BiGaussian_merge_many_py,
  BiGaussian_from_bytes,
@@ -828,6 +905,15 @@ void SummarySet_delete(SummarySet * this)
   Summary_delete(this->feature[i]); 
  }
  free(this);
+}
+
+void SummarySet_error(SummarySet * this, DataMatrix * dm, IndexView * view, float * out)
+{
+ int i;
+ for (i=0; i<this->features; i++)
+ {
+  out[i] += Summary_error(this->feature[i], dm, view, i); 
+ }
 }
 
 PyObject * SummarySet_merge_py(int trees, SummarySet ** sum_sets)

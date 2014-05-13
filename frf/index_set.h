@@ -31,13 +31,16 @@ struct IndexSet
 IndexSet * IndexSet_new(int size);
 void IndexSet_delete(IndexSet * this);
 
-// Initalises an index set - can either do all samples or a bootstrap draw. Note that key will be modified, and left at a position where it can be used for the next use if you want...
+// This returns a new IndexSet containing a list of all the entries that are not included in the given IndexSet - meaningless after init_all (it will be empty), but after init_boostrap this returns the out of bag set...
+IndexSet * IndexSet_new_reflect(IndexSet * other);
+
+// Initalises an index set - can either do all samples or a bootstrap draw. Note that key will be modified, and left at a position where it can be used for the next use if you want. (Assumes its for an object with size exemplars)...
 void IndexSet_init_all(IndexSet * this);
 void IndexSet_init_bootstrap(IndexSet * this, unsigned int key[4]);
 
 
 
-// The index view object - view of part of an index set - sent down the tree indicating the indices of the data set relevant to learning the current node - basically a pointer to a subpart of an IndexSet that will be reordered and split to be sent down to leafs...
+// The index view object - view of part of an index set - sent down the tree indicating the indices of the data set relevant to learning the current node - basically a pointer to a subpart of an IndexSet that will be reordered and split to be sent down to leafs. Note that these do not handle their own memory management - that is the users responsibility...
 typedef struct IndexView IndexView;
 
 struct IndexView
@@ -51,7 +54,7 @@ struct IndexView
 void IndexView_init(IndexView * this, IndexSet * source);
 
 // Given a data matrix, and a test this splits the index view into two - a passed and a failed set...
-// *************************************************
+void IndexView_split(IndexView * this, DataMatrix * dm, char test_code, void * test, IndexView * pass, IndexView * fail);
 
 
 

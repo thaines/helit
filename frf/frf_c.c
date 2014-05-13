@@ -34,13 +34,13 @@ static PyMethodDef frf_c_methods[] =
 
 PyMODINIT_FUNC initfrf_c(void)
 {
- PyObject * mod = Py_InitModule3("frf_c", frf_c_methods, "Provides a straight forward random forest implimentation that is designed to be fast and have good loading/saving capabilities, unlike all the other Pythion ones.");
+ PyObject * mod = Py_InitModule3("frf_c", frf_c_methods, "Provides a straight forward random forest implimentation that is designed to be fast and have good loading/saving capabilities, unlike all the other Python ones.");
  
  import_array();
  SetupCodeToTest();
  
- //if (PyType_Ready(&FRFType) < 0) return;
+ //if (PyType_Ready(&TreeType) < 0) return;
  
- //Py_INCREF(&FRFType);
- //PyModule_AddObject(mod, "FRF", (PyObject*)&FRFType);
+ //Py_INCREF(&TreeType);
+ //PyModule_AddObject(mod, "Tree", (PyObject*)&TreeType);
 }
