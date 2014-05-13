@@ -16,105 +16,47 @@
 
 
 // The helper methods for calling the methods of arbitrary summary objects...
-Summary Summary_new(char code, DataMatrix * dm, IndexView * view, int feature)
+size_t Summary_init_size(char code, DataMatrix * dm, IndexView * view, int feature)
 {
- int i = 0;
- while(ListSummary[i]!=NULL)
- {
-  if (ListSummary[i]->code==code)
-  {
-   return ListSummary[i]->init(dm, view, feature);
-  }
-  ++i;
- }
- 
- PyErr_SetString(PyExc_TypeError, "Unrecognised summary type code."); 
- return NULL;
+ return CodeSummary[(unsigned char)code]->init_size(dm, view, feature);  
 }
 
-void Summary_delete(Summary this)
+void Summary_init(char code, Summary this, DataMatrix * dm, IndexView * view, int feature)
 {
- const SummaryType * type = *(const SummaryType**)this;
- type->deinit(this);
+ CodeSummary[(unsigned char)code]->init(this, dm, view, feature);
 }
 
-const SummaryType * Summary_type(Summary this)
+float Summary_error(char code, Summary this, DataMatrix * dm, IndexView * view, int feature)
 {
- return *(const SummaryType**)this;
+ return CodeSummary[(unsigned char)code]->error(this, dm, view, feature); 
 }
 
-float Summary_error(Summary this, DataMatrix * dm, IndexView * view, int feature)
+PyObject * Summary_merge_py(char code, int trees, Summary * sums, SummaryMagic magic, int extra)
 {
- const SummaryType * type = *(const SummaryType**)this;
- return type->error(this, dm, view, feature);
+ return CodeSummary[(unsigned char)code]->merge_py(trees, sums, magic, extra);
 }
 
-PyObject * Summary_merge_py(int trees, Summary * sums, int offset)
+PyObject * Summary_merge_many_py(char code, int exemplars, int trees, Summary * sums, SummaryMagic magic, int extra)
 {
- Summary * first = (Summary)((char*)sums[0] + offset);
- const SummaryType * type = *(const SummaryType**)first;
- return type->merge_py(trees, sums, offset);
+ return CodeSummary[(unsigned char)code]->merge_many_py(exemplars, trees, sums, magic, extra);
 }
 
-PyObject * Summary_merge_many_py(int exemplars, int trees, Summary * sums, int offset)
+size_t Summary_size(char code, Summary this)
 {
- Summary * first = (Summary)((char*)sums[0] + offset);
- const SummaryType * type = *(const SummaryType**)first;
- return type->merge_many_py(exemplars, trees, sums, offset);
-}
-
-Summary Summary_from_bytes(void * in, size_t * ate)
-{
- int i = 0;
- while(ListSummary[i]!=NULL)
- {
-  if (ListSummary[i]->code==(*(char*)in))
-  {
-   Summary ret = ListSummary[i]->from_bytes((char*)in + 1, ate);
-   if ((ret!=NULL)&&(ate!=NULL)) *ate += sizeof(char);
-   return ret;
-  }
-  ++i;
- }
- 
- PyErr_SetString(PyExc_ValueError, "Unrecognised summary type code in byte stream."); 
- return NULL;
-}
-
-size_t Summary_size(Summary this)
-{
- const SummaryType * type = *(const SummaryType**)this;
- return type->size(this) + sizeof(char); // extra to store type code.
-}
-
-void Summary_to_bytes(Summary this, void * out)
-{
- const SummaryType * type = *(const SummaryType**)this;
- *(char*)out = type->code;
- type->to_bytes(this, (char*)out + 1);
+ return CodeSummary[(unsigned char)code]->size(this);
 }
 
 
 
 // The nothing summary type - I feel as empty writting this as I am sure you do reading it...
-typedef struct Nothing Nothing;
-
-struct Nothing
+static size_t Nothing_init_size(DataMatrix * dm, IndexView * view, int feature)
 {
- const SummaryType * type;
-};
-
-
-static Summary Nothing_new(DataMatrix * dm, IndexView * view, int feature)
-{
- Nothing * this = (Nothing*)malloc(sizeof(Nothing));
- this->type = &NothingSummary;
- return this;
+ return 0; 
 }
 
-static void Nothing_delete(Summary this)
+static void Nothing_init(Summary self, DataMatrix * dm, IndexView * view, int feature)
 {
- free(this); 
+ // No-op
 }
 
 static float Nothing_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
@@ -122,34 +64,21 @@ static float Nothing_error(Summary self, DataMatrix * dm, IndexView * view, int 
  return 0.0;  
 }
 
-static PyObject * Nothing_merge_py(int trees, Summary * sums, int offset)
+static PyObject * Nothing_merge_py(int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  Py_INCREF(Py_None);
  return Py_None;
 }
 
-static PyObject * Nothing_merge_many_py(int exemplars, int trees, Summary * sums, int offset)
+static PyObject * Nothing_merge_many_py(int exemplars, int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  Py_INCREF(Py_None);
  return Py_None;
-}
-
-static Summary Nothing_from_bytes(void * in, size_t * ate)
-{
- Nothing * this = (Nothing*)malloc(sizeof(Nothing));
- this->type = &NothingSummary;
- if (ate!=NULL) *ate = 0;
- return this;
 }
 
 static size_t Nothing_size(Summary this)
 {
  return 0;  
-}
-
-static void Nothing_to_bytes(Summary this, void * out)
-{
- // No-op 
 }
 
 
@@ -158,14 +87,12 @@ const SummaryType NothingSummary =
  'N',
  "Nothing",
  "A summary type that does nothing - does not in any way summarise the feature index it is assigned to. For if you either have a multi-index summary type on an earlier feature, and hence don't need to summarise this feature index twice, or have some excess feature in your data structure and just want to ignore it.",
- Nothing_new,
- Nothing_delete,
+ Nothing_init_size,
+ Nothing_init,
  Nothing_error,
  Nothing_merge_py,
  Nothing_merge_many_py,
- Nothing_from_bytes,
  Nothing_size,
- Nothing_to_bytes,
 };
 
 
@@ -175,23 +102,24 @@ typedef struct Categorical Categorical;
 
 struct Categorical
 {
- const SummaryType * type;
- 
  int count; // # Of samples that went into the distribution - has its uses.
  int cats; // Number of categories.
  float prob[0]; // Probability of each category.
 };
 
 
-static Summary Categorical_new(DataMatrix * dm, IndexView * view, int feature)
+static size_t Categorical_init_size(DataMatrix * dm, IndexView * view, int feature)
 {
  int cats = DataMatrix_Max(dm, feature) + 1;
- 
- Categorical * this = (Categorical*)malloc(sizeof(Categorical) + cats * sizeof(float));
- this->type = &CategoricalSummary;
+ return sizeof(Categorical) + cats * sizeof(float);
+}
+
+static void Categorical_init(Summary self, DataMatrix * dm, IndexView * view, int feature)
+{
+ Categorical * this = (Categorical*)self;
  
  this->count = 0;
- this->cats = cats;
+ this->cats = DataMatrix_Max(dm, feature) + 1;
  
  int i;
  for (i=0; i<this->cats; i++)
@@ -204,7 +132,7 @@ static Summary Categorical_new(DataMatrix * dm, IndexView * view, int feature)
   int exemplar = view->vals[i];
   int value = DataMatrix_GetDiscrete(dm, exemplar, feature);
   
-  if ((value>=0)&&(value<cats))
+  if ((value>=0)&&(value<this->cats))
   {
    this->count += 1;
    this->prob[value] += 1.0;
@@ -226,13 +154,6 @@ static Summary Categorical_new(DataMatrix * dm, IndexView * view, int feature)
     this->prob[i] = 1.0 / this->cats;
    }
  }
- 
- return this;
-}
-
-static void Categorical_delete(Summary this)
-{
- free(this); 
 }
 
 static float Categorical_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
@@ -259,7 +180,7 @@ static float Categorical_error(Summary self, DataMatrix * dm, IndexView * view, 
  return ret;
 }
 
-static PyObject * Categorical_merge_py(int trees, Summary * sums, int offset)
+static PyObject * Categorical_merge_py(int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  // Setup the output...
   int count = 0;
@@ -276,7 +197,8 @@ static PyObject * Categorical_merge_py(int trees, Summary * sums, int offset)
   float total = 0.0;
   for (j=0; j<trees; j++)
   {
-   Categorical * targ = (Categorical*)((char*)sums[j] + offset);
+   Categorical * targ = (Categorical*)sums[j];
+   if (magic!=NULL) targ = (Categorical*)magic(targ, extra);
    
    count += targ->count;
    
@@ -296,7 +218,7 @@ static PyObject * Categorical_merge_py(int trees, Summary * sums, int offset)
   return Py_BuildValue("{sisN}", "count", count, "prob", prob);
 }
 
-static PyObject * Categorical_merge_many_py(int exemplars, int trees, Summary * sums, int offset)
+static PyObject * Categorical_merge_many_py(int exemplars, int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  // Setup the output...
   npy_intp size[2] = {exemplars, ((Categorical*)sums[0])->cats};
@@ -320,7 +242,8 @@ static PyObject * Categorical_merge_many_py(int exemplars, int trees, Summary * 
    float total = 0.0;
    for (j=0; j<trees; j++)
    {
-    Categorical * targ = (Categorical*)((char*)sums[k*trees + j] + offset);
+    Categorical * targ = (Categorical*)sums[k*trees + j];
+    if (magic!=NULL) targ = (Categorical*)magic(targ, extra);
    
     *(int*)PyArray_GETPTR1(count, k) += targ->count;
    
@@ -341,44 +264,10 @@ static PyObject * Categorical_merge_many_py(int exemplars, int trees, Summary * 
   return Py_BuildValue("{sNsN}", "count", count, "prob", prob);
 }
 
-static Summary Categorical_from_bytes(void * in, size_t * ate)
-{
- int cats = ((int*)in)[1];
-  
- Categorical * this = (Categorical*)malloc(sizeof(Categorical) + cats * sizeof(float));
- this->type = &CategoricalSummary;
- 
- this->count = ((int*)in)[1];
- this->cats = cats;
- 
- int i;
- for (i=0; i<cats; i++)
- {
-  this->prob[i] = ((int*)in+2)[i];
- }
- 
- if (ate!=NULL) *ate = 2*sizeof(int) + cats*sizeof(float);
- return this;
-}
-
 static size_t Categorical_size(Summary self)
 {
  Categorical * this = (Categorical*)self;
- return 2*sizeof(int) + this->cats*sizeof(float);  
-}
-
-static void Categorical_to_bytes(Summary self, void * out)
-{
- Categorical * this = (Categorical*)self;
- 
- ((int*)out)[0] = this->count;
- ((int*)out)[1] = this->cats;
- 
- int i;
- for (i=0; i<this->cats; i++)
- {
-  ((float*)((int*)out + 2))[i] = this->prob[i];
- }
+ return sizeof(Categorical) + this->cats * sizeof(float);  
 }
 
 
@@ -387,14 +276,12 @@ const SummaryType CategoricalSummary =
  'C',
  "Categorical",
  "A standard categorical distribution for discrete features. The indices are taken to go from 1 to the maximum given by the datamatrix, inclusive - any value outside this is ignored, effectivly being treated as unknown. Output when converted to a python object is a dictionary - the key 'count' gets the number of samples that went into the distribution, whilst 'prob' gets an array, indexed by category, of the probabilities of each. For the array case the count gets a 1D array and cat becomes 2D, indexed [exemplar, cat]. The error calculation is simply zero for most probable value matching, 1 for it not matching.",
- Categorical_new,
- Categorical_delete,
+ Categorical_init_size,
+ Categorical_init,
  Categorical_error,
  Categorical_merge_py,
  Categorical_merge_many_py,
- Categorical_from_bytes,
  Categorical_size,
- Categorical_to_bytes,
 };
 
 
@@ -404,18 +291,20 @@ typedef struct Gaussian Gaussian;
 
 struct Gaussian
 {
- const SummaryType * type;
- 
  int count; // # Of samples that went into the distribution - has its uses.
  float mean;
  float var;
 };
 
 
-static Summary Gaussian_new(DataMatrix * dm, IndexView * view, int feature)
+static size_t Gaussian_init_size(DataMatrix * dm, IndexView * view, int feature)
 {
- Gaussian * this = (Gaussian*)malloc(sizeof(Gaussian));
- this->type = &GaussianSummary;
+ return sizeof(Gaussian); 
+}
+
+static void Gaussian_init(Summary self, DataMatrix * dm, IndexView * view, int feature)
+{
+ Gaussian * this = (Gaussian*)self;
  
  this->count = 0;
  this->mean = 0.0;
@@ -434,13 +323,6 @@ static Summary Gaussian_new(DataMatrix * dm, IndexView * view, int feature)
  }
  
  if (this->count!=0) this->var /= this->count;
- 
- return this;
-}
-
-static void Gaussian_delete(Summary this)
-{
- free(this); 
 }
 
 static float Gaussian_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
@@ -459,7 +341,7 @@ static float Gaussian_error(Summary self, DataMatrix * dm, IndexView * view, int
  return ret;
 }
 
-static PyObject * Gaussian_merge_py(int trees, Summary * sums, int offset)
+static PyObject * Gaussian_merge_py(int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  // Combine from all trees...
   int count = 0;
@@ -469,7 +351,8 @@ static PyObject * Gaussian_merge_py(int trees, Summary * sums, int offset)
   int i;
   for (i=0; i<trees; i++)
   {
-   Gaussian * targ = (Gaussian*)((char*)sums[i] + offset);
+   Gaussian * targ = (Gaussian*)sums[i];
+   if (magic!=NULL) targ = (Gaussian*)magic(targ, extra);
    
    int new_count = count + targ->count;
    float delta = targ->mean - mean;
@@ -485,7 +368,7 @@ static PyObject * Gaussian_merge_py(int trees, Summary * sums, int offset)
   return Py_BuildValue("{sisfsf}", "count", count, "mean", mean, "var", var);
 }
 
-static PyObject * Gaussian_merge_many_py(int exemplars, int trees, Summary * sums, int offset)
+static PyObject * Gaussian_merge_many_py(int exemplars, int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  // Create the output numpy arrays...
   npy_intp size = exemplars;
@@ -507,7 +390,8 @@ static PyObject * Gaussian_merge_many_py(int exemplars, int trees, Summary * sum
     
    for (i=0; i<trees; i++)
    {
-    Gaussian * targ = (Gaussian*)((char*)sums[j*trees + i] + offset);
+    Gaussian * targ = (Gaussian*)sums[j*trees + i];
+    if (magic!=NULL) targ = (Gaussian*)magic(targ, extra);
     
     int new_count = *count + targ->count;
     float delta = targ->mean - (*mean);
@@ -524,30 +408,9 @@ static PyObject * Gaussian_merge_many_py(int exemplars, int trees, Summary * sum
   return Py_BuildValue("{sNsNsN}", "count", count_arr, "mean", mean_arr, "var", var_arr);
 }
 
-static Summary Gaussian_from_bytes(void * in, size_t * ate)
-{
- Gaussian * this = (Gaussian*)malloc(sizeof(Gaussian));
- this->type = &GaussianSummary;
- 
- this->count = *(int*)in;
- this->mean = ((float*)((int*)in + 1))[0];
- this->var = ((float*)((int*)in + 1))[1];
- 
- if (ate!=NULL) *ate = sizeof(int) + 2*sizeof(float);
- return this;
-}
-
 static size_t Gaussian_size(Summary self)
 {
- return sizeof(int) + 2*sizeof(float);  
-}
-
-static void Gaussian_to_bytes(Summary self, void * out)
-{
- Gaussian * this = (Gaussian*)self;
- *(int*)out = this->count;
- ((float*)((int*)out + 1))[0] = this->mean;
- ((float*)((int*)out + 1))[1] = this->var;
+ return sizeof(Gaussian);
 }
 
 
@@ -556,14 +419,12 @@ const SummaryType GaussianSummary =
  'G',
  "Gaussian",
  "Expects continuous valued values, which it models with a Gaussian distribution. For output it dumps a dictionary - indexed by 'count' for the number of samples that went into the calculation, 'mean' for the mean and 'var' for the variance. For a single sample these will go to standard python floats, for an array evaluation to numpy arrays. When returning errors it returns the absolute difference between the mean and actual value.",
- Gaussian_new,
- Gaussian_delete,
+ Gaussian_init_size,
+ Gaussian_init,
  Gaussian_error,
  Gaussian_merge_py,
  Gaussian_merge_many_py,
- Gaussian_from_bytes,
  Gaussian_size,
- Gaussian_to_bytes,
 };
 
 
@@ -574,8 +435,6 @@ typedef struct BiGaussian BiGaussian;
 
 struct BiGaussian
 {
- const SummaryType * type;
- 
  int count; // # Of samples that went into the distribution - has its uses.
  float mean[2];
  float var[2];
@@ -583,10 +442,14 @@ struct BiGaussian
 };
 
 
-static Summary BiGaussian_new(DataMatrix * dm, IndexView * view, int feature)
+static size_t BiGaussian_init_size(DataMatrix * dm, IndexView * view, int feature)
 {
- BiGaussian * this = (BiGaussian*)malloc(sizeof(BiGaussian));
- this->type = &BiGaussianSummary;
+ return sizeof(BiGaussian);
+}
+
+static void BiGaussian_init(Summary self, DataMatrix * dm, IndexView * view, int feature)
+{
+ BiGaussian * this = (BiGaussian*)self;
  
  int i, k;
  
@@ -627,13 +490,6 @@ static Summary BiGaussian_new(DataMatrix * dm, IndexView * view, int feature)
   }
   this->covar /= this->count;
  }
- 
- return this;
-}
-
-static void BiGaussian_delete(Summary this)
-{
- free(this); 
 }
 
 static float BiGaussian_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
@@ -658,7 +514,7 @@ static float BiGaussian_error(Summary self, DataMatrix * dm, IndexView * view, i
 }
 
 
-static PyObject * BiGaussian_merge_py(int trees, Summary * sums, int offset)
+static PyObject * BiGaussian_merge_py(int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  int i, k;
  
@@ -688,7 +544,8 @@ static PyObject * BiGaussian_merge_py(int trees, Summary * sums, int offset)
  // Combine from all trees...
   for (i=0; i<trees; i++)
   {
-   BiGaussian * targ = (BiGaussian*)((char*)sums[i] + offset);
+   BiGaussian * targ = (BiGaussian*)sums[i];
+   if (magic!=NULL) targ = (BiGaussian*)magic(targ, extra);
    
    int new_count = count + targ->count;
    float delta[2];
@@ -718,7 +575,7 @@ static PyObject * BiGaussian_merge_py(int trees, Summary * sums, int offset)
   return Py_BuildValue("{sisNsN}", "count", count, "mean", mean_arr, "covar", covar_arr);
 }
 
-static PyObject * BiGaussian_merge_many_py(int exemplars, int trees, Summary * sums, int offset)
+static PyObject * BiGaussian_merge_many_py(int exemplars, int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  int i, j, k;
  
@@ -752,7 +609,8 @@ static PyObject * BiGaussian_merge_many_py(int exemplars, int trees, Summary * s
    // Combine from all trees...
     for (i=0; i<trees; i++)
     {
-     BiGaussian * targ = (BiGaussian*)((char*)sums[j*trees+i] + offset);
+     BiGaussian * targ = (BiGaussian*)sums[j*trees+i];
+     if (magic!=NULL) targ = (BiGaussian*)magic(targ, extra);
    
      int new_count = *count + targ->count;
      float delta[2];
@@ -783,36 +641,9 @@ static PyObject * BiGaussian_merge_many_py(int exemplars, int trees, Summary * s
   return Py_BuildValue("{sNsNsN}", "count", count_arr, "mean", mean_arr, "covar", covar_arr);
 }
 
-static Summary BiGaussian_from_bytes(void * in, size_t * ate)
-{
- BiGaussian * this = (BiGaussian*)malloc(sizeof(BiGaussian));
- this->type = &BiGaussianSummary;
- 
- this->count = *(int*)in;
- this->mean[0] = ((float*)((int*)in + 1))[0];
- this->mean[1] = ((float*)((int*)in + 1))[1];
- this->var[0] = ((float*)((int*)in + 1))[2];
- this->var[1] = ((float*)((int*)in + 1))[3];
- this->covar = ((float*)((int*)in + 1))[4];
- 
- if (ate!=NULL) *ate = sizeof(int) + 5*sizeof(float);
- return this;
-}
-
 static size_t BiGaussian_size(Summary self)
 {
- return sizeof(int) + 5*sizeof(float);  
-}
-
-static void BiGaussian_to_bytes(Summary self, void * out)
-{
- BiGaussian * this = (BiGaussian*)self;
- *(int*)out = this->count;
- ((float*)((int*)out + 1))[0] = this->mean[0];
- ((float*)((int*)out + 1))[1] = this->mean[1];
- ((float*)((int*)out + 1))[2] = this->var[0];
- ((float*)((int*)out + 1))[3] = this->var[1];
- ((float*)((int*)out + 1))[4] = this->covar;
+ return sizeof(BiGaussian);  
 }
 
 
@@ -821,14 +652,12 @@ const SummaryType BiGaussianSummary =
  'B',
  "BiGaussian",
  "A bivariate verison of Gaussian - uses the given feature index and the next one as well. Same output format-ish, except you get a length 2 array for mean and a 2x2 array indexed by 'covar' intead of the var entry, with one variable, and those with the extra dimension for the array version. Error is the Euclidean distance from the mean.",
- BiGaussian_new,
- BiGaussian_delete,
+ BiGaussian_init_size,
+ BiGaussian_init,
  BiGaussian_error,
  BiGaussian_merge_py,
  BiGaussian_merge_many_py,
- BiGaussian_from_bytes,
  BiGaussian_size,
- BiGaussian_to_bytes,
 };
 
 
@@ -843,81 +672,150 @@ const SummaryType * ListSummary[] =
  NULL
 };
 
+const SummaryType * CodeSummary[256];
+
 
 
 // Implimentation of summary set...
-SummarySet * SummarySet_new(DataMatrix * dm, IndexView * view, const char * codes)
+int SummarySet_validate(DataMatrix * dm, const char * codes)
 {
- // Verify the codes are of the right length...
-  if ((codes!=NULL)&&(strlen(codes)!=dm->features))
-  {
-   PyErr_SetString(PyExc_ValueError, "Summary codes do not match datamatrix feature count");
-   return NULL; 
-  }
-  
- // Create the object...
-  SummarySet * this = (SummarySet*)malloc(sizeof(SummarySet) + dm->features * sizeof(Summary));
-  this->features = dm->features;
-  
- // Initialise each of the entrys, roling back if an error occurs...
-  int i;
-  for (i=0; i<this->features; i++)
-  {
-   if (codes!=NULL)
+ if (codes!=NULL)
+ {
+  // Validate length matches...
+   if (strlen(codes)!=dm->features)
    {
-    this->feature[i] = Summary_new(codes[i], dm, view, i); 
+    PyErr_SetString(PyExc_ValueError, "Summary codes do not match datamatrix feature count");
+    return 0; 
+   }
+   
+  // Validate all codes go to existing Summary types...
+   int i;
+   for (i=0; i<dm->features; i++)
+   {
+    if (CodeSummary[(unsigned char)codes[i]]==NULL) 
+    {
+     PyErr_SetString(PyExc_TypeError, "Unrecognised summary type code.");
+     return 0; 
+    }
+   }
+ }
+ 
+ // No error has been raised - return success...
+  return 1;
+}
+
+size_t SummarySet_init_size(DataMatrix * dm, IndexView * view, const char * codes)
+{
+ size_t ret = sizeof(SummarySet);
+ 
+ // Add in the feature offsets...
+  ret += dm->features * sizeof(int);
+  
+ // Add in the codes...
+  ret += sizeof(int) * ((dm->features / sizeof(int)) + (((dm->features%sizeof(int))==0)?0:1));
+ 
+ // Add in the Summary object sizes...
+  int i;
+  for (i=0; i<dm->features; i++)
+  {
+   if (codes)
+   {
+    ret += Summary_init_size(codes[i], dm, view, i);
    }
    else
    {
     if (DataMatrix_Type(dm, i)==DISCRETE)
     {
-     this->feature[i] = CategoricalSummary.init(dm, view, i);
+     ret += CategoricalSummary.init_size(dm, view, i);
     }
     else
     {
-     this->feature[i] = GaussianSummary.init(dm, view, i);
+     ret += GaussianSummary.init_size(dm, view, i);
     }
    }
-   
-   if (this->feature[i]==NULL)
+  }
+ 
+ // Return the final size...
+  return ret;
+}
+
+inline char * CodePtr(SummarySet * this)
+{
+ return (char*)this + sizeof(SummarySet) + this->features * sizeof(int); 
+}
+
+inline Summary SummaryPtr(SummarySet * this, int i)
+{
+ return (char*)this + this->offset[i]; 
+}
+
+void SummarySet_init(SummarySet * this, DataMatrix * dm, IndexView * view, const char * codes)
+{
+ int i; 
+ 
+ // Setup the basic variables...
+  this->size = sizeof(SummarySet) + dm->features * sizeof(int); // Grows as we go.
+  this->features = dm->features;
+ 
+ // Find the location of the code book and drop it in...
+  char * code = CodePtr(this);
+  if (codes!=NULL)
+  {
+   for (i=0; i<dm->features; i++)
    {
-    // Error - rollback and deallocate everything that worked!..
-     i -= 1;
-     for (; i>=0; i--)
-     {
-      Summary_delete(this->feature[i]);
-     }
-     free(this);
-     
-    return NULL; 
+    code[i] = codes[i]; 
+   }
+  }
+  else
+  {
+   for (i=0; i<dm->features; i++)
+   {
+    if (DataMatrix_Type(dm, i)==DISCRETE)
+    {
+     code[i] = CategoricalSummary.code;
+    }
+    else
+    {
+     code[i] = GaussianSummary.code; 
+    }
    }
   }
   
- // Return...
-  return this;
-}
-
-void SummarySet_delete(SummarySet * this)
-{
- int i;
- for (i=0; i<this->features; i++)
- {
-  Summary_delete(this->feature[i]); 
- }
- free(this);
+  this->size += sizeof(int) * ((dm->features / sizeof(int)) + (((dm->features%sizeof(int))==0)?0:1));
+  
+ // Create the summary object for each feature in the DataMatrix...
+  for (i=0; i<dm->features; i++)
+  {
+   this->offset[i] = this->size;
+   Summary target = SummaryPtr(this, i);
+   
+   Summary_init(code[i], target, dm, view, i);
+   
+   this->size += Summary_init_size(code[i], dm, view, i);
+  }
 }
 
 void SummarySet_error(SummarySet * this, DataMatrix * dm, IndexView * view, float * out)
 {
+ char * code = CodePtr(this);
+ 
  int i;
  for (i=0; i<this->features; i++)
  {
-  out[i] += Summary_error(this->feature[i], dm, view, i); 
+  out[i] += Summary_error(code[i], SummaryPtr(this, i), dm, view, i); 
  }
+}
+
+static Summary SummarySet_magic(void * self, int i)
+{
+ SummarySet * this = (SummarySet*)self;
+ return (char*)this + this->offset[i];
 }
 
 PyObject * SummarySet_merge_py(int trees, SummarySet ** sum_sets)
 {
+ char * code = CodePtr(sum_sets[0]);
+ 
  // Create the return tuple...
   int feats = sum_sets[0]->features;
   PyObject * ret = PyTuple_New(feats);
@@ -926,8 +824,7 @@ PyObject * SummarySet_merge_py(int trees, SummarySet ** sum_sets)
   int i;
   for (i=0; i<feats; i++)
   {
-   int offset = offsetof(SummarySet, feature) + i * sizeof(Summary);
-   PyObject * obj = Summary_merge_py(trees, (Summary*)sum_sets, offset);
+   PyObject * obj = Summary_merge_py(code[i], trees, (Summary*)sum_sets, SummarySet_magic, i);
    PyTuple_SetItem(ret, i, obj);
   }
   
@@ -937,6 +834,8 @@ PyObject * SummarySet_merge_py(int trees, SummarySet ** sum_sets)
 
 PyObject * SummarySet_merge_many_py(int exemplars, int trees, SummarySet ** sum_sets)
 {
+ char * code = CodePtr(sum_sets[0]);
+  
  // Create the return tuple...
   int feats = sum_sets[0]->features;
   PyObject * ret = PyTuple_New(feats);
@@ -945,8 +844,7 @@ PyObject * SummarySet_merge_many_py(int exemplars, int trees, SummarySet ** sum_
   int i;
   for (i=0; i<feats; i++)
   {
-   int offset = offsetof(SummarySet, feature) + i * sizeof(Summary);
-   PyObject * obj = Summary_merge_many_py(exemplars, trees, (Summary*)sum_sets, offset);
+   PyObject * obj = Summary_merge_many_py(code[i], exemplars, trees, (Summary*)sum_sets, SummarySet_magic, i);
    PyTuple_SetItem(ret, i, obj);
   }
   
@@ -954,54 +852,9 @@ PyObject * SummarySet_merge_many_py(int exemplars, int trees, SummarySet ** sum_
   return ret;
 }
 
-SummarySet * SummarySet_from_bytes(void * in, size_t * ate)
-{
- // Eat the length...
-  int feats = *(int*)in;
-  in = (char*)in + sizeof(int);
-  int used = sizeof(int);
- 
- // Create the return object...
-  SummarySet * this = (SummarySet*)malloc(sizeof(SummarySet) + feats*sizeof(Summary));
-  this->features = feats;
-  
-  int i;
-  for (i=0; i<feats; i++)
-  {
-   size_t used;
-   this->feature[i] = Summary_from_bytes(in, &used);
-   in = (char*)in + used;
-  }
-  
- // Return it...
-  if (ate!=NULL) *ate = used;
-  return this;
-}
-
 size_t SummarySet_size(SummarySet * this)
 {
- size_t ret = sizeof(int);
- 
- int i;
- for (i=0; i<this->features; i++)
- {
-  ret += Summary_size(this->feature[i]); 
- }
- 
- return ret; 
-}
-
-void SummarySet_to_bytes(SummarySet * this, void * out)
-{
- *(int*)out = this->features;
- out = (char*)out + sizeof(int);
- 
- int i;
- for (i=0; i<this->features; i++)
- {
-  Summary_to_bytes(this->feature[i], out);
-  out = (char*)out + Summary_size(this->feature[i]);
- }
+ return this->size; 
 }
 
 

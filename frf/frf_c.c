@@ -16,6 +16,7 @@
 
 
 #include "learner.h"
+#include "summary.h"
 
 #include "frf_c.h"
 
@@ -34,13 +35,27 @@ static PyMethodDef frf_c_methods[] =
 
 PyMODINIT_FUNC initfrf_c(void)
 {
- PyObject * mod = Py_InitModule3("frf_c", frf_c_methods, "Provides a straight forward random forest implimentation that is designed to be fast and have good loading/saving capabilities, unlike all the other Python ones.");
+ // Create the module...
+  PyObject * mod = Py_InitModule3("frf_c", frf_c_methods, "Provides a straight forward random forest implimentation that is designed to be fast and have good loading/saving capabilities, unlike all the other Python ones.");
  
- import_array();
- SetupCodeToTest();
+ // Call some initialisation code...
+  import_array();
+  SetupCodeToTest();
  
- //if (PyType_Ready(&TreeType) < 0) return;
+ // Fill in the summary lookup table...
+  int i;
+  for (i=0; i<256; i++) CodeSummary[i] = NULL;
+  
+  i = 0;
+  while (ListSummary[i]!=NULL)
+  {
+   CodeSummary[(unsigned char)ListSummary[i]->code] = ListSummary[i];
+   i += 1;
+  }
  
- //Py_INCREF(&TreeType);
- //PyModule_AddObject(mod, "Tree", (PyObject*)&TreeType);
+ // Register the Forest object...
+ //if (PyType_Ready(&ForestType) < 0) return;
+ 
+ //Py_INCREF(&ForestType);
+ //PyModule_AddObject(mod, "Forest", (PyObject*)&ForestType);
 }

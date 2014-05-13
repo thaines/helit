@@ -575,12 +575,12 @@ static size_t SizeDiscreteSelect(const void * test)
 DoTest   CodeToTest[256];
 TestSize CodeToSize[256];
 
-int Test(char code, void * test, DataMatrix * dm, int exemplar)
+int Test(char code, const void * test, DataMatrix * dm, int exemplar)
 {
  return CodeToTest[(unsigned char)code](test, dm, exemplar);
 }
 
-size_t TestSize(char code, void * test)
+size_t Test_size(char code, const void * test)
 {
  return CodeToSize[(unsigned char)code](test);
 }
