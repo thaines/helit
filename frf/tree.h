@@ -22,7 +22,7 @@ typedef struct TreeParam TreeParam;
 
 struct TreeParam
 {
- DataMatrix * x; // We ar learning a fucntion from these values...
+ DataMatrix * x; // We are learning a function from these values...
  DataMatrix * y; // ... to these values.
  
  LearnerSet * ls; // Defines the kind of tests to consider for each feature and does the optimisation.

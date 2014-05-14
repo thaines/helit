@@ -124,7 +124,7 @@ const InfoType NothingInfo =
 {
  'N',
  "Nothing",
- "Does nothing - always returns an entrop of zero, to say we are not encoding this information. Can be used to hide an output channel, either because you don't want it included or another channel is already using it.",
+ "Does nothing - always returns an entropy of zero, to say we are not encoding this information. Can be used to hide an output channel, either because you don't want it included or another channel is already using it.",
  Nothing_new,
  Nothing_reset,
  Nothing_delete,
