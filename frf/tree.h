@@ -17,13 +17,34 @@
 
 
 
+// 'Simple' structure of stuff to pass into a tree - makes life easier...
+typedef struct TreeParam TreeParam;
+
+struct TreeParam
+{
+ DataMatrix * x; // We ar learning a fucntion from these values...
+ DataMatrix * y; // ... to these values.
+ 
+ LearnerSet * ls; // Defines the kind of tests to consider for each feature and does the optimisation.
+ InfoSet * is; // Defines the metric to be optimised.
+ const char * summary_codes; // Codes to use when making summary objects.
+ 
+ unsigned int key[4]; // User is allowed to change these as it uses random data.
+ 
+ int opt_features; // Number of (randomly selected) features to try optimising for each split.
+ int min_exemplars; // Cancels a split if either half ends up smaller than this.
+ int max_splits; // Maximum number of splits to do, effectivly the maximum depth.
+};
+
+
+
 // Define the tree object - its one single block of memory for all the data, plus a single pointer to some extra stuff to accelerate indexing during runtime, but its designed to be dumped to disk at will, and then recovered afterwards, and used with only the building of a simple index...
 typedef struct Tree Tree;
 
 struct Tree
 {
  char magic[4]; // Magic number 'FRFT'
- int revision; // Incase there are ever multiple formats.
+ int revision; // Incase there are ever multiple formats - currently 1.
  long long size; // How big entire tree blob is - assuming long long is 64 bits.
   
  int objects; // Number of entities.
@@ -32,18 +53,21 @@ struct Tree
 
 
 
-// Methods to learn a new tree from some data - internally this is rather complicated, but only because it has to deal with all the crazy memory stuff - all the real work is elsewhere in this library. Return value will have been malloc'ed - user needs to free. Its learning a function from x to y, using the exemplars indicated by the view. 'ls' provides the learning/tests, 'is' defines what is to be optimised, summary_codes controls the summary objects that are created at leafs, and can be NULL. If provided oob_error will be filled in with anything in the DataMatrix not used by the view, and key is for the random number generator...
-Tree * Tree_learn(DataMatrix * x, DataMatrix * y, IndexView * view, LearnerSet * ls, InfoSet * is, const char * summary_codes, float * oob_error, unsigned char key[4]);
+// Methods to learn a new tree from some data - internally this is rather complicated, but only because it has to deal with all the crazy memory stuff - all the real work is elsewhere in this library. Return value will have been malloc'ed - user needs to free. More of the parameters are in the param struct - see it for details, but a seperate index set of exemplars to use is required. If provided oob_error will be filled in with anything in the DataMatrix not in indices...
+Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error);
 
 
-// If you have just created a memory block to contain a tree then this rebuilds the index. Must be called before actually using the tree...
-void Tree_init(Tree * this);
+// If you have just created a memory block to contain a tree then this rebuilds the index. Must be called before actually using the tree. Returns zero if it doesn't think you actually have a tree (and sets a python error), nonzero if all is good. On zero you don't call deinit...
+int Tree_init(Tree * this);
 
 // When done with a tree this cleans up the index, but not the memory of the actual Tree object...
 void Tree_deinit(Tree * this);
 
 
-// Returns how big the tree object is, in bytes...
+// Returns how many bytes in size the Tree object should be - could be larger than sizeof(Tree) due to 32 bit/64 bit issues. Good number of bytes to read in before calling size and creating a real memory block...
+size_t Tree_head_size(void);
+
+// Returns how big the tree object is, in bytes. Note that this can be called during the loading process on the first sizeof(Tree) bytes to still get the correct answer...
 size_t Tree_size(Tree * this);
 
 // Returns how many objects are in the tree...
@@ -53,11 +77,11 @@ int Tree_objects(Tree * this);
 // Given a bunch of exemplars this outputs a measure of their error, one measure for each feature - same code as oob calculation, but for arbitrary data - for n-fold validation/hold out sets etc...
 void Tree_error(Tree * this, DataMatrix * x, DataMatrix * y, IndexView * view, float * out);
 
-// Runs a Tree on a single exemplar - returns the Summary object for output...
+// Runs a Tree on a single exemplar - returns the SummarySet object that it lands in...
 SummarySet * Tree_run(Tree * this, DataMatrix * x, int exemplar);
 
-// Runs a Tree on many exemplars, recording the result into the provided array - step is how many to step between entries in out when writting the output, so you can interleave values from multiple trees as required by the SummarySet_merge_many_py method...
-void Tree_run_many(Tree * this, DataMatrix * x, IndexView * view, SummarySet ** out, int step);
+// Runs a Tree on many exemplars, recording the result into the provided array - step is how many to step between entries in out when writting the output, so you can interleave values from multiple trees as required by the SummarySet_merge_many_py method. Assumes that IndexSet is everything in the DataMatrix...
+void Tree_run_many(Tree * this, DataMatrix * x, IndexSet * is, SummarySet ** out, int step);
 
 
 
