@@ -13,4 +13,4 @@
 import frf
 
 forest = frf.Forest()
-print forest.trees
+print forest.bootstrap

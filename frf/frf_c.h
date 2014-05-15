@@ -24,6 +24,23 @@ typedef struct Forest Forest;
 struct Forest
 {
  PyObject_HEAD
+ 
+ // The fixed configuration data, that can't be changed without getting new trees...
+  int x_feat; // Number of features for input.
+  int y_feat; // Number of features for output.
+  
+  char * summary_codes; // length==y_feat - codes for creating summary objects.
+  char * info_codes; // length==y_feat - codes for creating info objects.
+  char * learn_codes; // length==x_feat - codes for creating learning objects.
+ 
+ // The variable configuration data, which can be adjusted on a per-tree basis...
+  char bootstrap; // Zero to train trees on everything, non-zero to do a bootstrap draw.
+  int opt_features;
+  int min_exemplars;
+  int max_splits;
+  unsigned int key[4];
+  
+  PyArrayObject * info_ratios; // 2D array indexed by depth (modulus) then feature, of weight to assign to information of feature when optimising at that depth.
   
  // Store the trees as a linked list...
   int trees;

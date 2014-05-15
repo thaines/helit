@@ -14,6 +14,8 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 
+#include <limits.h>
+
 
 #include "summary.h"
 #include "information.h"
@@ -25,12 +27,33 @@
 
 void Forest_new(Forest * this)
 {
+ this->x_feat = 0; 
+ this->y_feat = 0;
+ 
+ this->summary_codes = NULL;
+ this->info_codes = NULL;
+ this->learn_codes = NULL;
+ 
+ this->bootstrap = 1;
+ this->opt_features = INT_MAX;
+ this->min_exemplars = 1;
+ this->max_splits = INT_MAX;
+ 
+ int i;
+ for (i=0; i<4; i++) this->key[i] = 0;
+ 
+ this->info_ratios = NULL;
+ 
  this->trees = 0;
 }
 
 void Forest_dealloc(Forest * this)
 {
-
+ free(this->summary_codes);
+ free(this->info_codes);
+ free(this->learn_codes);
+ 
+ Py_XDECREF(this->info_ratios);
 }
 
 
@@ -139,6 +162,24 @@ static PyObject * Forest_learner_list_py(Forest * self, PyObject * args)
 
 static PyMemberDef Forest_members[] =
 {
+ {"x_feat", T_INT, offsetof(Forest, x_feat), READONLY, "Number of features it expect of the input x data matrix, which is the data matrix that is known."},
+ {"y_feat", T_INT, offsetof(Forest, y_feat), READONLY, "Number of features it expect of the output y data matrix, which is the data matrix that it is learning to predeict from the x matrix."},
+ {"summary_codes", T_STRING, offsetof(Forest, summary_codes), READONLY, "Returns the codes used for creating summary objects, a string indexed by y feature that gives the code of the summary to be used for that features."},
+ {"info_codes", T_STRING, offsetof(Forest, info_codes), READONLY, "Returns the codes used for creating information gain objects, a string indexed by y feature that gives the code of the info calculator to be used for that features."},
+ {"learn_codes", T_STRING, offsetof(Forest, learn_codes), READONLY, "Returns the codes used for creating learners, a string indexed by x feature that gives the code of the leaner to sugest splits for that features."}, 
+ 
+ {"bootstrap", T_BOOL, offsetof(Forest, bootstrap), 0, "True to train trees on bootsrap draws of the training data (The default), False to just train on everything."},
+ {"opt_features", T_INT, offsetof(Forest, opt_features), 0, "Number of features to randomly select to try optimising for each split in the forest. Defaults so high as to be irrelevant."},
+ {"min_exemplars", T_INT, offsetof(Forest, min_exemplars), 0, "Minimum number of exemplars to allow in a node - no node should ever have less than this count in it. Defaults to 1, making it irrelevant."},
+ {"max_splits", T_INT, offsetof(Forest, max_splits), 0, "Maximum number of splits when building a new tree. Defaults so high you will run out of memeory first."},
+ 
+ {"seed0", T_UINT, offsetof(Forest, key[0]), 0, "One of the 4 seeds that drives the random number generator used during tree construction. Will change as its moved along by the need for more pseudo-random data."},
+ {"seed1", T_UINT, offsetof(Forest, key[1]), 0, "One of the 4 seeds that drives the random number generator used during tree construction. Will change as its moved along by the need for more pseudo-random data."},
+ {"seed2", T_UINT, offsetof(Forest, key[2]), 0, "One of the 4 seeds that drives the random number generator used during tree construction. Will change as its moved along by the need for more pseudo-random data."},
+ {"seed3", T_UINT, offsetof(Forest, key[3]), 0, "One of the 4 seeds that drives the random number generator used during tree construction. Will change as its moved along by the need for more pseudo-random data."},
+ 
+ {"info_ratios", T_OBJECT, offsetof(Forest, info_ratios), READONLY, "Returns the information ratios numpy array, if it has been set. A 2D array, indexed by depth in the first dimension, by y-feature in the second (First dimension accessed modulus). Returns the weight of the entropy from that feature when summing them together, so you can control the objective of the tree."},
+ 
  {"trees", T_INT, offsetof(Forest, trees), READONLY, "Number of trees in the forest."},
  {NULL}
 };
