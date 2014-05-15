@@ -484,6 +484,264 @@ static PyObject * Forest_load_py(Forest * self, PyObject * args)
 
 
 
+static PyObject * Forest_configure_py(Forest * self, PyObject * args)
+{
+ // Read in the header...
+  const char * summary;
+  const char * info;
+  const char * learn;
+  if (!PyArg_ParseTuple(args, "sss", &summary, &info, &learn)) return NULL;
+  
+ // Error check the strings...
+  int summary_len = strlen(summary);
+  int info_len = strlen(info);
+  int learn_len = strlen(learn);
+  
+  if (summary_len!=info_len)
+  {
+   PyErr_SetString(PyExc_ValueError, "Summary type string and info type string must have the same length.");
+   return NULL; 
+  }
+  
+  int i;
+  for (i=0; i<summary_len; i++)
+  {
+   if (CodeSummary[(unsigned char)summary[i]]==NULL)
+   {
+    PyErr_SetString(PyExc_ValueError, "Unrecognised summary code.");
+    return NULL;
+   }
+  }
+  
+  for (i=0; i<info_len; i++)
+  {
+   int j = 0;
+   while (ListInfo[j]!=NULL)
+   {
+    if (info[i]==ListInfo[j]->code) break;
+    j += 1;  
+   }
+   
+   if (info[i]!=ListInfo[j]->code)
+   {
+    PyErr_SetString(PyExc_ValueError, "Unrecognised info code.");
+    return NULL;
+   }
+  }
+  
+  for (i=0; i<learn_len; i++)
+  {
+   int j = 0;
+   while (ListLearner[j]!=NULL)
+   {
+    if (learn[i]==ListLearner[j]->code) break;
+    j += 1;  
+   }
+   
+   if (learn[i]!=ListLearner[j]->code)
+   {
+    PyErr_SetString(PyExc_ValueError, "Unrecognised learner code.");
+    return NULL;
+   }
+  }
+  
+ // Remove all trees...
+  for (i=0; i<self->trees; i++)
+  {
+   Py_DECREF((PyObject*)self->tree[i]);
+  }
+  
+  free(self->tree);
+  self->tree = NULL;
+  self->trees = 0;
+  
+ // Record the feat sizes, codes and indicate ready...
+  self->x_feat = learn_len;
+  self->y_feat = summary_len;
+  
+  free(self->summary_codes); 
+  self->summary_codes = malloc(self->y_feat+1);
+  memcpy(self->summary_codes, summary, self->y_feat);
+  self->summary_codes[self->y_feat] = 0;
+  
+  free(self->info_codes); 
+  self->info_codes = malloc(self->y_feat+1);
+  memcpy(self->info_codes, info, self->y_feat);
+  self->info_codes[self->y_feat] = 0;
+  
+  free(self->learn_codes);
+  self->learn_codes = malloc(self->x_feat+1);
+  memcpy(self->learn_codes, learn, self->x_feat);
+  self->learn_codes[self->x_feat] = 0;
+    
+  self->ready = 1;
+  
+ // Can't keep ratios...
+  Py_XDECREF(self->info_ratios);
+  self->info_ratios = NULL;
+  
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+static PyObject * Forest_set_ratios_py(Forest * self, PyObject * args)
+{
+ // Get the passed in array...
+  PyArrayObject * ratios;
+  if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &ratios)) return NULL;
+ 
+ // Check its compliant...
+  if (PyArray_NDIM(ratios)!=2)
+  {
+   PyErr_SetString(PyExc_ValueError, "Ratios array required to be 2D.");
+   return NULL;
+  }
+  
+  if (PyArray_DIMS(ratios)[1]!=self->y_feat)
+  {
+   PyErr_SetString(PyExc_ValueError, "Second dimension of ratios array must match up with the number of output features.");
+   return NULL; 
+  }
+ 
+ // Store it...
+  Py_XDECREF(self->info_ratios);
+  self->info_ratios = ratios;
+  Py_INCREF(self->info_ratios);
+ 
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+
+static PyObject * Forest_save_py(Forest * self, PyObject * args)
+{
+ // Create a temporary object for the head...
+ size_t size = sizeof(ForestHeader) + self->x_feat + 2*self->y_feat;
+ if (self->info_ratios!=NULL)
+ {
+  size += PyArray_DIMS(self->info_ratios)[0] * PyArray_DIMS(self->info_ratios)[1] * sizeof(float); 
+ }
+ 
+ ForestHeader * fh = (ForestHeader*)malloc(size);
+ 
+ // Fill it in...
+  fh->magic[0] = 'F';
+  fh->magic[1] = 'R';
+  fh->magic[2] = 'F';
+  fh->magic[3] = 'F';
+  fh->revision = 1;
+  fh->size = size;
+  
+  fh->trees = self->trees;
+  
+  fh->bootstrap = self->bootstrap;
+  fh->opt_features = self->opt_features;
+  fh->min_exemplars = self->min_exemplars;
+  fh->max_splits = self->max_splits;
+  
+  int i;
+  for (i=0; i<4; i++) fh->key[i] = self->key[i];
+ 
+  fh->x_feat = self->x_feat;
+  fh->y_feat = self->y_feat;
+  fh->ratios = (self->info_ratios==NULL) ? 0 : PyArray_DIMS(self->info_ratios)[0];
+  
+  memcpy(fh->codes, self->summary_codes, self->y_feat);
+  memcpy(fh->codes + self->y_feat, self->info_codes, self->y_feat);
+  memcpy(fh->codes + 2*self->y_feat, self->learn_codes, self->x_feat);
+  
+  if (self->info_ratios!=NULL)
+  {
+   float * base = (float*)(fh->codes + 2*self->y_feat + self->x_feat);
+   
+   int j;
+   for (j=0; j<fh->ratios; j++)
+   {
+    for (i=0; i<self->y_feat; i++)
+    {
+     base[j*self->y_feat+i] = *(float*)PyArray_GETPTR2(self->info_ratios, j, i);
+    }
+   }
+  }
+ 
+ // Create a ByteArray...
+  PyObject * ret = PyByteArray_FromStringAndSize((char*)fh, size);
+ 
+ // Clean up and return...
+  free(fh);
+  return ret;
+}
+
+
+static PyObject * Forest_clone_py(Forest * self, PyObject * args)
+{
+ // Can't clone objects that are not ready - thats silly...
+  if (self->ready==0)
+  {
+   PyErr_SetString(PyExc_RuntimeError, "Cloning a Forest that is not ready is silly.");
+   return NULL; 
+  }
+ 
+ // Create a new forest object...
+  Forest * ret = (Forest*)ForestType.tp_alloc(&ForestType, 0);
+  if (ret==NULL) return NULL;
+ 
+ // Fill it in as an almost complete copy of this one...
+  ret->x_feat = self->x_feat;
+  ret->y_feat = self->y_feat;
+  
+  ret->summary_codes = strdup(self->summary_codes);
+  ret->info_codes = strdup(self->info_codes);
+  ret->learn_codes = strdup(self->learn_codes);
+  
+  ret->ready = 1;
+  
+  ret->bootstrap = self->bootstrap;
+  ret->opt_features = self->opt_features;
+  ret->min_exemplars = self->min_exemplars;
+  ret->max_splits = self->max_splits;
+  
+  int i;
+  for (i=0; i<4; i++) ret->key[i] = self->key[i];
+  
+  ret->info_ratios = self->info_ratios;
+  Py_XINCREF(ret->info_ratios);
+  
+  ret->trees = 0;
+  ret->tree = NULL;
+  
+ // Return...
+  return (PyObject*)ret;
+}
+
+
+
+// ******************************** train to go here!
+
+
+static PyObject * Forest_append_py(Forest * self, PyObject * args)
+{
+ // Parse the parameters...
+  TreeBuffer * tree;
+  if (!PyArg_ParseTuple(args, "O!", &TreeBufferType, &tree)) return NULL;
+  
+ // Dump it on the end...
+  self->tree = (TreeBuffer**)realloc(self->tree, (self->trees + 1) * sizeof(TreeBuffer*));
+  self->tree[self->trees] = tree;
+  Py_INCREF(tree);
+  self->trees += 1;
+  
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+
 static Py_ssize_t Forest_Length(Forest * self)
 {
  return self->trees; 
@@ -614,14 +872,14 @@ static PyMethodDef Forest_methods[] =
  {"size_from_initial", (PyCFunction)Forest_size_from_initial_py, METH_VARARGS | METH_STATIC, "Given the inital header, as a read-only buffer compatible object (string, return value of read(), numpy array.) this returns the size of the entire header, or throws an error if there is something wrong."},
  {"load", (PyCFunction)Forest_load_py, METH_VARARGS, "Given an entire header (See initial_size and size_from_initial for how to do this) as a read-only buffer compatible object this initialises this object to those settings. If there are any trees they will be terminated. Can raise a whole litany of errors. Returns how many trees follow the header - it is upto the user to then load them from whatever stream is providing the information."},
  
- //{"configure", (PyCFunction)Forest_configure_py, METH_VARARGS, "Configures the object - must be called before any learning, unless load is used instead. Takes three tag strings - first for summary, next for info, final for learn. Summary and info must have the same length, being the number of output features in length, whilst learn is the length of the number of input features. See the various _list static methods for lists of possible codes. Will throw an error if any are wrong."},
- //{"set_ratios", (PyCFunction)Forest_set_ratios_py, METH_VARARGS, "Sets the ratios to use when balancing the priority of learning each output feature - must be a 2D numpy array with the first dimension indexed by depth, the second indexed by output feature. The depth is indexed modulus its size, so you can have a repeating structure. Can only be called on a ready Forest, and keeps a pointer to the array, so you can change its values afterwards if you want."},
+ {"configure", (PyCFunction)Forest_configure_py, METH_VARARGS, "Configures the object - must be called before any learning, unless load is used instead. Takes three tag strings - first for summary, next for info, final for learn. Summary and info must have the same length, being the number of output features in length, whilst learn is the length of the number of input features. See the various _list static methods for lists of possible codes. Will throw an error if any are wrong."},
+ {"set_ratios", (PyCFunction)Forest_set_ratios_py, METH_VARARGS, "Sets the ratios to use when balancing the priority of learning each output feature - must be a 2D numpy array with the first dimension indexed by depth, the second indexed by output feature. The depth is indexed modulus its size, so you can have a repeating structure. Can only be called on a ready Forest, and keeps a pointer to the array, so you can change its values afterwards if you want."},
  
- //{"save", (PyCFunction)Forest_save_py, METH_NOARGS, "Returns the header for this Forest, such that it can be saved to disk/stream etc. and later loaded. Return value is a bytearray"},
- //{"clone", (PyCFunction)Forest_clone_py, METH_NOARGS, "Returns a new Forest with the exact same setup as this one, but no trees."},
+ {"save", (PyCFunction)Forest_save_py, METH_NOARGS, "Returns the header for this Forest, such that it can be saved to disk/stream etc. and later loaded. Return value is a bytearray"},
+ {"clone", (PyCFunction)Forest_clone_py, METH_NOARGS, "Returns a new Forest with the exact same setup as this one, but no trees. Be warned that it also duplicates the key for the random number generator, so any new trees trained with the same data in both will be identical - may want to change the key after cloning."},
  
  //{"train", (PyCFunction)Forest_train_py, METH_VARARGS, "Trains and appends more trees to this Forest - first parameter is the x/input data matrix, second is the y/output data matrix, third is the number of trees, which defaults to 1. Data matrices can be either a numpy array (exemplars X features) or a list of numpy arrays that are implicity joined to make the final data matrix - good when you want both continuous and discrete types. When a list 1D array are assumed to be indexed by exemplar. If boostrap is true this returns the out of bag error - a 2D array indexed by new tree then feature of how much error exists in that channel on average."},
- //{"append", (PyCFunction)Forest_append_py, METH_VARARGS, "Appends a Tree to the Forest, that has presumably been trained in another Forest and is now to be merged. Note that the Forest must be compatible (identical type codes given to configure), and this is not checked. Break this and expect a crash."},
+ {"append", (PyCFunction)Forest_append_py, METH_VARARGS, "Appends a Tree to the Forest, that has presumably been trained in another Forest and is now to be merged. Note that the Forest must be compatible (identical type codes given to configure), and this is not checked. Break this and expect the fan to get very brown."},
  
  //{"predict", (PyCFunction)Forest_predict_py, METH_VARARGS, "Given an x/input data matrix returns what it knows about the output data matrix. Return will be a list indexed by feature, with the contents defined by the summary codes (Typically a dictionary of arrays, often of things like 'prob' or 'mean')."},
  //{"score", (PyCFunction)Forest_score_py, METH_VARARGS, "Given a x/input data matrix and a y/output data matrix of true answers this returns an array, indexed by tree then output features, of how much error each tree has on that feature, divided by the number of exemplars. Same as the oob calculation, but for a hold out set etc. Array tree index will align with the list of trees this can be accessed as."},
