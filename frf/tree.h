@@ -14,6 +14,7 @@
 // Provides the node object - the basis of a tree, and really the complete system but lacking the primary Python interface...
 
 #include "summary.h"
+#include "index_set.h"
 
 
 
@@ -48,6 +49,7 @@ struct Tree
  long long size; // How big entire tree blob is - assuming long long is 64 bits.
   
  int objects; // Number of entities.
+ int dummy; // So the below is definitly on the 8 byte boundary - compiler would probably put it there anyway.
  void ** index; // Index - gets you a pointer to each object. Has to be rebuilt after reloading. Note - first object is an int aligned array of chars, giving types for the rest of the objects. 'N' for node, 'S' for summary.
 };
 
@@ -56,6 +58,9 @@ struct Tree
 // Methods to learn a new tree from some data - internally this is rather complicated, but only because it has to deal with all the crazy memory stuff - all the real work is elsewhere in this library. Return value will have been malloc'ed - user needs to free. More of the parameters are in the param struct - see it for details, but a seperate index set of exemplars to use is required. If provided oob_error will be filled in with anything in the DataMatrix not in indices...
 Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error);
 
+
+// Returns non-zero if it thinks its a tree - i.e. the magic numbers and revision are correct, zero if there is a problem...
+int Tree_safe(Tree * this);
 
 // If you have just created a memory block to contain a tree then this rebuilds the index. Must be called before actually using the tree. Returns zero if it doesn't think you actually have a tree (and sets a python error), nonzero if all is good. On zero you don't call deinit...
 int Tree_init(Tree * this);

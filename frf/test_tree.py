@@ -12,5 +12,7 @@
 
 import frf
 
+
+
 forest = frf.Forest()
-print forest.bootstrap
+

@@ -9,7 +9,6 @@
 
 
 #include "learner.h"
-#include "index_set.h"
 
 #include "tree.h"
 
@@ -304,7 +303,7 @@ Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error)
 
 
 // The rest of the Tree methods...
-int Tree_init(Tree * this)
+int Tree_safe(Tree * this)
 {
  if ((this->magic[0]!='F')||(this->magic[1]!='R')||(this->magic[2]!='F')||(this->magic[3]!='T')||(this->revision!=1))
  {
@@ -312,6 +311,13 @@ int Tree_init(Tree * this)
    PyErr_SetString(PyExc_ValueError, "Tree has bad header");
    return 0; 
  }
+ 
+ return 1;
+}
+
+int Tree_init(Tree * this)
+{
+ if (Tree_safe(this)==0) return 0;
  
  this->index = (void**)malloc(this->objects * sizeof(void*));
  
