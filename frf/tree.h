@@ -30,7 +30,7 @@ struct TreeParam
  InfoSet * is; // Defines the metric to be optimised.
  const char * summary_codes; // Codes to use when making summary objects.
  
- unsigned int key[4]; // User is allowed to change these as it uses random data.
+ unsigned int * key; // User is allowed to change these as it uses random data.
  
  int opt_features; // Number of (randomly selected) features to try optimising for each split.
  int min_exemplars; // Cancels a split if either half ends up smaller than this.

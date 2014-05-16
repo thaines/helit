@@ -720,7 +720,91 @@ static PyObject * Forest_clone_py(Forest * self, PyObject * args)
 
 
 
-// ******************************** train to go here!
+static PyObject * Forest_train_py(Forest * self, PyObject * args)
+{
+ // Handle the parameters...
+  PyObject * x_obj;
+  PyObject * y_obj;
+  int create = 1;
+  if (!PyArg_ParseTuple(args, "OO|i", &x_obj, &y_obj, &create)) return NULL;
+
+ // Create all the required objects, with lots of error checking/rollback requirements...
+  TreeParam tp;
+  tp.x = NULL;
+  tp.y = NULL;
+  tp.ls = NULL;
+  tp.is = NULL;
+  tp.summary_codes = self->summary_codes;
+  tp.key = self->key;
+  tp.opt_features = self->opt_features;
+  tp.min_exemplars = self->opt_features;
+  tp.max_splits = self->max_splits;
+  
+  tp.x = DataMatrix_new(x_obj, self->x_max);
+  if (tp.x==NULL) return NULL;
+  
+  tp.y = DataMatrix_new(y_obj, self->y_max);
+  if (tp.y==NULL)
+  {
+   DataMatrix_delete(tp.x);
+   return NULL; 
+  }
+    
+  tp.ls = LearnerSet_new(tp.x, self->learn_codes);
+  if (tp.ls==NULL)
+  {
+   DataMatrix_delete(tp.y);
+   DataMatrix_delete(tp.x);
+   return NULL;  
+  }
+  
+  tp.is = InfoSet_new(tp.y, self->info_codes, self->info_ratios);
+  if (tp.is==NULL)
+  {
+   LearnerSet_delete(tp.ls);
+   DataMatrix_delete(tp.y);
+   DataMatrix_delete(tp.x);
+   return NULL; 
+  }
+
+ // If we are doing oob handle it...
+  PyArrayObject * oob = NULL;
+  if (bootstrap!=0)
+  {
+   npy_intp dims[2] = {create, self->y_feat};
+   oob = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+  }
+  
+ // Loop and create each tree in turn...
+  int i;
+  for (i=0; i<create; i++)
+  {
+   float * error = (bootstrap==0) ? NULL : (float*)PyArray_GETPTR2(oob, i, 0);
+   
+   // ***************** indices
+   
+   Tree * tree = Tree_learn(&tp, IndexSet * indices, error);
+   
+   // ********************************* create and store tree - append.
+  }
+ 
+ // Clean up...
+  InfoSet_delete(tp.is);
+  LearnerSet_delete(tp.ls);
+  DataMatrix_delete(tp.y);
+  DataMatrix_delete(tp.x);
+  
+ // Return, either None or a matrix of oob errors...  
+  if (self->bootstrap==0)
+  {
+   Py_INCREF(Py_None);
+   return Py_None;
+  }
+  else
+  {
+   return (PyObject*)oob;
+  }
+}
 
 
 static PyObject * Forest_append_py(Forest * self, PyObject * args)
@@ -878,7 +962,7 @@ static PyMethodDef Forest_methods[] =
  {"save", (PyCFunction)Forest_save_py, METH_NOARGS, "Returns the header for this Forest, such that it can be saved to disk/stream etc. and later loaded. Return value is a bytearray"},
  {"clone", (PyCFunction)Forest_clone_py, METH_NOARGS, "Returns a new Forest with the exact same setup as this one, but no trees. Be warned that it also duplicates the key for the random number generator, so any new trees trained with the same data in both will be identical - may want to change the key after cloning."},
  
- //{"train", (PyCFunction)Forest_train_py, METH_VARARGS, "Trains and appends more trees to this Forest - first parameter is the x/input data matrix, second is the y/output data matrix, third is the number of trees, which defaults to 1. Data matrices can be either a numpy array (exemplars X features) or a list of numpy arrays that are implicity joined to make the final data matrix - good when you want both continuous and discrete types. When a list 1D array are assumed to be indexed by exemplar. If boostrap is true this returns the out of bag error - a 2D array indexed by new tree then feature of how much error exists in that channel on average."},
+ {"train", (PyCFunction)Forest_train_py, METH_VARARGS, "Trains and appends more trees to this Forest - first parameter is the x/input data matrix, second is the y/output data matrix, third is the number of trees, which defaults to 1. Data matrices can be either a numpy array (exemplars X features) or a list of numpy arrays that are implicity joined to make the final data matrix - good when you want both continuous and discrete types. When a list 1D array are assumed to be indexed by exemplar. If boostrap is true this returns the out of bag error - a 2D array indexed by new tree then feature of how much error exists in that channel on average."},
  {"append", (PyCFunction)Forest_append_py, METH_VARARGS, "Appends a Tree to the Forest, that has presumably been trained in another Forest and is now to be merged. Note that the Forest must be compatible (identical type codes given to configure), and this is not checked. Break this and expect the fan to get very brown."},
  
  //{"predict", (PyCFunction)Forest_predict_py, METH_VARARGS, "Given an x/input data matrix returns what it knows about the output data matrix. Return will be a list indexed by feature, with the contents defined by the summary codes (Typically a dictionary of arrays, often of things like 'prob' or 'mean')."},

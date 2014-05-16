@@ -413,8 +413,13 @@ void Tree_error(Tree * this, DataMatrix * x, DataMatrix * y, IndexView * view, f
   int i;
   for (i=0; i<y->features; i++) out[i] = 0.0;
   
+  if (view->size==0) return;
+  
  // Recurse on the data...
   Tree_error_rec(this, 1, x, y, view, out);
+  
+ // Divide through by the number of exemplars...
+  for (i=0; i<y->features; i++) out[i] /= view->size;
 }
 
 
