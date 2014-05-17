@@ -54,8 +54,8 @@ def load_forest(fn):
     size = Tree.size_from_head(header)
     
     tree = Tree(size)
-    tree[:len(header)] = header
-    f.readinto(tree[len(header):])
+    memoryview(tree)[:len(header)] = header
+    memoryview(tree)[len(header):] = f.read(size - len(header))
     
     ret.append(tree)
   

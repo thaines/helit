@@ -333,15 +333,15 @@ DataMatrix * DataMatrix_new(PyObject * obj, int * max)
     for (i=0; i<fbc; i++)
     {
      PyObject * member = PySequence_GetItem(obj, i);
-     int res = PyArray_Check(member);
-     feats += (PyArray_NDIM((PyArrayObject*)member)>1) ? PyArray_DIMS((PyArrayObject*)member)[1] : 1;
-     Py_DECREF(member);
-     
-     if (res==0)
+     if (PyArray_Check(member)==0)
      {
+      Py_DECREF(member);
       PyErr_SetString(PyExc_TypeError, "List element in data matrix initialisation not a numpy array.");
       return NULL;
      }
+     
+     feats += (PyArray_NDIM((PyArrayObject*)member)>1) ? PyArray_DIMS((PyArrayObject*)member)[1] : 1;
+     Py_DECREF(member);
     }
   }
   else
