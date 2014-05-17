@@ -313,7 +313,7 @@ float FeatureBlock_GetContinuous(FeatureBlock * this, int exemplar, int feature)
 
 
 
-DataMatrix * DataMatrix_new(PyObject * obj, PyArrayObject * max)
+DataMatrix * DataMatrix_new(PyObject * obj, int * max)
 {
  // Check that the provided object is one we can play with - it must either be a numpy array or a list/tuple etc. of them...
   int fbc = 1;
@@ -349,15 +349,10 @@ DataMatrix * DataMatrix_new(PyObject * obj, PyArrayObject * max)
    feats = (PyArray_NDIM((PyArrayObject*)obj)>1) ? PyArray_DIMS((PyArrayObject*)obj)[1] : 1;
   }
   
-  if ((max!=NULL)&&((PyArray_NDIM(max)!=1)||(PyArray_DIMS(max)[0]!=feats)))
-  {
-   PyErr_SetString(PyExc_TypeError, "Array of maximum discrete values does not match input feature configuration");
-  }
-  
  // Checks passed - malloc the object...
   DataMatrix * this = (DataMatrix*)malloc(sizeof(DataMatrix) + fbc*sizeof(FeatureBlock) + feats*sizeof(int));
   this->blocks = fbc;
-  this->max = NULL; // Note that we allocate the memory above - this pointer is in effect a boolean switch to indicate if its been calculated/set or not, as its set to point to the already allocated block when initialised. Yeah, I'm an arsehole:-P
+  this->max = (int*)((char*)this + sizeof(DataMatrix) + fbc*sizeof(FeatureBlock));
   
  // Fill in the feature blocks...
   for (i=0; i<this->blocks; i++)
@@ -395,14 +390,13 @@ DataMatrix * DataMatrix_new(PyObject * obj, PyArrayObject * max)
   }
   
  // If a maximum has been provided fill it in...
+  for (i=0; i<this->features; i++) this->max[i] = -1;
+ 
   if (max!=NULL)
   {
-   ToDiscrete td = KindToDiscreteFunc(PyArray_DESCR(max));
-   this->max = (int*)((char*)this + sizeof(DataMatrix) + fbc*sizeof(FeatureBlock));
-   
    for (i=0; i<this->features; i++)
    {
-    this->max[i] = td(PyArray_GETPTR1(max, i)); 
+    if (max[i]>=0) this->max[i] = max[i];
    }
   }
   
@@ -483,20 +477,15 @@ float DataMatrix_GetContinuous(DataMatrix * this, int exemplar, int feature)
 int DataMatrix_Max(DataMatrix * this, int feature)
 {
  // Create the max array automatically if required...
-  if (this->max==NULL)
+  if (this->max[feature]<0)
   {
-   this->max = (int*)((char*)this + sizeof(DataMatrix) + this->blocks*sizeof(FeatureBlock));
+   this->max[feature] = 0;
    
-   int i, j;
-   for (i=0; i<this->features; i++) this->max[i] = 0;
-   
-   for (j=0; j<this->exemplars; j++)
+   int i;
+   for (i=0; i<this->exemplars; i++)
    {
-    for (i=0; i<this->features; i++)
-    {
-     int val = DataMatrix_GetDiscrete(this, j, i);
-     if (val>this->max[i]) this->max[i] = val;
-    }
+    int val = DataMatrix_GetDiscrete(this, i, feature);
+    if (val>this->max[feature]) this->max[feature] = val;
    }
   }
  

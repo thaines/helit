@@ -218,6 +218,9 @@ void Forest_new(Forest * this)
  this->x_feat = 0; 
  this->y_feat = 0;
  
+ this->x_max = NULL;
+ this->y_max = NULL;
+ 
  this->summary_codes = NULL;
  this->info_codes = NULL;
  this->learn_codes = NULL;
@@ -236,10 +239,16 @@ void Forest_new(Forest * this)
  
  this->trees = 0;
  this->tree = NULL;
+ 
+ this->ss_size = 0;
+ this->ss = NULL;
 }
 
 void Forest_dealloc(Forest * this)
 {
+ free(this->x_max);
+ free(this->y_max);
+ 
  free(this->summary_codes);
  free(this->info_codes);
  free(this->learn_codes);
@@ -252,6 +261,8 @@ void Forest_dealloc(Forest * this)
   Py_DECREF((PyObject*)this->tree[i]);
  }
  free(this->tree);
+ 
+ free(this->ss);
 }
 
 
@@ -467,7 +478,7 @@ static PyObject * Forest_load_py(Forest * self, PyObject * args)
    npy_intp dims[2] = {fh->ratios, fh->y_feat};
    self->info_ratios = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
    
-   float * base = (float*)(fh->codes + self->y_feat *2 + self->x_feat);
+   float * base = (float*)(fh->codes + self->y_feat*2 + self->x_feat);
    int j;
    for (j=0; j<fh->ratios; j++)
    {
@@ -476,6 +487,22 @@ static PyObject * Forest_load_py(Forest * self, PyObject * args)
      *(float*)PyArray_GETPTR2(self->info_ratios, j, i) = base[j * fh->y_feat + i];
     }
    }
+  }
+  
+  int * max = (int*)(fh->codes + self->y_feat*2 + self->x_feat + fh->ratios * (self->y_feat * sizeof(float)));
+  free(self->x_max);
+  
+  self->x_max = (int*)malloc(self->x_feat*sizeof(int));
+  for (i=0; i<self->x_feat; i++)
+  {
+   self->x_max[i] = max[i];
+  }
+  
+  free(self->y_max);
+  self->y_max = (int*)malloc(self->y_feat*sizeof(int));
+  for (i=0; i<self->y_feat; i++)
+  {
+   self->y_max[i] = max[self->x_feat+i];
   }
   
  // Return the number of trees...
@@ -490,7 +517,9 @@ static PyObject * Forest_configure_py(Forest * self, PyObject * args)
   const char * summary;
   const char * info;
   const char * learn;
-  if (!PyArg_ParseTuple(args, "sss", &summary, &info, &learn)) return NULL;
+  PyArrayObject * max_x = NULL;
+  PyArrayObject * max_y = NULL;
+  if (!PyArg_ParseTuple(args, "sss|O!O!", &summary, &info, &learn, &PyArray_Type, &max_x, &PyArray_Type, &max_y)) return NULL;
   
  // Error check the strings...
   int summary_len = strlen(summary);
@@ -545,6 +574,19 @@ static PyObject * Forest_configure_py(Forest * self, PyObject * args)
    }
   }
   
+ // Error check the arrays...
+  if ((max_x!=NULL)&&((PyArray_NDIM(max_x)!=1)||(PyArray_DIMS(max_x)[0]!=learn_len)))
+  {
+   PyErr_SetString(PyExc_ValueError, "x maximum value array is the wrong shape/size.");
+   return NULL;
+  }
+  
+  if ((max_y!=NULL)&&((PyArray_NDIM(max_y)!=1)||(PyArray_DIMS(max_y)[0]!=summary_len)))
+  {
+   PyErr_SetString(PyExc_ValueError, "y maximum value array is the wrong shape/size.");
+   return NULL;
+  }
+  
  // Remove all trees...
   for (i=0; i<self->trees; i++)
   {
@@ -558,6 +600,32 @@ static PyObject * Forest_configure_py(Forest * self, PyObject * args)
  // Record the feat sizes, codes and indicate ready...
   self->x_feat = learn_len;
   self->y_feat = summary_len;
+  
+  free(self->x_max);
+  self->x_max = NULL;
+  if (max_x!=NULL)
+  {
+   self->x_max = (int*)malloc(self->x_feat * sizeof(int));
+   ToDiscrete convert = KindToDiscreteFunc(PyArray_DESCR(max_x));
+   
+   for (i=0; i<self->x_feat; i++)
+   {
+    self->x_max[i] = convert(PyArray_GETPTR1(max_x, i));
+   }
+  }
+  
+  free(self->y_max);
+  self->y_max = NULL;
+  if (max_y!=NULL)
+  {
+   self->y_max = (int*)malloc(self->y_feat * sizeof(int));
+   ToDiscrete convert = KindToDiscreteFunc(PyArray_DESCR(max_y));
+   
+   for (i=0; i<self->y_feat; i++)
+   {
+    self->y_max[i] = convert(PyArray_GETPTR1(max_y, i));
+   }
+  }
   
   free(self->summary_codes); 
   self->summary_codes = malloc(self->y_feat+1);
@@ -625,6 +693,8 @@ static PyObject * Forest_save_py(Forest * self, PyObject * args)
  {
   size += PyArray_DIMS(self->info_ratios)[0] * PyArray_DIMS(self->info_ratios)[1] * sizeof(float); 
  }
+ size += self->x_feat * sizeof(int);
+ size += self->y_feat * sizeof(int);
  
  ForestHeader * fh = (ForestHeader*)malloc(size);
  
@@ -657,15 +727,36 @@ static PyObject * Forest_save_py(Forest * self, PyObject * args)
   if (self->info_ratios!=NULL)
   {
    float * base = (float*)(fh->codes + 2*self->y_feat + self->x_feat);
-   
+   ToContinuous convert = KindToContinuousFunc(PyArray_DESCR(self->info_ratios));
+     
    int j;
    for (j=0; j<fh->ratios; j++)
    {
     for (i=0; i<self->y_feat; i++)
     {
-     base[j*self->y_feat+i] = *(float*)PyArray_GETPTR2(self->info_ratios, j, i);
+     base[j*self->y_feat+i] = convert(PyArray_GETPTR2(self->info_ratios, j, i));
     }
    }
+  }
+  
+  int * max = (int*)(fh->codes + 2*self->y_feat + self->x_feat + fh->ratios * (self->y_feat * sizeof(float)));
+  
+  if (self->x_max==NULL)
+  {
+   for (i=0; i<self->x_feat; i++) max[i] = -1;
+  }
+  else
+  {
+   for (i=0; i<self->x_feat; i++) max[i] = self->x_max[i]; 
+  }
+  
+  if (self->y_max==NULL)
+  {
+   for (i=0; i<self->y_feat; i++) max[self->x_feat+i] = -1;
+  }
+  else
+  {
+   for (i=0; i<self->y_feat; i++) max[self->x_feat+i] = self->y_max[i]; 
   }
  
  // Create a ByteArray...
@@ -679,6 +770,8 @@ static PyObject * Forest_save_py(Forest * self, PyObject * args)
 
 static PyObject * Forest_clone_py(Forest * self, PyObject * args)
 {
+ int i;
+ 
  // Can't clone objects that are not ready - thats silly...
   if (self->ready==0)
   {
@@ -694,6 +787,20 @@ static PyObject * Forest_clone_py(Forest * self, PyObject * args)
   ret->x_feat = self->x_feat;
   ret->y_feat = self->y_feat;
   
+  if (self->x_max==NULL) ret->x_max = NULL;
+  else
+  {
+   ret->x_max = malloc(ret->x_feat * sizeof(int));
+   for (i=0; i<ret->x_feat; i++) ret->x_max[i] = self->x_max[i];
+  }
+  
+  if (self->y_max==NULL) ret->y_max = NULL;
+  else
+  {
+   ret->y_max = malloc(ret->y_feat * sizeof(int));
+   for (i=0; i<ret->y_feat; i++) ret->y_max[i] = self->y_max[i];
+  }
+  
   ret->summary_codes = strdup(self->summary_codes);
   ret->info_codes = strdup(self->info_codes);
   ret->learn_codes = strdup(self->learn_codes);
@@ -705,7 +812,6 @@ static PyObject * Forest_clone_py(Forest * self, PyObject * args)
   ret->min_exemplars = self->min_exemplars;
   ret->max_splits = self->max_splits;
   
-  int i;
   for (i=0; i<4; i++) ret->key[i] = self->key[i];
   
   ret->info_ratios = self->info_ratios;
@@ -716,6 +822,104 @@ static PyObject * Forest_clone_py(Forest * self, PyObject * args)
   
  // Return...
   return (PyObject*)ret;
+}
+
+
+
+static PyObject * Forest_max_x_py(Forest * self, PyObject * args)
+{
+ int i;
+ 
+ // Create the return array...  
+  npy_intp dim = self->x_feat;
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &dim, NPY_INT32);
+
+ // Fill it in...
+  if (self->x_max==NULL)
+  {
+   for (i=0; i<self->x_feat; i++)
+   {
+    *(int*)PyArray_GETPTR1(ret, i) = -1; 
+   }
+  }
+  else
+  {
+   for (i=0; i<self->x_feat; i++)
+   {
+    *(int*)PyArray_GETPTR1(ret, i) = self->x_max[i]; 
+   }
+  }
+  
+ // Return...
+  return (PyObject*)ret;
+}
+
+
+static PyObject * Forest_max_y_py(Forest * self, PyObject * args)
+{
+ int i;
+ 
+ // Create the return array...  
+  npy_intp dim = self->y_feat;
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &dim, NPY_INT32);
+
+ // Fill it in...
+  if (self->y_max==NULL)
+  {
+   for (i=0; i<self->y_feat; i++)
+   {
+    *(int*)PyArray_GETPTR1(ret, i) = -1; 
+   }
+  }
+  else
+  {
+   for (i=0; i<self->y_feat; i++)
+   {
+    *(int*)PyArray_GETPTR1(ret, i) = self->y_max[i]; 
+   }
+  }
+  
+ // Return...
+  return (PyObject*)ret;
+}
+
+
+
+static PyObject * Forest_clear_py(Forest * self, PyObject * args)
+{
+ // Release all contained trees...
+  int i;
+  for (i=0; i<self->trees; i++)
+  {
+   Py_DECREF(self->tree[i]); 
+  }
+ 
+ // Splat the actual array...
+  free(self->tree);
+  self->tree = NULL;
+  self->trees = 0;
+ 
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+static PyObject * Forest_append_py(Forest * self, PyObject * args)
+{
+ // Parse the parameters...
+  TreeBuffer * tree;
+  if (!PyArg_ParseTuple(args, "O!", &TreeBufferType, &tree)) return NULL;
+  
+ // Dump it on the end...
+  self->tree = (TreeBuffer**)realloc(self->tree, (self->trees + 1) * sizeof(TreeBuffer*));
+  self->tree[self->trees] = tree;
+  Py_INCREF(tree);
+  self->trees += 1;
+  
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
 }
 
 
@@ -742,10 +946,31 @@ static PyObject * Forest_train_py(Forest * self, PyObject * args)
   
   tp.x = DataMatrix_new(x_obj, self->x_max);
   if (tp.x==NULL) return NULL;
+  if (tp.x->features!=self->x_feat)
+  {
+   DataMatrix_delete(tp.x);
+   PyErr_SetString(PyExc_ValueError, "X datamatrix has wrong number features.");
+   return NULL; 
+  }
   
   tp.y = DataMatrix_new(y_obj, self->y_max);
   if (tp.y==NULL)
   {
+   DataMatrix_delete(tp.x);
+   return NULL; 
+  }
+  if (tp.y->features!=self->y_feat)
+  {
+   PyErr_SetString(PyExc_ValueError, "Y datamatrix has wrong number features.");
+   DataMatrix_delete(tp.y);
+   DataMatrix_delete(tp.x);
+   return NULL; 
+  }
+  
+  if (tp.x->exemplars!=tp.y->exemplars)
+  {
+   PyErr_SetString(PyExc_ValueError, "Data matrices must have the same number of exemplars.");
+   DataMatrix_delete(tp.y);
    DataMatrix_delete(tp.x);
    return NULL; 
   }
@@ -766,29 +991,54 @@ static PyObject * Forest_train_py(Forest * self, PyObject * args)
    DataMatrix_delete(tp.x);
    return NULL; 
   }
+  
+  IndexSet * indices = IndexSet_new(tp.x->exemplars);
 
  // If we are doing oob handle it...
   PyArrayObject * oob = NULL;
-  if (bootstrap!=0)
+  if (self->bootstrap!=0)
   {
    npy_intp dims[2] = {create, self->y_feat};
    oob = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
   }
   
+ // Enlarge tree array...
+  self->tree = (TreeBuffer**)realloc(self->tree, (self->trees+create)*sizeof(TreeBuffer*));
+  
  // Loop and create each tree in turn...
   int i;
   for (i=0; i<create; i++)
   {
-   float * error = (bootstrap==0) ? NULL : (float*)PyArray_GETPTR2(oob, i, 0);
+   // Prepare for the learning...
+    float * error;
+    if (self->bootstrap==0)
+    {
+     error = NULL;
+     IndexSet_init_all(indices);
+    }
+    else
+    {
+     error = (float*)PyArray_GETPTR2(oob, i, 0);
+     IndexSet_init_bootstrap(indices, self->key);
+    }
    
-   // ***************** indices
+   // Learn a new tree - this is going to take a while...
+    Tree * tree = Tree_learn(&tp, indices, error);
    
-   Tree * tree = Tree_learn(&tp, IndexSet * indices, error);
+   // Create a tree buffer and dump it into the right position...
+    TreeBuffer * tb = (TreeBuffer*)TreeBufferType.tp_alloc(&TreeBufferType, 0);
+    tb->size = Tree_size(tree);
+    tb->tree = tree;
+    tb->ready = 1;
    
-   // ********************************* create and store tree - append.
+    self->tree[self->trees+i] = tb;
   }
+  
+  self->trees += create;
  
  // Clean up...
+  IndexSet_delete(indices);
+ 
   InfoSet_delete(tp.is);
   LearnerSet_delete(tp.ls);
   DataMatrix_delete(tp.y);
@@ -807,21 +1057,168 @@ static PyObject * Forest_train_py(Forest * self, PyObject * args)
 }
 
 
-static PyObject * Forest_append_py(Forest * self, PyObject * args)
+
+static PyObject * Forest_predict_py(Forest * self, PyObject * args)
 {
- // Parse the parameters...
-  TreeBuffer * tree;
-  if (!PyArg_ParseTuple(args, "O!", &TreeBufferType, &tree)) return NULL;
+ // Handle the parameters...
+  PyObject * x_obj;
+  int exemplar = -1;
+  if (!PyArg_ParseTuple(args, "O|i", &x_obj, &exemplar)) return NULL;
   
- // Dump it on the end...
-  self->tree = (TreeBuffer**)realloc(self->tree, (self->trees + 1) * sizeof(TreeBuffer*));
-  self->tree[self->trees] = tree;
-  Py_INCREF(tree);
-  self->trees += 1;
+ // Create a data matrix from x_obj...
+  DataMatrix * x = DataMatrix_new(x_obj, self->x_max);
+  if (x==NULL) return NULL;
+  if (x->features!=self->x_feat)
+  {
+   DataMatrix_delete(x);
+   PyErr_SetString(PyExc_ValueError, "X datamatrix has wrong number features.");
+   return NULL; 
+  }
   
- // Return None...
-  Py_INCREF(Py_None);
-  return Py_None;
+  if (exemplar>=x->exemplars)
+  {
+   DataMatrix_delete(x);
+   PyErr_SetString(PyExc_IndexError, "Requested exemplar is out of range of provided data matrix.");
+   return NULL;     
+  }
+  
+ // Behaviour depends on if we are requesting a singular exemplar or all of them... 
+  if (exemplar>=0)
+  {
+   // One exemplar... 
+   // Create required objects...
+    if (self->ss_size<self->trees)
+    {
+     self->ss_size = self->trees;
+     self->ss = realloc(self->ss, self->ss_size * sizeof(SummarySet*));
+    }
+   
+   // Find the leaves the exemplar falls into...
+    int i;
+    for (i=0; i<self->trees; i++)
+    {
+     if (self->tree[i]->ready==0)
+     {
+      Tree_init(self->tree[i]->tree);
+      self->tree[i]->ready = 1; 
+     }
+     
+     self->ss[i] = Tree_run(self->tree[i]->tree, x, exemplar);
+    }
+    
+   // Convert into a return value...
+    PyObject * ret = SummarySet_merge_py(self->trees, self->ss);
+   
+   // Clean up and return...
+    DataMatrix_delete(x);
+    return ret;
+  }
+  else
+  {
+   // All exemplars...
+   // Create required objects...
+    IndexSet * is = IndexSet_new(x->exemplars);
+    
+    if (self->ss_size<self->trees*x->exemplars)
+    {
+     self->ss_size = self->trees*x->exemplars;
+     self->ss = realloc(self->ss, self->ss_size * sizeof(SummarySet*));
+    }
+   
+   // Find the leaves the exemplars fall into...
+    int i;
+    for (i=0; i<self->trees; i++)
+    {
+     if (self->tree[i]->ready==0)
+     {
+      Tree_init(self->tree[i]->tree);
+      self->tree[i]->ready = 1; 
+     }
+     
+     IndexSet_init_all(is);
+     
+     Tree_run_many(self->tree[i]->tree, x, is, self->ss + i, self->trees);
+    }
+   
+   // Convert into a return value...
+    PyObject * ret = SummarySet_merge_many_py(x->exemplars, self->trees, self->ss);
+   
+   // Clean up and return...
+    IndexSet_delete(is);
+    DataMatrix_delete(x);
+    return ret;
+  }
+}
+
+
+static PyObject * Forest_error_py(Forest * self, PyObject * args)
+{
+ // Handle the parameters...
+  PyObject * x_obj;
+  PyObject * y_obj;
+  if (!PyArg_ParseTuple(args, "OO", &x_obj, &y_obj)) return NULL;
+  
+ // Convert into data matrices and sanity check...
+  DataMatrix * x = DataMatrix_new(x_obj, self->x_max);
+  if (x==NULL) return NULL;
+  if (x->features!=self->x_feat)
+  {
+   DataMatrix_delete(x);
+   PyErr_SetString(PyExc_ValueError, "X datamatrix has wrong number features.");
+   return NULL; 
+  }
+  
+  DataMatrix * y = DataMatrix_new(y_obj, self->y_max);
+  if (y==NULL)
+  {
+   DataMatrix_delete(x);
+   return NULL; 
+  }
+  if (y->features!=self->y_feat)
+  {
+   PyErr_SetString(PyExc_ValueError, "Y datamatrix has wrong number features.");
+   DataMatrix_delete(y);
+   DataMatrix_delete(x);
+   return NULL; 
+  }
+  
+  if (x->exemplars!=y->exemplars)
+  {
+   PyErr_SetString(PyExc_ValueError, "Data matrices must have the same number of exemplars.");
+   DataMatrix_delete(y);
+   DataMatrix_delete(x);
+   return NULL; 
+  }
+  
+ // Create support structures...
+  IndexSet * is = IndexSet_new(x->exemplars);
+  
+  npy_intp dims[2] = {self->trees, self->y_feat};
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+ 
+ // Loop and calculate for each tree in turn...
+  int i;
+  for (i=0; i<self->trees; i++)
+  {
+   if (self->tree[i]->ready==0)
+   {
+    Tree_init(self->tree[i]->tree);
+    self->tree[i]->ready = 1; 
+   }
+   
+   IndexSet_init_all(is);
+   IndexView view;
+   IndexView_init(&view, is);
+   
+   Tree_error(self->tree[i]->tree, x, y, &view, (float*)PyArray_GETPTR2(ret, i, 0));
+  }
+ 
+ // Clean up and return...
+  IndexSet_delete(is);
+  DataMatrix_delete(y);
+  DataMatrix_delete(x);
+  
+  return (PyObject*)ret;
 }
 
 
@@ -956,17 +1353,22 @@ static PyMethodDef Forest_methods[] =
  {"size_from_initial", (PyCFunction)Forest_size_from_initial_py, METH_VARARGS | METH_STATIC, "Given the inital header, as a read-only buffer compatible object (string, return value of read(), numpy array.) this returns the size of the entire header, or throws an error if there is something wrong."},
  {"load", (PyCFunction)Forest_load_py, METH_VARARGS, "Given an entire header (See initial_size and size_from_initial for how to do this) as a read-only buffer compatible object this initialises this object to those settings. If there are any trees they will be terminated. Can raise a whole litany of errors. Returns how many trees follow the header - it is upto the user to then load them from whatever stream is providing the information."},
  
- {"configure", (PyCFunction)Forest_configure_py, METH_VARARGS, "Configures the object - must be called before any learning, unless load is used instead. Takes three tag strings - first for summary, next for info, final for learn. Summary and info must have the same length, being the number of output features in length, whilst learn is the length of the number of input features. See the various _list static methods for lists of possible codes. Will throw an error if any are wrong."},
+ {"configure", (PyCFunction)Forest_configure_py, METH_VARARGS, "Configures the object - must be called before any learning, unless load is used instead. Takes three tag strings - first for summary, next for info, final for learn. Summary and info must have the same length, being the number of output features in length, whilst learn is the length of the number of input features. See the various _list static methods for lists of possible codes. Will throw an error if any are wrong. It can optionally have two further parameters - an array of maximum values for x/input and an array of maximum values for y/output - these are used when building categorical distributions over a feature to decide on the range, which will be 0..max inclusive. Values outside the range will be treated as unknown. Negative values in these arrays are ignored, and the system reverts to calculating them automatically."},
  {"set_ratios", (PyCFunction)Forest_set_ratios_py, METH_VARARGS, "Sets the ratios to use when balancing the priority of learning each output feature - must be a 2D numpy array with the first dimension indexed by depth, the second indexed by output feature. The depth is indexed modulus its size, so you can have a repeating structure. Can only be called on a ready Forest, and keeps a pointer to the array, so you can change its values afterwards if you want."},
  
  {"save", (PyCFunction)Forest_save_py, METH_NOARGS, "Returns the header for this Forest, such that it can be saved to disk/stream etc. and later loaded. Return value is a bytearray"},
  {"clone", (PyCFunction)Forest_clone_py, METH_NOARGS, "Returns a new Forest with the exact same setup as this one, but no trees. Be warned that it also duplicates the key for the random number generator, so any new trees trained with the same data in both will be identical - may want to change the key after cloning."},
  
- {"train", (PyCFunction)Forest_train_py, METH_VARARGS, "Trains and appends more trees to this Forest - first parameter is the x/input data matrix, second is the y/output data matrix, third is the number of trees, which defaults to 1. Data matrices can be either a numpy array (exemplars X features) or a list of numpy arrays that are implicity joined to make the final data matrix - good when you want both continuous and discrete types. When a list 1D array are assumed to be indexed by exemplar. If boostrap is true this returns the out of bag error - a 2D array indexed by new tree then feature of how much error exists in that channel on average."},
- {"append", (PyCFunction)Forest_append_py, METH_VARARGS, "Appends a Tree to the Forest, that has presumably been trained in another Forest and is now to be merged. Note that the Forest must be compatible (identical type codes given to configure), and this is not checked. Break this and expect the fan to get very brown."},
+ {"max_x", (PyCFunction)Forest_max_x_py, METH_NOARGS, "Returns an array of maximum values (integers) indexed by x/input feature - these are used for building categorical distributions over that feature, which will go from 0..max_x inclusive. The array can include negative values, which indicate unknown (calculate when needed from the data)/irrelevant (continuous)."},
+ {"max_y", (PyCFunction)Forest_max_y_py, METH_NOARGS, "Returns an array of maximum values (integers) indexed by y/output feature - these are used for building categorical distributions over that feature, which will go from 0..max_y inclusive. The array can include negative values, which indicate unknown (calculate when needed from the data)/irrelevant (continuous)."},
  
- //{"predict", (PyCFunction)Forest_predict_py, METH_VARARGS, "Given an x/input data matrix returns what it knows about the output data matrix. Return will be a list indexed by feature, with the contents defined by the summary codes (Typically a dictionary of arrays, often of things like 'prob' or 'mean')."},
- //{"score", (PyCFunction)Forest_score_py, METH_VARARGS, "Given a x/input data matrix and a y/output data matrix of true answers this returns an array, indexed by tree then output features, of how much error each tree has on that feature, divided by the number of exemplars. Same as the oob calculation, but for a hold out set etc. Array tree index will align with the list of trees this can be accessed as."},
+ {"clear", (PyCFunction)Forest_clear_py, METH_NOARGS, "Removes all trees from the forest. Note that because you can't snipe individual trees if you want to be selective you can use the list interface to get all of them, clear the forest then append each tree that you want to keep."},
+ {"append", (PyCFunction)Forest_append_py, METH_VARARGS, "Appends a Tree to the Forest, that has presumably been trained in another Forest and is now to be merged. Note that the Forest must be compatible (identical type codes given to configure), and this is not checked. Break this and expect the fan to get very brown."},
+
+ {"train", (PyCFunction)Forest_train_py, METH_VARARGS, "Trains and appends more trees to this Forest - first parameter is the x/input data matrix, second is the y/output data matrix, third is the number of trees, which defaults to 1. Data matrices can be either a numpy array (exemplars X features) or a list of numpy arrays that are implicity joined to make the final data matrix - good when you want both continuous and discrete types. When a list 1D arrays are assumed to be indexed by exemplar. If boostrap is true this returns the out of bag error - a 2D array indexed by new tree then feature of how much error exists in that channel on average."},
+ 
+ {"predict", (PyCFunction)Forest_predict_py, METH_VARARGS, "Given an x/input data matrix (With support for a tuple of matrices identical to train.) returns what it knows about the output data matrix. Return will be a list indexed by feature, with the contents defined by the summary codes (Typically a dictionary of arrays, often of things like 'prob' or 'mean'). You can provide a second parameter as in exemplar index if you want to just do one item from the data matrix, but note that this is very inefficient compared to doing everything at once in a single data matrix (Or several large data matrices if that is unreasonable)."},
+ {"error", (PyCFunction)Forest_error_py, METH_VARARGS, "Given a x/input data matrix and a y/output data matrix of true answers (Same as train) this returns an array, indexed by tree then output features, of how much error each tree has on that feature, divided by the number of exemplars. Same as the oob calculation, but for a hold out set etc. Array tree index will align with the list of trees this can be accessed as."},
  
  {NULL}
 };

@@ -44,6 +44,8 @@ struct ForestHeader
  
  char codes[0]; // Codes for summary, then info then learn; y_feat * 2 + x_feat.
  // Ratios follow, as float; ratios * y_feat * sizeof(float).
+ // x_max follows, as array of int. Always included, even if all -1; x_feat * sizeof(int).
+ // Then y_max - as above; y_feat * sizeof(int).
 };
 
 
@@ -74,6 +76,9 @@ struct Forest
   int x_feat; // Number of features for input.
   int y_feat; // Number of features for output.
   
+  int * x_max; // Maximum, values, if provided.
+  int * y_max; // "
+  
   char * summary_codes; // length==y_feat - codes for creating summary objects.
   char * info_codes; // length==y_feat - codes for creating info objects.
   char * learn_codes; // length==x_feat - codes for creating learning objects.
@@ -92,6 +97,10 @@ struct Forest
  // Store the trees as a straight array of pointers (The cost of loading a tree, let alone learning one, compared to a realloc means doing anything more dcomplicated is pointless.)...
   int trees;
   TreeBuffer ** tree;
+  
+ // Cached stuff...
+  int ss_size;
+  SummarySet ** ss;
 };
 
 

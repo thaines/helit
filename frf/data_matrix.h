@@ -91,8 +91,8 @@ struct DataMatrix
 };
 
 
-// New and delete for a DataMatrix - its flexibility means that it has varying malloc sizes, so this gets complicated internally. Constructor accepts a single numpy array or a list of numpy arrays, where the arrays would typically be 2D. 1D arrays can be accepted under the assumption that the feature dimension is of size 1. New will return null with an error set if something is pear shaped. max is optional but if not null then it must be an array of maximum discrete values for each channel, noting that it will be ignored for continuous values - for sizing categorical distributions created from the data...
-DataMatrix * DataMatrix_new(PyObject * obj, PyArrayObject * max);
+// New and delete for a DataMatrix - its flexibility means that it has varying malloc sizes, so this gets complicated internally. Constructor accepts a single numpy array or a list of numpy arrays, where the arrays would typically be 2D. 1D arrays can be accepted under the assumption that the feature dimension is of size 1. New will return null with an error set if something is pear shaped. max is optional but if not null then it must be an array of maximum discrete values for each channel, noting that it will be ignored for continuous values - for sizing categorical distributions created from the data. Negative values within maximum will be ignored, and automatically calculated if required...
+DataMatrix * DataMatrix_new(PyObject * obj, int * max);
 void DataMatrix_delete(DataMatrix * this);
 
 
