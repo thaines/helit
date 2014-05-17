@@ -493,7 +493,7 @@ int LearnerSet_optimise(LearnerSet * this, InfoSet * info, IndexView * view, int
   {
    features = this->features; 
   }
-  
+
  // Loop and optimise each selected feature in turn, to choose the best...
   this->best = -1;
   
@@ -502,6 +502,7 @@ int LearnerSet_optimise(LearnerSet * this, InfoSet * info, IndexView * view, int
    int tf = this->feat[i];
    if (Learner_optimise(this->learn[tf], info, view, depth, improve, key)!=0)
    {
+    
     float entropy = Learner_entropy(this->learn[tf]);
     if (entropy<improve)
     {
@@ -585,7 +586,9 @@ size_t Test_size(char code, const void * test)
  return CodeToSize[(unsigned char)code](test);
 }
 
-void SetupCodeToTest(void)
+
+
+void Setup_Learner(void)
 {
  int i;
  for (i=0; i<256; i++)
@@ -599,12 +602,6 @@ void SetupCodeToTest(void)
  
  CodeToSize['C'] = SizeContinuousSplit;
  CodeToSize['D'] = SizeDiscreteSelect;
-}
-
-
-
-// Makes a warning go away...
-void DoNotUse_learner_h(void)
-{
- import_array();  
+ 
+ import_array();
 }

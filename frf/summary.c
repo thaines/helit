@@ -143,7 +143,7 @@ static void Categorical_init(Summary self, DataMatrix * dm, IndexView * view, in
  {
   for (i=0; i<this->cats; i++)
   {
-   this->prob[i] /= this->count; 
+   this->prob[i] /= this->count;
   }
  }
  else
@@ -184,7 +184,11 @@ static PyObject * Categorical_merge_py(int trees, Summary * sums, SummaryMagic m
 {
  // Setup the output...
   int count = 0;
-  npy_intp size = ((Categorical*)sums[0])->cats;
+  
+  Categorical * first = (Categorical*)sums[0];
+  if (magic!=NULL) first = (Categorical*)magic(first, extra);
+  
+  npy_intp size = first->cats;
   PyArrayObject * prob = (PyArrayObject*)PyArray_SimpleNew(1, &size, NPY_FLOAT32);
  
   int i, j;
@@ -221,7 +225,10 @@ static PyObject * Categorical_merge_py(int trees, Summary * sums, SummaryMagic m
 static PyObject * Categorical_merge_many_py(int exemplars, int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  // Setup the output...
-  npy_intp size[2] = {exemplars, ((Categorical*)sums[0])->cats};
+  Categorical * first = (Categorical*)sums[0];
+  if (magic!=NULL) first = (Categorical*)magic(first, extra);
+  
+  npy_intp size[2] = {exemplars, first->cats};
   PyArrayObject * count = (PyArrayObject*)PyArray_SimpleNew(1, size, NPY_INT32);
   PyArrayObject * prob = (PyArrayObject*)PyArray_SimpleNew(2, size, NPY_FLOAT32);
  
@@ -859,8 +866,7 @@ size_t SummarySet_size(SummarySet * this)
 
 
 
-// Makes a warning go away...
-void DoNotUse_summary_h(void)
+void Setup_Summary(void)
 {
  import_array();  
 }

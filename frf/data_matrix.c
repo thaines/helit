@@ -495,8 +495,7 @@ int DataMatrix_Max(DataMatrix * this, int feature)
 
 
 
-// Makes a warning go away...
-void DoNotUse_datamatrix_h(void)
+void Setup_DataMatrix(void)
 {
  import_array();  
 }

@@ -22,6 +22,7 @@ Info Info_new(char code, DataMatrix * dm, int feature)
   {
    return ListInfo[i]->init(dm, feature);
   }
+  i += 1;
  }
  
  PyErr_SetString(PyExc_TypeError, "Unrecognised information type code.");
@@ -697,8 +698,7 @@ float InfoSet_entropy(InfoSet * this, int depth)
 
 
 
-// Makes a warning go away...
-void DoNotUse_information_h(void)
+void Setup_Information(void)
 {
  import_array();  
 }

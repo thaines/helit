@@ -8,6 +8,10 @@
 
 
 
+import bz2
+
+
+
 from utils.make import make_mod
 import os.path
 
@@ -16,3 +20,45 @@ make_mod('frf_c', os.path.dirname(__file__), ['philox.h', 'philox.c', 'data_matr
 
 
 from frf_c import *
+
+
+
+def save_forest(fn, forest):
+  """Saves a forest - the actual Forest interface is fairly flexible, so this is just one way of doing it - streams the Forest header followed by each Tree into a bzip2 compressed file. Suggested extension is '.rf'."""
+  f = bz2.BZ2File(fn, 'w')
+  f.write(forest.save())
+  
+  for i in xrange(len(forest)):
+    f.write(forest[i])
+  
+  f.close()
+
+  
+  
+def load_forest(fn):
+  """Loads a forest that was previous saved using the save_forest function."""
+  # Prepare...
+  ret = Forest()
+  f = bz2.BZ2File(fn, 'r')
+  
+  # The Forest header...
+  initial_head = f.read(Forest.initial_size())
+  head_size = Forest.size_from_initial(initial_head)
+  head = initial_head + f.read(head_size - len(initial_head))
+  
+  trees = ret.load(head)
+  
+  # Each tree in return...
+  for _ in xrange(trees):
+    header = f.read(Tree.head_size())
+    size = Tree.size_from_head(header)
+    
+    tree = Tree(size)
+    tree[:len(header)] = header
+    f.readinto(tree[len(header):])
+    
+    ret.append(tree)
+  
+  # Cleanup and return...
+  f.close()
+  return ret

@@ -159,8 +159,8 @@ size_t Test_size(char code, const void * test);
 
 
 
-// Internal method that fills in CodeToTest...
-void SetupCodeToTest(void);
+// Setup this module - for internal use only...
+void Setup_Learner(void);
 
 
 

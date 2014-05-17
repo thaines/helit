@@ -166,13 +166,17 @@ void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, Index
  // Apply the node to the data, and split it...
   IndexView pass;
   IndexView fail;
-  IndexView_split(view, param->x, node->code, (void*)node->test, &pass, &fail);
   
- // If either split is too small unroll and cancel the node...
-  if ((pass.size<param->min_exemplars)||(fail.size<param->min_exemplars))
+  if (node!=NULL)
   {
-   free(node);
-   node = NULL;
+   IndexView_split(view, param->x, node->code, (void*)node->test, &pass, &fail);
+  
+   // If either split is too small unroll and cancel the node...
+    if ((pass.size<param->min_exemplars)||(fail.size<param->min_exemplars))
+    {
+     free(node);
+     node = NULL;
+    }
   }
  
  // If we have a node record it, otherwise create and store a summary...
@@ -198,7 +202,7 @@ void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, Index
     
    // Then do the pass half...
     node->pass = store->count;
-    Node_learn(store, node->pass, depth+1, param, &fail, entropy);
+    Node_learn(store, node->pass, depth+1, param, &pass, entropy);
   }
 }
 
@@ -218,6 +222,7 @@ Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error)
   size_t type_size = Tree_type_size(store->count);
   
   char * types = (char*)malloc(type_size);
+  PtrArray_set(store, 0, 'T', (void*)types);
   types[0] = 'T';
   
   int i;
@@ -329,7 +334,7 @@ int Tree_init(Tree * this)
  for (i=1; i<this->objects; i++)
  {
   this->index[i] = (char*)this + offset;
-  if ('N'==*(char*)this->index[0])
+  if ('N'==((char*)this->index[0])[i])
   {
    // Node...
     Node * targ = (Node*)this->index[i];
@@ -357,6 +362,7 @@ int Tree_init(Tree * this)
   PyErr_SetString(PyExc_ValueError, "Tree size does not match consumed memory.");
   return 0; // If we don't eat precisely all the data we have an issue.
  }
+ 
  return 1; // Success.
 }
 
@@ -489,8 +495,7 @@ void Tree_run_many(Tree * this, DataMatrix * x, IndexSet * is, SummarySet ** out
 
 
 
-// Makes a warning go away...
-void DoNotUse_tree_h(void)
+void Setup_Tree(void)
 {
  import_array();  
 }

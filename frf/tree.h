@@ -90,4 +90,9 @@ void Tree_run_many(Tree * this, DataMatrix * x, IndexSet * is, SummarySet ** out
 
 
 
+// Setup this module - for internal use only...
+void Setup_Tree(void);
+
+
+
 #endif

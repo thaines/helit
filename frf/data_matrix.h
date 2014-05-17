@@ -105,4 +105,10 @@ float DataMatrix_GetContinuous(DataMatrix * this, int exemplar, int feature);
 int DataMatrix_Max(DataMatrix * this, int feature);
 
 
+
+// Setup this module - for internal use only...
+void Setup_DataMatrix(void);
+
+
+
 #endif

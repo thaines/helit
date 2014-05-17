@@ -79,6 +79,7 @@ static PyObject * TreeBuffer_head_size_py(Forest * self, PyObject * args)
  return Py_BuildValue("n", Tree_head_size());
 }
 
+
 static PyObject * TreeBuffer_size_from_head_py(Forest * self, PyObject * args)
 {
  // Read in the header...
@@ -101,6 +102,14 @@ static PyObject * TreeBuffer_size_from_head_py(Forest * self, PyObject * args)
  // Extract the value and return it...
   size_t size = Tree_size((Tree*)(data));
   return Py_BuildValue("n", size);
+}
+
+
+
+static PyObject * TreeBuffer_nodes_py(TreeBuffer * self, PyObject * args)
+{
+ int nodes = Tree_objects(self->tree) - 1; // -1 to remove the node of codes.
+ return Py_BuildValue("i", nodes);
 }
 
 
@@ -159,6 +168,7 @@ static PyMethodDef TreeBuffer_methods[] =
 {
  {"head_size", (PyCFunction)TreeBuffer_head_size_py, METH_NOARGS | METH_STATIC, "Returns how many bytes are in the header of a Tree, so you can read the entire header from a stream."},
  {"size_from_head", (PyCFunction)TreeBuffer_size_from_head_py, METH_VARARGS | METH_STATIC, "Given the head, as a read-only buffer compatible object (string, return value of read(), numpy array.) this returns the size of the associated tree, or throws an error if there is something wrong."},
+ {"nodes", (PyCFunction)TreeBuffer_nodes_py, METH_VARARGS, "Returns how many nodes are in the tree."},
  {NULL}
 };
 
@@ -610,7 +620,7 @@ static PyObject * Forest_configure_py(Forest * self, PyObject * args)
    
    for (i=0; i<self->x_feat; i++)
    {
-    self->x_max[i] = convert(PyArray_GETPTR1(max_x, i));
+    self->x_max[i] = convert(PyArray_GETPTR1(max_x, i)) - 1;
    }
   }
   
@@ -623,7 +633,7 @@ static PyObject * Forest_configure_py(Forest * self, PyObject * args)
    
    for (i=0; i<self->y_feat; i++)
    {
-    self->y_max[i] = convert(PyArray_GETPTR1(max_y, i));
+    self->y_max[i] = convert(PyArray_GETPTR1(max_y, i)) - 1;
    }
   }
   
@@ -941,7 +951,7 @@ static PyObject * Forest_train_py(Forest * self, PyObject * args)
   tp.summary_codes = self->summary_codes;
   tp.key = self->key;
   tp.opt_features = self->opt_features;
-  tp.min_exemplars = self->opt_features;
+  tp.min_exemplars = self->min_exemplars;
   tp.max_splits = self->max_splits;
   
   tp.x = DataMatrix_new(x_obj, self->x_max);
@@ -1325,7 +1335,7 @@ static PyMemberDef Forest_members[] =
  
  {"ready", T_BOOL, offsetof(Forest, ready), READONLY, "True if its safe to train trees, False if the forest has not been setup - i.e. neither a header has been loaded not a header has been configured. Note that safe to train is not the same as safe to predict - it could contain 0 trees (check with len(forest))."},
  
- {"bootstrap", T_BOOL, offsetof(Forest, bootstrap), 0, "True to train trees on bootsrap draws of the training data (The default), False to just train on everything."},
+ {"bootstrap", T_BOOL, offsetof(Forest, bootstrap), 0, "True to train trees on bootstrap draws of the training data (The default), False to just train on everything."},
  {"opt_features", T_INT, offsetof(Forest, opt_features), 0, "Number of features to randomly select to try optimising for each split in the forest. Defaults so high as to be irrelevant."},
  {"min_exemplars", T_INT, offsetof(Forest, min_exemplars), 0, "Minimum number of exemplars to allow in a node - no node should ever have less than this count in it. Defaults to 1, making it irrelevant."},
  {"max_splits", T_INT, offsetof(Forest, max_splits), 0, "Maximum number of splits when building a new tree. Defaults so high you will run out of memeory first."},
@@ -1353,7 +1363,7 @@ static PyMethodDef Forest_methods[] =
  {"size_from_initial", (PyCFunction)Forest_size_from_initial_py, METH_VARARGS | METH_STATIC, "Given the inital header, as a read-only buffer compatible object (string, return value of read(), numpy array.) this returns the size of the entire header, or throws an error if there is something wrong."},
  {"load", (PyCFunction)Forest_load_py, METH_VARARGS, "Given an entire header (See initial_size and size_from_initial for how to do this) as a read-only buffer compatible object this initialises this object to those settings. If there are any trees they will be terminated. Can raise a whole litany of errors. Returns how many trees follow the header - it is upto the user to then load them from whatever stream is providing the information."},
  
- {"configure", (PyCFunction)Forest_configure_py, METH_VARARGS, "Configures the object - must be called before any learning, unless load is used instead. Takes three tag strings - first for summary, next for info, final for learn. Summary and info must have the same length, being the number of output features in length, whilst learn is the length of the number of input features. See the various _list static methods for lists of possible codes. Will throw an error if any are wrong. It can optionally have two further parameters - an array of maximum values for x/input and an array of maximum values for y/output - these are used when building categorical distributions over a feature to decide on the range, which will be 0..max inclusive. Values outside the range will be treated as unknown. Negative values in these arrays are ignored, and the system reverts to calculating them automatically."},
+ {"configure", (PyCFunction)Forest_configure_py, METH_VARARGS, "Configures the object - must be called before any learning, unless load is used instead. Takes three tag strings - first for summary, next for info, final for learn. Summary and info must have the same length, being the number of output features in length, whilst learn is the length of the number of input features. See the various _list static methods for lists of possible codes. Will throw an error if any are wrong. It can optionally have two further parameters - an array of category counts for x/input and an array of category counts for y/output - these are used when building categorical distributions over a feature to decide on the range, which will be [0,cateogory). Values outside the range will be treated as unknown. Negative values in these arrays are ignored, and the system reverts to calculating them automatically."},
  {"set_ratios", (PyCFunction)Forest_set_ratios_py, METH_VARARGS, "Sets the ratios to use when balancing the priority of learning each output feature - must be a 2D numpy array with the first dimension indexed by depth, the second indexed by output feature. The depth is indexed modulus its size, so you can have a repeating structure. Can only be called on a ready Forest, and keeps a pointer to the array, so you can change its values afterwards if you want."},
  
  {"save", (PyCFunction)Forest_save_py, METH_NOARGS, "Returns the header for this Forest, such that it can be saved to disk/stream etc. and later loaded. Return value is a bytearray"},
@@ -1438,7 +1448,13 @@ PyMODINIT_FUNC initfrf_c(void)
  
  // Call some initialisation code...
   import_array();
-  SetupCodeToTest();
+  
+  Setup_DataMatrix();
+  Setup_IndexSet();
+  Setup_Information();
+  Setup_Learner();
+  Setup_Summary();
+  Setup_Tree();
  
  // Fill in the summary lookup table...
   int i;

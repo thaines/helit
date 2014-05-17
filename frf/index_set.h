@@ -58,4 +58,9 @@ void IndexView_split(IndexView * this, DataMatrix * dm, char test_code, void * t
 
 
 
+// Setup this module - for internal use only...
+void Setup_IndexSet(void);
+
+
+
 #endif

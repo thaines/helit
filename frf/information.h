@@ -146,4 +146,9 @@ float InfoSet_entropy(InfoSet * this, int depth);
 
 
 
+// Setup this module - for internal use only...
+void Setup_Information(void);
+
+
+
 #endif

@@ -145,4 +145,9 @@ size_t SummarySet_size(SummarySet * this);
 
 
 
+// Setup this module - for internal use only...
+void Setup_Summary(void);
+
+
+
 #endif

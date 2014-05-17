@@ -37,7 +37,7 @@ IndexSet * IndexSet_new_reflect(IndexSet * other)
   for (i=0; i<other->size; i++) tags[i] = 0;
 
  // Go through and mark seen everything in the other...
-  for (i=0; other->size; i++)
+  for (i=0; i<other->size; i++)
   {
    tags[other->vals[i]] = 1; 
   }
@@ -48,11 +48,11 @@ IndexSet * IndexSet_new_reflect(IndexSet * other)
   {
    if (tags[i]==0) unseen += 1; 
   }
-  
+
  // Create the return...
   IndexSet * this = (IndexSet*)malloc(sizeof(IndexSet) + unseen * sizeof(int));
   this->size = unseen;
-  
+
  // Write out the unseen into the return...
   unseen = 0;
   for (i=0; i<other->size; i++)
@@ -63,7 +63,7 @@ IndexSet * IndexSet_new_reflect(IndexSet * other)
     unseen += 1; 
    }
   }
-  
+
  // Clean up and return...
   free(tags);
   return this;
@@ -165,8 +165,7 @@ void IndexView_split(IndexView * this, DataMatrix * dm, char test_code, void * t
 
 
 
-// Makes a warning go away...
-void DoNotUse_index_set_h(void)
+void Setup_IndexSet(void)
 {
  import_array();  
 }
