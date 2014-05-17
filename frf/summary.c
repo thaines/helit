@@ -46,6 +46,11 @@ size_t Summary_size(char code, Summary this)
  return CodeSummary[(unsigned char)code]->size(this);
 }
 
+PyObject * Summary_string(char code, Summary this)
+{
+ return CodeSummary[(unsigned char)code]->string(this); 
+}
+
 
 
 // The nothing summary type - I feel as empty writting this as I am sure you do reading it...
@@ -81,6 +86,11 @@ static size_t Nothing_size(Summary this)
  return 0;  
 }
 
+static PyObject * Nothing_string(Summary this)
+{
+ return PyString_FromFormat("nothing()");
+}
+
 
 const SummaryType NothingSummary =
 {
@@ -93,6 +103,7 @@ const SummaryType NothingSummary =
  Nothing_merge_py,
  Nothing_merge_many_py,
  Nothing_size,
+ Nothing_string,
 };
 
 
@@ -277,6 +288,29 @@ static size_t Categorical_size(Summary self)
  return sizeof(Categorical) + this->cats * sizeof(float);  
 }
 
+static PyObject * Categorical_string(Summary self)
+{
+ Categorical * this = (Categorical*)self;
+ 
+ PyObject * ret = NULL;
+ int i;
+ for (i=0; i<this->cats; i++)
+ {
+  char * s = PyOS_double_to_string(this->prob[i], 'f', 3, 0, NULL);
+  
+  if (ret==NULL) ret = PyString_FromFormat("categorical([%s", s);
+  else
+  {
+   PyString_ConcatAndDel(&ret, PyString_FromFormat(",%s", s));
+  }
+  
+  PyMem_Free(s);
+ }
+ 
+ PyString_ConcatAndDel(&ret, PyString_FromFormat("]|%i)", this->count));
+ return ret;
+}
+
 
 const SummaryType CategoricalSummary =
 {
@@ -289,6 +323,7 @@ const SummaryType CategoricalSummary =
  Categorical_merge_py,
  Categorical_merge_many_py,
  Categorical_size,
+ Categorical_string,
 };
 
 
@@ -420,6 +455,21 @@ static size_t Gaussian_size(Summary self)
  return sizeof(Gaussian);
 }
 
+static PyObject * Gaussian_string(Summary self)
+{
+ Gaussian * this = (Gaussian*)self;
+ 
+ char * ms = PyOS_double_to_string(this->mean, 'f', 3, 0, NULL);
+ char * vs = PyOS_double_to_string(this->var, 'f', 3, 0, NULL);
+ 
+ PyObject * ret = PyString_FromFormat("gaussian(%s,%s|%i)", ms, vs, this->count);
+ 
+ PyMem_Free(ms);
+ PyMem_Free(vs);
+ 
+ return ret;
+}
+
 
 const SummaryType GaussianSummary =
 {
@@ -432,6 +482,7 @@ const SummaryType GaussianSummary =
  Gaussian_merge_py,
  Gaussian_merge_many_py,
  Gaussian_size,
+ Gaussian_string,
 };
 
 
@@ -653,6 +704,29 @@ static size_t BiGaussian_size(Summary self)
  return sizeof(BiGaussian);  
 }
 
+static PyObject * BiGaussian_string(Summary self)
+{
+ BiGaussian * this = (BiGaussian*)self;
+ 
+ char * m0s = PyOS_double_to_string(this->mean[0], 'f', 3, 0, NULL);
+ char * m1s = PyOS_double_to_string(this->mean[1], 'f', 3, 0, NULL);
+ 
+ char * v0s = PyOS_double_to_string(this->var[0], 'f', 3, 0, NULL);
+ char * v1s = PyOS_double_to_string(this->var[1], 'f', 3, 0, NULL);
+ 
+ char * cvs = PyOS_double_to_string(this->covar, 'f', 3, 0, NULL);
+ 
+ PyObject * ret = PyString_FromFormat("gaussian([%s,%s],[[%s,%s],[%s,%s]]|%i)", m0s, m1s, v0s, cvs, cvs, v1s, this->count);
+ 
+ PyMem_Free(m0s);
+ PyMem_Free(m1s);
+ PyMem_Free(v0s);
+ PyMem_Free(v1s);
+ PyMem_Free(cvs);
+ 
+ return ret;
+}
+
 
 const SummaryType BiGaussianSummary =
 {
@@ -665,6 +739,7 @@ const SummaryType BiGaussianSummary =
  BiGaussian_merge_py,
  BiGaussian_merge_many_py,
  BiGaussian_size,
+ BiGaussian_string,
 };
 
 
@@ -862,6 +937,22 @@ PyObject * SummarySet_merge_many_py(int exemplars, int trees, SummarySet ** sum_
 size_t SummarySet_size(SummarySet * this)
 {
  return this->size; 
+}
+
+PyObject * SummarySet_string(SummarySet * this)
+{
+ char * code = CodePtr(this);
+ int i;
+ 
+ PyObject * ret = PyString_FromString("[");
+ for (i=0; i<this->features; i++)
+ {
+  if (i!=0) PyString_ConcatAndDel(&ret, PyString_FromString(","));
+  PyString_ConcatAndDel(&ret, Summary_string(code[i], SummaryPtr(this, i)));
+ }
+ PyString_ConcatAndDel(&ret, PyString_FromString("]"));
+ 
+ return ret;
 }
 
 

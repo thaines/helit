@@ -113,6 +113,12 @@ static PyObject * TreeBuffer_nodes_py(TreeBuffer * self, PyObject * args)
 }
 
 
+static PyObject * TreeBuffer_human_py(TreeBuffer * self, PyObject * args)
+{
+ return Tree_human(self->tree);
+}
+
+
 
 static Py_ssize_t TreeBuffer_buffer_get(TreeBuffer * self, Py_ssize_t index, const void **ptr)
 {
@@ -168,7 +174,8 @@ static PyMethodDef TreeBuffer_methods[] =
 {
  {"head_size", (PyCFunction)TreeBuffer_head_size_py, METH_NOARGS | METH_STATIC, "Returns how many bytes are in the header of a Tree, so you can read the entire header from a stream."},
  {"size_from_head", (PyCFunction)TreeBuffer_size_from_head_py, METH_VARARGS | METH_STATIC, "Given the head, as a read-only buffer compatible object (string, return value of read(), numpy array.) this returns the size of the associated tree, or throws an error if there is something wrong."},
- {"nodes", (PyCFunction)TreeBuffer_nodes_py, METH_VARARGS, "Returns how many nodes are in the tree."},
+ {"nodes", (PyCFunction)TreeBuffer_nodes_py, METH_NOARGS, "Returns how many nodes are in the tree."},
+ {"human", (PyCFunction)TreeBuffer_human_py, METH_NOARGS, "Returns a human understandable representation of the tree - horribly inefficient data structure and of no use beyond human consumption, so for testing/diagnostics/curiosity only. Each leaf node is represented by a string giving the distributions assigned to the output variables, each test by a string. Non-leaf nodes are then represented by dictionaries, containing 'test', 'pass' and 'fail'."},
  {NULL}
 };
 

@@ -88,6 +88,9 @@ SummarySet * Tree_run(Tree * this, DataMatrix * x, int exemplar);
 // Runs a Tree on many exemplars, recording the result into the provided array - step is how many to step between entries in out when writting the output, so you can interleave values from multiple trees as required by the SummarySet_merge_many_py method. Assumes that IndexSet is everything in the DataMatrix...
 void Tree_run_many(Tree * this, DataMatrix * x, IndexSet * is, SummarySet ** out, int step);
 
+// Converts the Tree into a Python object suitable for human consumption - tests and summaries (leaf nodes) are represented as strings, whilst non-leaf nodes are represented with dictionaries, containing 'test', 'pass' and 'fail'...
+PyObject * Tree_human(Tree * this);
+
 
 
 // Setup this module - for internal use only...

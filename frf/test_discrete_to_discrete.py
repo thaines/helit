@@ -103,6 +103,7 @@ for i in xrange(total_count):
 # Train the model...
 forest = frf.Forest()
 forest.configure('C', 'C', 'OOOOO')
+forest.min_exemplars = 4
 
 oob = forest.train(dm, cat, 4)
 

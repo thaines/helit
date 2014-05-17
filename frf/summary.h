@@ -51,6 +51,9 @@ typedef PyObject * (*SummaryMergeManyPy)(int exemplars, int trees, Summary * sum
 // Returns how many bytes the passed Summary object is in size...
 typedef size_t (*SummarySize)(Summary this);
 
+// Represents a summary as a Python string, for human consumption...
+typedef PyObject * (*SummaryString)(Summary this);
+
 
 
 // The summary type - basically all the function pointers and documentation required to run a summary object...
@@ -71,6 +74,7 @@ struct SummaryType
  SummaryMergeManyPy merge_many_py;
  
  SummarySize size;
+ SummaryString string;
 };
 
 
@@ -85,6 +89,7 @@ PyObject * Summary_merge_py(char code, int trees, Summary * sums, SummaryMagic m
 PyObject * Summary_merge_many_py(char code, int exemplars, int trees, Summary * sums, SummaryMagic magic, int extra);
 
 size_t Summary_size(char code, Summary this);
+PyObject * Summary_string(char code, Summary this);
 
 
 
@@ -142,6 +147,9 @@ PyObject * SummarySet_merge_many_py(int exemplars, int trees, SummarySet ** sum_
 
 // Returns how many bytes the given SummarySet consumes...
 size_t SummarySet_size(SummarySet * this);
+
+// Returns a string representing the summary, for human consumption...
+PyObject * SummarySet_string(SummarySet * this);
 
 
 

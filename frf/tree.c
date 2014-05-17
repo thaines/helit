@@ -144,13 +144,13 @@ size_t Tree_type_size(int count)
 
 
 // The learn method and supporting function - fairly involved due to the insane packing requirements. Learning is done recursivly using a general array of pointers structure above, so it can all be packed at the end...
-void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, IndexView * view, float entropy)
+void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, IndexView * view)
 {
  // Attempt to learn a split, unless we have already reached some split-prevebnting limit...
   int do_node = 0;
   if (depth<param->max_splits)
   {
-   do_node = LearnerSet_optimise(param->ls, param->is, view, param->opt_features, depth, entropy, param->key); 
+   do_node = LearnerSet_optimise(param->ls, param->is, view, param->opt_features, depth, param->key); 
   }
   
  // If we have found a split create the node...
@@ -158,7 +158,6 @@ void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, Index
   if (do_node!=0)
   {
    node = (Node*)malloc(sizeof(Node) + LearnerSet_size(param->ls));
-   entropy = LearnerSet_entropy(param->ls);
    node->code = LearnerSet_code(param->ls);
    LearnerSet_fetch(param->ls, (void*)node->test);
   }
@@ -198,11 +197,11 @@ void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, Index
   {
    // First do the fail half...
     node->fail = store->count;
-    Node_learn(store, node->fail, depth+1, param, &fail, entropy);
+    Node_learn(store, node->fail, depth+1, param, &fail);
     
    // Then do the pass half...
     node->pass = store->count;
-    Node_learn(store, node->pass, depth+1, param, &pass, entropy);
+    Node_learn(store, node->pass, depth+1, param, &pass);
   }
 }
 
@@ -216,7 +215,7 @@ Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error)
   IndexView view;
   IndexView_init(&view, indices);
   
-  Node_learn(store, 1, 0, param, &view, 1e100);
+  Node_learn(store, 1, 0, param, &view);
  
  // Build memory block zero - the block type codes; count how many bytes all the blocks consume at the same time...
   size_t type_size = Tree_type_size(store->count);
@@ -491,6 +490,37 @@ void Tree_run_many(Tree * this, DataMatrix * x, IndexSet * is, SummarySet ** out
  IndexView_init(&view, is);
  
  Tree_run_many_rec(this, 1, x, &view, out, step);
+}
+
+
+PyObject * Tree_human_rec(Tree * this, int object)
+{
+ // Fetch the object, behavour depends on type...
+  char code = ((char*)this->index[0])[object];
+  void * block = this->index[object];
+  
+  if (code=='N')
+  {
+   // Node...
+    Node * targ = (Node*)block;
+    
+    PyObject * test = Test_string(targ->code, targ->test);
+    PyObject * pass = Tree_human_rec(this, targ->pass);
+    PyObject * fail = Tree_human_rec(this, targ->fail);
+    
+    return Py_BuildValue("{sNsNsN}", "test", test, "pass", pass, "fail", fail);
+  }
+  else
+  {
+   // Summary...
+    SummarySet * targ = (SummarySet*)block;
+    return SummarySet_string(targ);
+  }
+}
+
+PyObject * Tree_human(Tree * this)
+{
+ return Tree_human_rec(this, 1); 
 }
 
 

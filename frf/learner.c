@@ -181,7 +181,7 @@ int sort_for_split(const void * a, const void * b)
  float vb = DataMatrix_GetContinuous(this->dm, *(const int*)b, this->feature);
   
  if (va<vb) return -1;
- if (vb>va) return 1;
+ if (va>vb) return 1;
  return 0;
 }
 
@@ -453,7 +453,7 @@ void LearnerSet_delete(LearnerSet * this)
  free(this);
 }
 
-int LearnerSet_optimise(LearnerSet * this, InfoSet * info, IndexView * view, int features, int depth, float improve, unsigned int key[4])
+int LearnerSet_optimise(LearnerSet * this, InfoSet * info, IndexView * view, int features, int depth, unsigned int key[4])
 {
  int i;
  
@@ -496,13 +496,13 @@ int LearnerSet_optimise(LearnerSet * this, InfoSet * info, IndexView * view, int
 
  // Loop and optimise each selected feature in turn, to choose the best...
   this->best = -1;
+  float improve = 1e100;
   
   for (i=0; i<features; i++)
   {
    int tf = this->feat[i];
    if (Learner_optimise(this->learn[tf], info, view, depth, improve, key)!=0)
    {
-    
     float entropy = Learner_entropy(this->learn[tf]);
     if (entropy<improve)
     {
@@ -555,6 +555,17 @@ static size_t SizeContinuousSplit(const void * test)
  return sizeof(ContinuousSplit);
 }
 
+static PyObject * StringContinuousSplit(const void * test)
+{
+ const ContinuousSplit * this = test;
+ 
+ char * split = PyOS_double_to_string(this->split, 'f', 3, 0, NULL);
+ PyObject * ret = PyString_FromFormat("x[%i] < %s", this->feature, split);
+ PyMem_Free(split);
+ 
+ return ret;
+}
+
 static int DoDiscreteSelect(const void * test, DataMatrix * dm, int exemplar)
 {
  const DiscreteSelect * this = test;
@@ -570,11 +581,19 @@ static size_t SizeDiscreteSelect(const void * test)
  return sizeof(DiscreteSelect);
 }
 
+static PyObject * StringDiscreteSelect(const void * test)
+{
+ const DiscreteSelect * this = test;
+ return PyString_FromFormat("x[%i] == %i", this->feature, this->accept);
+}
+
 
 
 // Test calling management code...
-DoTest   CodeToTest[256];
-TestSize CodeToSize[256];
+DoTest     CodeToTest[256];
+TestSize   CodeToSize[256];
+TestString CodeToString[256];
+
 
 int Test(char code, const void * test, DataMatrix * dm, int exemplar)
 {
@@ -586,6 +605,11 @@ size_t Test_size(char code, const void * test)
  return CodeToSize[(unsigned char)code](test);
 }
 
+PyObject * Test_string(char code, const void * test)
+{
+ return CodeToString[(unsigned char)code](test);
+}
+
 
 
 void Setup_Learner(void)
@@ -595,6 +619,7 @@ void Setup_Learner(void)
  {
   CodeToTest[i] = NULL;
   CodeToSize[i] = NULL;
+  CodeToString[i] = NULL;
  }
  
  CodeToTest['C'] = DoContinuousSplit;
@@ -602,6 +627,9 @@ void Setup_Learner(void)
  
  CodeToSize['C'] = SizeContinuousSplit;
  CodeToSize['D'] = SizeDiscreteSelect;
+ 
+ CodeToString['C'] = StringContinuousSplit;
+ CodeToString['D'] = StringDiscreteSelect;
  
  import_array();
 }
