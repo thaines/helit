@@ -144,7 +144,7 @@ size_t Tree_type_size(int count)
 
 
 // The learn method and supporting function - fairly involved due to the insane packing requirements. Learning is done recursivly using a general array of pointers structure above, so it can all be packed at the end...
-void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, IndexView * view)
+void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, IndexView * view, ReportSummarisation rs, void * rs_ptr)
 {
  // Attempt to learn a split, unless we have already reached some split-prevebnting limit...
   int do_node = 0;
@@ -190,6 +190,7 @@ void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, Index
    SummarySet_init(ss, param->y, view, param->summary_codes);
    
    PtrArray_set(store, index, 'S', (void*)ss);
+   if (rs!=NULL) rs(view->size, rs_ptr);
   }
  
  // If its a node then we need to recurse...
@@ -197,16 +198,16 @@ void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, Index
   {
    // First do the fail half...
     node->fail = store->count;
-    Node_learn(store, node->fail, depth+1, param, &fail);
+    Node_learn(store, node->fail, depth+1, param, &fail, rs, rs_ptr);
     
    // Then do the pass half...
     node->pass = store->count;
-    Node_learn(store, node->pass, depth+1, param, &pass);
+    Node_learn(store, node->pass, depth+1, param, &pass, rs, rs_ptr);
   }
 }
 
 
-Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error)
+Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error, ReportSummarisation rs, void * rs_ptr)
 {
  // Create the temporary storage of all the blocks...
   PtrArray * store = PtrArray_new();
@@ -215,7 +216,7 @@ Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error)
   IndexView view;
   IndexView_init(&view, indices);
   
-  Node_learn(store, 1, 0, param, &view);
+  Node_learn(store, 1, 0, param, &view, rs, rs_ptr);
  
  // Build memory block zero - the block type codes; count how many bytes all the blocks consume at the same time...
   size_t type_size = Tree_type_size(store->count);

@@ -55,8 +55,11 @@ struct Tree
 
 
 
+// Function type that is called for progress reporting - it is called each time exemplars are summarised, with the number done, such that the total of count will, when done, sum to the number passed in via the IndexSet at the start...
+typedef void (*ReportSummarisation)(int count, void * ptr);
+
 // Methods to learn a new tree from some data - internally this is rather complicated, but only because it has to deal with all the crazy memory stuff - all the real work is elsewhere in this library. Return value will have been malloc'ed - user needs to free. More of the parameters are in the param struct - see it for details, but a seperate index set of exemplars to use is required. If provided oob_error will be filled in with anything in the DataMatrix not in indices...
-Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error);
+Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error, ReportSummarisation rs, void * rs_ptr);
 
 
 // Returns non-zero if it thinks its a tree - i.e. the magic numbers and revision are correct, zero if there is a problem...

@@ -10,9 +10,10 @@
 
 
 
-import frf
-
+from utils.prog_bar import ProgBar
 import numpy
+
+import frf
 
 
 
@@ -43,7 +44,9 @@ forest = frf.Forest()
 forest.configure('BN', 'BN', 'SS')
 forest.min_exemplars = 4
 
-oob = forest.train(x, y, 8)
+pb = ProgBar()  
+oob = forest.train(x, y, 8, pb.callback)
+del pb
 
 print 'Made forest:'
 for i in xrange(len(forest)):
