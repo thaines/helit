@@ -652,7 +652,8 @@ static PyObject * BiGaussian_merge_many_py(int exemplars, int trees, Summary * s
     float * mean[2];
     float * var[2];
     float * covar;
-  
+    
+    *count = 0.0;
     for (k=0; k<2; k++)
     {
      mean[k] = (float*)PyArray_GETPTR2(mean_arr, j, k);
