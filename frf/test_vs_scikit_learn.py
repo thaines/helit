@@ -113,9 +113,9 @@ def make_tele_sales():
 
 
 # Generate the trainning set...
-politician_count = 20480
-marketing_count = 20480
-tele_sales_count = 20480
+politician_count = 2048
+marketing_count = 2048
+tele_sales_count = 2048
 total_count = politician_count + marketing_count + tele_sales_count
 
 feat_length = sum(map(lambda a: a.length, attributes))
@@ -139,13 +139,14 @@ for i in xrange(total_count):
 forest = frf.Forest()
 forest.configure('C', 'C', 'S' * dm.shape[1])
 forest.min_exemplars = 4
+forest.opt_features = int(numpy.sqrt(dm.shape[1]))
 
 pb = ProgBar()
-oob = forest.train(dm, cat, 8, pb.callback)
+oob = forest.train(dm, cat, 64, pb.callback)
 del pb
 
 print 'Made frf forest (oob = %.2f%%):' % ((1.0 - oob.mean()) * 100.0)
-for i in xrange(len(forest)):
+for i in xrange(min(len(forest),4)):
   if oob!=None:
     extra = ', oob = %.2f%%' % ((1.0 - oob[i,0]) * 100.0)
   else:
@@ -157,14 +158,14 @@ print
 
 
 # Train the scikit learn model...
-model = RandomForestClassifier(8, 'entropy', max_features=None, min_samples_leaf=4, oob_score=True)
+model = RandomForestClassifier(64, 'entropy', min_samples_leaf=4, oob_score=True)
 
 pb = ProgBar()
 model.fit(dm, cat)
 del pb
 
 print 'Made scikit learn forest (oob = %.2f%%):' % (model.oob_score_ * 100.0)
-for i in xrange(len(model.estimators_)):
+for i in xrange(min(len(model.estimators_),4)):
   print '  Tree %i: %i nodes' % (i, model.estimators_[i].tree_.feature.shape[0])
 print
 

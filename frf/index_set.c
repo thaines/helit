@@ -101,7 +101,7 @@ void IndexSet_init_bootstrap(IndexSet * this, unsigned int key[4])
    rand_index += 1;
    
   // Store a random value in the range...
-   this->vals[i] = r % this->size; 
+   this->vals[i] = r % this->size;
  }
 }
 

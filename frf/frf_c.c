@@ -1083,7 +1083,7 @@ static PyObject * Forest_train_py(Forest * self, PyObject * args)
      error = (float*)PyArray_GETPTR2(oob, i, 0);
      IndexSet_init_bootstrap(indices, self->key);
     }
-   
+
    // Learn a new tree - this is going to take a while...
     Tree * tree = Tree_learn(&tp, indices, error, CallbackReport, &cd);
    
