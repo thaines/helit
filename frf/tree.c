@@ -207,7 +207,7 @@ void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, Index
 }
 
 
-Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error, ReportSummarisation rs, void * rs_ptr)
+Tree * Tree_learn(TreeParam * param, IndexSet * indices, ReportSummarisation rs, void * rs_ptr)
 {
  // Create the temporary storage of all the blocks...
   PtrArray * store = PtrArray_new();
@@ -288,19 +288,6 @@ Tree * Tree_learn(TreeParam * param, IndexSet * indices, float * oob_error, Repo
  // Calculate the index structure for the tree...
   Tree_init(this);
  
- // If requested calculate and sum in the oob error...
-  if (oob_error!=NULL)
-  {
-   IndexSet * mirror_indices = IndexSet_new_reflect(indices);
-   
-   IndexView mirror;
-   IndexView_init(&mirror, mirror_indices);
-   
-   Tree_error(this, param->x, param->y, &mirror, oob_error);
-   
-   IndexSet_delete(mirror_indices);
-  }
- 
  // Return the shiny new tree...
   return this;
 }
@@ -372,6 +359,7 @@ void Tree_deinit(Tree * this)
 }
 
 
+
 size_t Tree_head_size(void)
 {
  return sizeof(Tree) + sizeof(long long) - sizeof(void*);
@@ -387,46 +375,6 @@ int Tree_objects(Tree * this)
  return this->objects;
 }
 
-
-void Tree_error_rec(Tree * this, int object, DataMatrix * x, DataMatrix * y, IndexView * view, float * out)
-{
- // Fetch the object, behavour depends on type...
-  char code = ((char*)this->index[0])[object];
-  void * block = this->index[object];
-  
-  if (code=='N')
-  {
-   // Node...
-    Node * targ = (Node*)block;
-    
-    IndexView fail;
-    IndexView pass;
-    IndexView_split(view, x, targ->code, (void*)targ->test, &pass, &fail);
-    
-    if (fail.size!=0) Tree_error_rec(this, targ->fail, x, y, &fail, out);
-    if (pass.size!=0) Tree_error_rec(this, targ->pass, x, y, &pass, out);
-  }
-  else
-  {
-   // Summary...
-    SummarySet_error((SummarySet*)block, y, view, out);
-  }
-}
-
-void Tree_error(Tree * this, DataMatrix * x, DataMatrix * y, IndexView * view, float * out)
-{
- // Zero the out array...
-  int i;
-  for (i=0; i<y->features; i++) out[i] = 0.0;
-  
-  if (view->size==0) return;
-  
- // Recurse on the data...
-  Tree_error_rec(this, 1, x, y, view, out);
-  
- // Divide through by the number of exemplars...
-  for (i=0; i<y->features; i++) out[i] /= view->size;
-}
 
 
 SummarySet * Tree_run_rec(Tree * this, int object, DataMatrix * x, int exemplar)

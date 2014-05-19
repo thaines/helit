@@ -979,6 +979,8 @@ void CallbackReport(int count, void * ptr)
 
 static PyObject * Forest_train_py(Forest * self, PyObject * args)
 {
+ int i;
+ 
  // Handle the parameters...
   PyObject * x_obj;
   PyObject * y_obj;
@@ -1049,12 +1051,19 @@ static PyObject * Forest_train_py(Forest * self, PyObject * args)
   
   IndexSet * indices = IndexSet_new(tp.x->exemplars);
 
- // If we are doing oob handle it...
-  PyArrayObject * oob = NULL;
+ // If we are doing oob prepare...
   if (self->bootstrap!=0)
   {
-   npy_intp dims[2] = {create, self->y_feat};
-   oob = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+   if (self->ss_size<create*tp.x->exemplars)
+   {
+    self->ss_size = create*tp.x->exemplars;
+    self->ss = realloc(self->ss, self->ss_size * sizeof(SummarySet*));
+   }
+   
+   for (i=0; i<create*tp.x->exemplars; i++)
+   {
+    self->ss[i] = NULL;
+   }
   }
   
  // Enlarge tree array...
@@ -1068,24 +1077,14 @@ static PyObject * Forest_train_py(Forest * self, PyObject * args)
   
   
  // Loop and create each tree in turn...
-  int i;
   for (i=0; i<create; i++)
   {
    // Prepare for the learning...
-    float * error;
-    if (self->bootstrap==0)
-    {
-     error = NULL;
-     IndexSet_init_all(indices);
-    }
-    else
-    {
-     error = (float*)PyArray_GETPTR2(oob, i, 0);
-     IndexSet_init_bootstrap(indices, self->key);
-    }
+    if (self->bootstrap==0) IndexSet_init_all(indices);
+                       else IndexSet_init_bootstrap(indices, self->key);
 
    // Learn a new tree - this is going to take a while...
-    Tree * tree = Tree_learn(&tp, indices, error, CallbackReport, &cd);
+    Tree * tree = Tree_learn(&tp, indices, CallbackReport, &cd);
    
    // Create a tree buffer and dump it into the right position...
     TreeBuffer * tb = (TreeBuffer*)TreeBufferType.tp_alloc(&TreeBufferType, 0);
@@ -1094,27 +1093,74 @@ static PyObject * Forest_train_py(Forest * self, PyObject * args)
     tb->ready = 1;
    
     self->tree[self->trees+i] = tb;
+    
+   // If needed record the leaf nodes into which the oob exemplars land...
+    if (self->bootstrap!=0)
+    {
+     IndexSet * oob = IndexSet_new_reflect(indices);
+     Tree_run_many(tree, tp.x, oob, self->ss+i, create);
+     IndexSet_delete(oob);
+    }
   }
   
   self->trees += create;
  
- // Clean up...
+ // Clean up (mostly)...
   IndexSet_delete(indices);
  
   InfoSet_delete(tp.is);
   LearnerSet_delete(tp.ls);
-  DataMatrix_delete(tp.y);
   DataMatrix_delete(tp.x);
   
- // Return, either None or a matrix of oob errors...  
+ // Return, either None or construct and return a vector of oob errors...  
   if (self->bootstrap==0)
   {
+   DataMatrix_delete(tp.y);
    Py_INCREF(Py_None);
    return Py_None;
   }
   else
   {
-   return (PyObject*)oob;
+   // Create the output...
+    npy_intp dims = self->y_feat;
+    PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &dims, NPY_FLOAT32);
+    
+    float * out = (float*)PyArray_DATA(ret);
+    for (i=0; i<self->y_feat; i++) out[i] = 0.0;
+
+   // Iterate the exemplars and sum their error into the output...
+    int total = 0;
+    for (i=0; i<tp.y->exemplars; i++)
+    {
+     SummarySet ** base = self->ss + create*i;
+     int count = 0;
+     
+     int j;
+     for (j=0; j<create; j++)
+     {
+      if (base[j]!=NULL)
+      {
+       base[count] = base[j];
+       count += 1;
+      }
+     }
+     
+     if (count!=0)
+     {
+      SummarySet_error(count, base, tp.y, i, out);
+      total += 1;
+     }
+    }
+    
+    DataMatrix_delete(tp.y);
+   
+   // Divide through by the exemplar count and return...
+    if (total!=0) // User is being an idiot check!
+    {  
+     for (i=0; i<self->y_feat; i++) out[i] /= total;
+    }
+    
+    return (PyObject*)ret;
   }
 }
 
@@ -1255,10 +1301,13 @@ static PyObject * Forest_error_py(Forest * self, PyObject * args)
  // Create support structures...
   IndexSet * is = IndexSet_new(x->exemplars);
   
-  npy_intp dims[2] = {self->trees, self->y_feat};
-  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+  if (self->ss_size<self->trees*x->exemplars)
+  {
+   self->ss_size = self->trees*x->exemplars;
+   self->ss = realloc(self->ss, self->ss_size * sizeof(SummarySet*));
+  }
  
- // Loop and calculate for each tree in turn...
+ // Find the leaves the exemplars fall into...
   int i;
   for (i=0; i<self->trees; i++)
   {
@@ -1267,12 +1316,29 @@ static PyObject * Forest_error_py(Forest * self, PyObject * args)
     Tree_init(self->tree[i]->tree);
     self->tree[i]->ready = 1; 
    }
-   
+     
    IndexSet_init_all(is);
-   IndexView view;
-   IndexView_init(&view, is);
-   
-   Tree_error(self->tree[i]->tree, x, y, &view, (float*)PyArray_GETPTR2(ret, i, 0));
+     
+   Tree_run_many(self->tree[i]->tree, x, is, self->ss + i, self->trees);
+  }
+  
+ // Create the output array and sum the error into it...
+  npy_intp dims = self->y_feat;
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &dims, NPY_FLOAT32);
+  
+  for (i=0; i<self->y_feat; i++)
+  {
+   *(float*)PyArray_GETPTR1(ret, i) = 0.0;
+  }
+  
+  for (i=0; i<y->exemplars; i++)
+  {
+   SummarySet_error(self->trees, self->ss + self->trees*i, y, i, (float*)PyArray_DATA(ret));
+  }
+  
+  for (i=0; i<self->y_feat; i++)
+  {
+   *(float*)PyArray_GETPTR1(ret, i) /= x->exemplars;
   }
  
  // Clean up and return...
@@ -1427,10 +1493,10 @@ static PyMethodDef Forest_methods[] =
  {"clear", (PyCFunction)Forest_clear_py, METH_NOARGS, "Removes all trees from the forest. Note that because you can't snipe individual trees if you want to be selective you can use the list interface to get all of them, clear the forest then append each tree that you want to keep."},
  {"append", (PyCFunction)Forest_append_py, METH_VARARGS, "Appends a Tree to the Forest, that has presumably been trained in another Forest and is now to be merged. Note that the Forest must be compatible (identical type codes given to configure), and this is not checked. Break this and expect the fan to get very brown."},
 
- {"train", (PyCFunction)Forest_train_py, METH_VARARGS, "Trains and appends more trees to this Forest - first parameter is the x/input data matrix, second is the y/output data matrix, third is the number of trees, which defaults to 1. Data matrices can be either a numpy array (exemplars X features) or a list of numpy arrays that are implicity joined to make the final data matrix - good when you want both continuous and discrete types. When a list 1D arrays are assumed to be indexed by exemplar. If boostrap is true this returns the out of bag error - a 2D array indexed by new tree then feature of how much error exists in that channel on average. A fourth optional parameter is a callback function, used to report progress - it will be called as func(# of work units done, total # of work units). Note that any errors it throws will be silently ignored, including not accepting those parameters."},
+ {"train", (PyCFunction)Forest_train_py, METH_VARARGS, "Trains and appends more trees to this Forest - first parameter is the x/input data matrix, second is the y/output data matrix, third is the number of trees, which defaults to 1. Data matrices can be either a numpy array (exemplars X features) or a list of numpy arrays that are implicity joined to make the final data matrix - good when you want both continuous and discrete types. When a list 1D arrays are assumed to be indexed by exemplar. If boostrap is true this returns the out of bag error - an array indexed by output feature of how much error exists in that channel - note that they are independent calculations and its upto the user to combine them as desired if an overall error measure is required. A fourth optional parameter is a callback function, used to report progress - it will be called as func(# of work units done, total # of work units). Note that any errors it throws will be silently ignored, including not accepting those parameters."},
  
  {"predict", (PyCFunction)Forest_predict_py, METH_VARARGS, "Given an x/input data matrix (With support for a tuple of matrices identical to train.) returns what it knows about the output data matrix. Return will be a list indexed by feature, with the contents defined by the summary codes (Typically a dictionary of arrays, often of things like 'prob' or 'mean'). You can provide a second parameter as in exemplar index if you want to just do one item from the data matrix, but note that this is very inefficient compared to doing everything at once in a single data matrix (Or several large data matrices if that is unreasonable)."},
- {"error", (PyCFunction)Forest_error_py, METH_VARARGS, "Given a x/input data matrix and a y/output data matrix of true answers (Same as train) this returns an array, indexed by tree then output features, of how much error each tree has on that feature, divided by the number of exemplars. Same as the oob calculation, but for a hold out set etc. Array tree index will align with the list of trees this can be accessed as."},
+ {"error", (PyCFunction)Forest_error_py, METH_VARARGS, "Given a x/input data matrix and a y/output data matrix of true answers (Same as train) this returns an array, indexed by output feature, of how much error exists in that channel. Same as the oob calculation, but using all trees and therefore for a hold out set etc."},
  
  {NULL}
 };

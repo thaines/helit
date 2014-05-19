@@ -125,14 +125,9 @@ forest.min_exemplars = 2
 
 oob = forest.train((int_dm, real_dm), cats, 6)
 
-print 'Made forest:'
-for i in xrange(len(forest)):
-  if oob!=None:
-    extra = ', oob = %s' % str(oob[i,:])
-  else:
-    extra = ''
-    
-  print '  Tree %i: %i bytes, %i nodes%s' % (i, forest[i].size, forest[i].nodes(), extra)
+print 'Made forest (oob = %.2f%%):' % ((1.0 - oob[0]) * 100.0)
+for i in xrange(min(len(forest),4)):
+  print '  Tree %i: %i bytes, %i nodes' % (i, forest[i].size, forest[i].nodes())
 print
 
 

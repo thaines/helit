@@ -26,9 +26,9 @@ void Summary_init(char code, Summary this, DataMatrix * dm, IndexView * view, in
  CodeSummary[(unsigned char)code]->init(this, dm, view, feature);
 }
 
-float Summary_error(char code, Summary this, DataMatrix * dm, IndexView * view, int feature)
+float Summary_error(char code, int trees, Summary * sums, SummaryMagic magic, int extra, DataMatrix * dm, int exemplar, int feature)
 {
- return CodeSummary[(unsigned char)code]->error(this, dm, view, feature); 
+ return CodeSummary[(unsigned char)code]->error(trees, sums, magic, extra, dm, exemplar, feature);
 }
 
 PyObject * Summary_merge_py(char code, int trees, Summary * sums, SummaryMagic magic, int extra)
@@ -64,7 +64,7 @@ static void Nothing_init(Summary self, DataMatrix * dm, IndexView * view, int fe
  // No-op
 }
 
-static float Nothing_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
+static float Nothing_error(int trees, Summary * sums, SummaryMagic magic, int extra, DataMatrix * dm, int exemplar, int feature)
 {
  return 0.0;  
 }
@@ -167,28 +167,40 @@ static void Categorical_init(Summary self, DataMatrix * dm, IndexView * view, in
  }
 }
 
-static float Categorical_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
+static float Categorical_error(int trees, Summary * sums, SummaryMagic magic, int extra, DataMatrix * dm, int exemplar, int feature)
 {
- Categorical * this = (Categorical*)self;
+ Categorical * first = (Categorical*)sums[0];
+ if (magic!=NULL) first = (Categorical*)magic(first, extra);
+  
+ // Find the most probable category... 
+  int best = -1;
+  float best_sum = 0.0;
  
- int best = 0;
- int i;
- for (i=1; i<this->cats; i++)
- {
-  if (this->prob[i]>this->prob[best])
+  int i;
+  for (i=0; i<first->cats; i++)
   {
-   best = i;
+   float sum = 0.0;
+   
+   int j;
+   for (j=0; j<trees; j++) // Not very efficient, but saves on memory - might want to recode with access to some kind of temporary buffer.
+   {
+    Categorical * targ = (Categorical*)sums[j];
+    if (magic!=NULL) targ = (Categorical*)magic(targ, extra);
+   
+    sum += targ->prob[i];
+   }
+   
+   if (sum>best_sum)
+   {
+    best = i;
+    best_sum = sum;
+   }
   }
- }
  
- float ret = 0.0;
- for (i=0; i<view->size; i++)
- {
-  int v = DataMatrix_GetDiscrete(dm, view->vals[i], feature);
-  if (best!=v) ret += 1.0;
- }
- 
- return ret;
+ // Return 0 if its a match, 1 if its a mismatch...
+  int v = DataMatrix_GetDiscrete(dm, exemplar, feature);
+  if (best!=v) return 1.0;
+          else return 0.0;
 }
 
 static PyObject * Categorical_merge_py(int trees, Summary * sums, SummaryMagic magic, int extra)
@@ -367,20 +379,28 @@ static void Gaussian_init(Summary self, DataMatrix * dm, IndexView * view, int f
  if (this->count!=0) this->var /= this->count;
 }
 
-static float Gaussian_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
+static float Gaussian_error(int trees, Summary * sums, SummaryMagic magic, int extra, DataMatrix * dm, int exemplar, int feature)
 {
- Gaussian * this = (Gaussian*)self;
+ Gaussian * first = (Gaussian*)sums[0];
+ if (magic!=NULL) first = (Gaussian*)magic(first, extra);
  
- float ret = 0.0;
+ // Calculate the mean of all the trees...
+  float mean = 0.0;
+  float count = 0.0;
+  
+  int i;
+  for (i=0; i<trees; i++)
+  {
+   Gaussian * targ = (Gaussian*)sums[i];
+   if (magic!=NULL) targ = (Gaussian*)magic(targ, extra);
+   
+   count += targ->count;
+   mean += (targ->mean - mean) * targ->count / count;
+  }
  
- int i;
- for (i=0; i<view->size; i++)
- {
-  float v = DataMatrix_GetContinuous(dm, view->vals[i], feature);
-  ret += fabs(v - this->mean);
- }
- 
- return ret;
+ // Return the absolute difference between the provided value and the mean...
+  float v = DataMatrix_GetContinuous(dm, exemplar, feature);
+  return fabs(v - mean);
 }
 
 static PyObject * Gaussian_merge_py(int trees, Summary * sums, SummaryMagic magic, int extra)
@@ -550,25 +570,34 @@ static void BiGaussian_init(Summary self, DataMatrix * dm, IndexView * view, int
  }
 }
 
-static float BiGaussian_error(Summary self, DataMatrix * dm, IndexView * view, int feature)
+static float BiGaussian_error(int trees, Summary * sums, SummaryMagic magic, int extra, DataMatrix * dm, int exemplar, int feature)
 {
- BiGaussian * this = (BiGaussian*)self;
+ BiGaussian * first = (BiGaussian*)sums[0];
+ if (magic!=NULL) first = (BiGaussian*)magic(first, extra);
  
- float ret = 0.0;
- 
- int i;
- for (i=0; i<view->size; i++)
- {
-  int ei = view->vals[i];
-  float v1 = DataMatrix_GetContinuous(dm, ei, feature);
-  float v2 = DataMatrix_GetContinuous(dm, ei, feature+1);
+ // Calculate the mean of all the trees...
+  float mean[2] = {0.0, 0.0};
+  float count = 0.0;
   
-  float d1 = v1 - this->mean[0];
-  float d2 = v2 - this->mean[1];
-  ret += sqrt(d1*d1 + d2*d2);
- }
+  int i;
+  for (i=0; i<trees; i++)
+  {
+   BiGaussian * targ = (BiGaussian*)sums[i];
+   if (magic!=NULL) targ = (BiGaussian*)magic(targ, extra);
+   
+   count += targ->count;
+   mean[0] += (targ->mean[0] - mean[0]) * targ->count / count;
+   mean[1] += (targ->mean[1] - mean[1]) * targ->count / count;
+  }
  
- return ret;
+ // Return the absolute difference between the provided value and the mean...
+  float delta0 = DataMatrix_GetContinuous(dm, exemplar, feature);
+  float delta1 = DataMatrix_GetContinuous(dm, exemplar, feature + 1);
+  
+  delta0 -= mean[0];
+  delta1 -= mean[1];
+  
+  return sqrt(delta0*delta0 + delta1*delta1);
 }
 
 
@@ -878,22 +907,25 @@ void SummarySet_init(SummarySet * this, DataMatrix * dm, IndexView * view, const
   }
 }
 
-void SummarySet_error(SummarySet * this, DataMatrix * dm, IndexView * view, float * out)
-{
- char * code = CodePtr(this);
- 
- int i;
- for (i=0; i<this->features; i++)
- {
-  out[i] += Summary_error(code[i], SummaryPtr(this, i), dm, view, i); 
- }
-}
 
 static Summary SummarySet_magic(void * self, int i)
 {
  SummarySet * this = (SummarySet*)self;
  return (char*)this + this->offset[i];
 }
+
+void SummarySet_error(int trees, SummarySet ** sum_sets, DataMatrix * dm, int exemplar, float * out)
+{
+ char * code = CodePtr(sum_sets[0]);
+ int feats = sum_sets[0]->features;
+ 
+ int i;
+ for (i=0; i<feats; i++)
+ {
+  out[i] += Summary_error(code[i], trees, (Summary*)sum_sets, SummarySet_magic, i, dm, exemplar, i); 
+ }
+}
+
 
 PyObject * SummarySet_merge_py(int trees, SummarySet ** sum_sets)
 {

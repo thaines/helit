@@ -145,14 +145,9 @@ pb = ProgBar()
 oob = forest.train(dm, cat, 64, pb.callback)
 del pb
 
-print 'Made frf forest (oob = %.2f%%):' % ((1.0 - oob.mean()) * 100.0)
+print 'Made frf forest (oob = %.2f%%):' % ((1.0 - oob[0]) * 100.0)
 for i in xrange(min(len(forest),4)):
-  if oob!=None:
-    extra = ', oob = %.2f%%' % ((1.0 - oob[i,0]) * 100.0)
-  else:
-    extra = ''
-    
-  print '  Tree %i: %i bytes, %i nodes%s' % (i, forest[i].size, forest[i].nodes(), extra)
+  print '  Tree %i: %i bytes, %i nodes' % (i, forest[i].size, forest[i].nodes())
 print
 
 

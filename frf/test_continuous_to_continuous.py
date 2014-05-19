@@ -48,14 +48,9 @@ pb = ProgBar()
 oob = forest.train(x, y, 8, pb.callback)
 del pb
 
-print 'Made forest:'
-for i in xrange(len(forest)):
-  if oob!=None:
-    extra = ', oob = %s' % str(oob[i,:])
-  else:
-    extra = ''
-    
-  print '  Tree %i: %i bytes, %i nodes%s' % (i, forest[i].size, forest[i].nodes(), extra)
+print 'Made forest (oob = %.4f):' % oob[0]
+for i in xrange(min(len(forest),4)):
+  print '  Tree %i: %i bytes, %i nodes' % (i, forest[i].size, forest[i].nodes())
 print
 
 
@@ -79,4 +74,4 @@ print error, '(%.4f)' % numpy.sqrt((error**2).sum())
 # Check the error method...
 print
 print 'Test error:'
-print forest.error(x, y)[0][0]
+print '%.4f' % forest.error(x, y)[0]

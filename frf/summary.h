@@ -39,8 +39,8 @@ typedef size_t (*SummaryInitSize)(DataMatrix * dm, IndexView * view, int feature
 // Creates a new Summary object of the given type, storing it in the provided memory block - requires a DataMatrix to summarise, an exemplar index view to tell it which exemplars to summarise and a feature index of which index to summarise...
 typedef void (*SummaryInit)(Summary this, DataMatrix * dm, IndexView * view, int feature);
 
-// Calculates the error of the given nodes reaching this summary, as some kind of floating point value summed for all entries...
-typedef float (*SummaryError)(Summary this, DataMatrix * dm, IndexView * view, int feature);
+// Calculates the error of the given node reaching the given set of summaries, as some kind of floating point value...
+typedef float (*SummaryError)(int trees, Summary * sums, SummaryMagic magic, int extra, DataMatrix * dm, int exemplar, int feature);
 
 // Converts a set of summaries (trees is the number) into a python object that the user can dance with; returns a new reference. Can in principal return NULL and raise an error. For combining the summaries from the leaves of multiple trees into a single entity for a user to play with. The function SummaryMagic, and its parameter extra, exist to make use from within a SummarySet efficient - a function that converts the passed in 'fake' Summary object array into real Summary objects...
 typedef PyObject * (*SummaryMergePy)(int trees, Summary * sums, SummaryMagic magic, int extra);
@@ -83,7 +83,7 @@ struct SummaryType
 size_t Summary_init_size(char code, DataMatrix * dm, IndexView * view, int feature);
 void Summary_init(char code, Summary this, DataMatrix * dm, IndexView * view, int feature);
 
-float Summary_error(char code, Summary this, DataMatrix * dm, IndexView * view, int feature);
+float Summary_error(char code, int trees, Summary * sums, SummaryMagic magic, int extra, DataMatrix * dm, int exemplar, int feature);
 
 PyObject * Summary_merge_py(char code, int trees, Summary * sums, SummaryMagic magic, int extra);
 PyObject * Summary_merge_many_py(char code, int exemplars, int trees, Summary * sums, SummaryMagic magic, int extra);
@@ -136,8 +136,8 @@ size_t SummarySet_init_size(DataMatrix * dm, IndexView * view, const char * code
 // Creates a SummarySet, using the type string - if the type string is null then it uses the default, where it uses a Categorical for discrete data and a Gaussian for continuous data. It also falls back to these when the string is too short...
 void SummarySet_init(SummarySet * this, DataMatrix * dm, IndexView * view, const char * codes);
 
-// Outputs the error of the summary set when applied to the given exemplars - used for calculating the OOB error - outputs a value for each feature, into an array of floats (length must be number of features), so the user can decide what they care about and weight them accordingly. It adds its value to whatever is already in the array...
-void SummarySet_error(SummarySet * this, DataMatrix * dm, IndexView * view, float * out);
+// Outputs the error of the list of summary sets when merged and applied to the given exemplar - used for calculating the OOB error. Outputs a value for each output feature, into an array of floats (length must be number of features), so the user can decide what they care about and weight them accordingly. It adds its value to whatever is already in the array...
+void SummarySet_error(int trees, SummarySet ** sum_sets, DataMatrix * dm, int exemplar, float * out);
 
 // Returns a new reference to a Python object that is returned to the user to summarise the many summary sets provided - a tuple indexed by feature, with the actual objects in the tuple defined by the actual summary types. This exists to be given the summary sets at the leaves of a forest that an exemplar falls into...
 PyObject * SummarySet_merge_py(int trees, SummarySet ** sum_sets);
