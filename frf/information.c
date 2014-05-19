@@ -685,9 +685,10 @@ float InfoSet_entropy(InfoSet * this, int depth)
   {
    int fail_total = Info_count(this->pair[i].fail);
    int pass_total = Info_count(this->pair[i].pass);
-   float total = fail_total + pass_total;
+   int total = fail_total + pass_total;
+   float weight = ((float)fail_total) / ((float)total);
    
-   float entropy = (fail_total / total) * Info_entropy(this->pair[i].fail) + (pass_total / total) * Info_entropy(this->pair[i].pass);
+   float entropy = weight * Info_entropy(this->pair[i].fail) + (1.0 - weight) * Info_entropy(this->pair[i].pass);
    
    ret += ratio * entropy;
   }

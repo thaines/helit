@@ -1388,7 +1388,7 @@ static PyMemberDef Forest_members[] =
  {"ready", T_BOOL, offsetof(Forest, ready), READONLY, "True if its safe to train trees, False if the forest has not been setup - i.e. neither a header has been loaded not a header has been configured. Note that safe to train is not the same as safe to predict - it could contain 0 trees (check with len(forest))."},
  
  {"bootstrap", T_BOOL, offsetof(Forest, bootstrap), 0, "True to train trees on bootstrap draws of the training data (The default), False to just train on everything."},
- {"opt_features", T_INT, offsetof(Forest, opt_features), 0, "Number of features to randomly select to try optimising for each split in the forest. Defaults so high as to be irrelevant."},
+ {"opt_features", T_INT, offsetof(Forest, opt_features), 0, "Number of features to randomly select to try optimising for each split in the forest. Defaults so high as to be irrelevant. The recomended value to set this to is the sqrt of the number of features - a good tradeoff between tree independence and tree performance."},
  {"min_exemplars", T_INT, offsetof(Forest, min_exemplars), 0, "Minimum number of exemplars to allow in a node - no node should ever have less than this count in it. Defaults to 1, making it irrelevant."},
  {"max_splits", T_INT, offsetof(Forest, max_splits), 0, "Maximum number of splits when building a new tree. Defaults so high you will run out of memeory first."},
  
