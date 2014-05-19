@@ -138,7 +138,14 @@ const InfoType NothingInfo =
 
 
 // The categorical information type...
+typedef struct CategoricalInner CategoricalInner;
 typedef struct Categorical Categorical;
+
+struct CategoricalInner
+{
+ int count;
+ float log_count; // Only valid when count!=0.
+};
 
 struct Categorical
 {
@@ -151,14 +158,14 @@ struct Categorical
  int total; // Sum if you add up count - can be less than exemplars due to unknown values.
  
  int cats;
- int count[0];
+ CategoricalInner cat[0];
 };
 
 
 static Info Categorical_new(DataMatrix * dm, int feature)
 {
  int cats = DataMatrix_Max(dm, feature) + 1;
- Categorical * this = (Categorical*)malloc(sizeof(Categorical) + cats * sizeof(int));
+ Categorical * this = (Categorical*)malloc(sizeof(Categorical) + cats * sizeof(CategoricalInner));
  this->type = &CategoricalInfo;
  
  this->dm = dm;
@@ -171,7 +178,7 @@ static Info Categorical_new(DataMatrix * dm, int feature)
  int i;
  for (i=0; i<cats; i++)
  {
-  this->count[i] = 0;
+  this->cat[i].count = 0;
  }
  
  return this;  
@@ -187,7 +194,7 @@ static void Categorical_reset(Info self)
  int i;
  for (i=0; i<this->cats; i++)
  {
-  this->count[i] = 0; 
+  this->cat[i].count = 0; 
  }
 }
 
@@ -205,7 +212,8 @@ static void Categorical_add(Info self, int exemplar)
  if ((val>=0)&&(val<this->cats))
  {
   this->total += 1;
-  this->count[val] += 1;
+  this->cat[val].count += 1;
+  this->cat[val].log_count = log(this->cat[val].count);
  }
 }
 
@@ -218,7 +226,11 @@ static void Categorical_remove(Info self, int exemplar)
  if ((val>=0)&&(val<this->cats))
  {
   this->total -= 1;
-  this->count[val] -= 1;
+  this->cat[val].count -= 1;
+  if (this->cat[val].count!=0)
+  {
+   this->cat[val].log_count = log(this->cat[val].count); 
+  }
  }
 }
 
@@ -233,17 +245,18 @@ static float Categorical_entropy(Info self)
  Categorical * this = (Categorical*)self;
  float ret = 0.0;
  
+ float mult = 1.0 / (float)this->total;
+ 
  int i;
  for (i=0; i<this->cats; i++)
  {
-  if (this->count[i]!=0)
+  if (this->cat[i].count!=0)
   {
-   float p = this->count[i] / (float)this->total;
-   ret -= p * log(p);
+   ret -= mult * this->cat[i].count * this->cat[i].log_count;
   }
  }
  
- return ret;
+ return ret + log(this->total);
 }
 
 
