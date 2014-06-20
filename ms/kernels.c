@@ -856,8 +856,8 @@ KernelConfig Fisher_config_new(int dims, const char * config)
   for (i=0;i<size_big; i++)
   {
    float dot = ((float)(2*i)) / (size_big-1) - 1.0;
-   if (dot<(-1+1e-6)) dot = -1 + 1e-6; // Tolerances to avoid infinities
-   if (dot>(1-1e-6))  dot =  1 - 1e-6;
+   if (dot<(-1+1e-12)) dot = -1 + 1e-12; // Tolerances to avoid infinities
+   if (dot>(1-1e-12))  dot =  1 - 1e-12; // "
      
    culm[i] = ret->alpha * dot + log_base;
    if (dims!=3) culm[i] += (0.5 * (dims - 3)) * log(1.0 - dot*dot);

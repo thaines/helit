@@ -11,6 +11,10 @@
 
 
 
+#include <Python.h>
+
+
+
 // Calculates the modified bessel function of the first kind. The order is given as twice the order, so it supports only whole and half orders. Iterative in nature, accuracy indicates how accurate it should be. Limit is a cap on how many iterations. Highest input this can take is 84 (And you shouldn't really get that close to the limit), to produce a value of about 1e35, any larger and it will return a finite but wrong answer...
 float ModBesselFirst(int orderX2, float x, float accuracy, int limit);
 
@@ -19,7 +23,7 @@ float ModBesselFirst(int orderX2, float x, float accuracy, int limit);
 // Returns the log of ModBesselFirst - much more numerically stable, and highly recomended, though takes a touch more computation. Can work with arbitrary values as it does everything in log space...
 float LogModBesselFirst(int orderX2, float x, float accuracy, int limit);
 
-// Alternate version of the above - really an older version that is slower that I am not terminating yet as its principally faster for really low values and capable of greater accuracy...
+// Alternate version of the above - attempt to make it faster that never really was faster!..
 float LogModBesselFirstAlt(int orderX2, float x, float accuracy, int limit);
 
 
@@ -36,6 +40,11 @@ float ERF(float x);
 
 // Just to complete the set - you provide the value to calculate for as an integer, that is twice the value, so you can do the integers and halfs, plus the limit as to how high in the integral it goes...
 float LogLowerIncompleteGamma(int x2, float limit);
+
+
+
+// There is some caching going on - this frees said cache...
+void FreeBesselMemory(PyObject * ignored);
 
 
 

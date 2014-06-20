@@ -124,16 +124,19 @@ for sample in ms.get_dm():
   e_y = (size-1) * (sample[0] + angle_len * sample[2]) / scale
   
   for i in xrange(angle_step):
-    t = float(i) / (angle_step-1)
-    t_x = int(t * s_x + (1-t) * e_x)
-    t_y = int(t * s_y + (1-t) * e_y)
     try:
-      if img[t_y,t_x,0] < t:
-        img[t_y,t_x,:] = t*0.666
-    except:
-      pass
+      t = float(i) / (angle_step-1)
+      t_x = int(t * s_x + (1-t) * e_x)
+      t_y = int(t * s_y + (1-t) * e_y)
+      try:
+        if img[t_y,t_x,0] < t*0.666:
+          img[t_y,t_x,:] = t*0.666
+      except:
+        pass
+    except ValueError:
+      print 'Nan:-('
 
-modes, _= ms.cluster()
+modes, _ = ms.cluster()
 
 for ii, sample in enumerate(modes):
   print 'mode %i: position = (%.3f, %.3f), direction = (%.3f,%.3f)' % (ii, sample[0], sample[1], sample[2], sample[3])
@@ -144,14 +147,17 @@ for ii, sample in enumerate(modes):
   
   
   for i in xrange(angle_step):
-    t = float(i) / (angle_step-1)
-    t_x = int(t * s_x + (1-t) * e_x)
-    t_y = int(t * s_y + (1-t) * e_y)
     try:
-      if img[t_y,t_x,2] < t:
-        img[t_y,t_x,2] = t
-    except:
-      pass
+      t = float(i) / (angle_step-1)
+      t_x = int(t * s_x + (1-t) * e_x)
+      t_y = int(t * s_y + (1-t) * e_y)
+      try:
+        if img[t_y,t_x,2] < t:
+          img[t_y,t_x,2] = t
+      except:
+        pass
+    except ValueError:
+      print 'Nan:-('
 
 img = array2cv(255.0 * img)
 cv.SaveImage('mult_fisher_mult.png', img)

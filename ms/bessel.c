@@ -14,6 +14,39 @@
 
 
 
+// Giant cache of the logs of the integers and half integers, to accelerate the below...
+int log_array_size;
+float * log_array_data;
+
+// Given the maximum desired value * 2, so the halves are integers, this returns an array indexed by value * 2 to get log(value)...
+const float * LogHalfArray(int max)
+{
+ int size = max+1;
+ if (size>log_array_size)
+ {
+  log_array_data = (float*)realloc(log_array_data, size*sizeof(float));
+  
+  if (log_array_size==0)
+  {
+   log_array_data[0] = 1e-32;
+   log_array_size = 1;
+  }
+  
+  int i;
+  for (i=log_array_size; i<size; i++)
+  {
+   log_array_data[i] = log(0.5 * i);
+  }
+  
+  log_array_size = size;
+ }
+  
+ return log_array_data;
+}
+
+
+
+// Modified bessel function of teh first kind. I truly hate this function...
 float ModBesselFirst(int orderX2, float x, float accuracy, int limit)
 {
  // Various simple things...
@@ -61,8 +94,78 @@ float ModBesselFirst(int orderX2, float x, float accuracy, int limit)
 
 float LogModBesselFirst(int orderX2, float x, float accuracy, int limit)
 {
+ if (x<1e-12)
+ {
+  if (orderX2==0) return 0.0;
+             else return -1e32;
+ }
+ static const int block_size = 16;
+ 
+ // Basic preperation...
+  accuracy = log(accuracy);
+  const float * log_hi = LogHalfArray(limit + block_size - 1 + orderX2 - 1);
+ 
+ // Calculate values that will get reused a lot...
+  float log_half_x = log(0.5 * x);
+  float log_main_mult = 2.0 * log_half_x;
+
+ // Calculate the initial summand, for r==0, putting it straight into ret...  
+  float log_ret = 0.0;
+  {
+   char temp = 0;
+   if ((orderX2%2)==1)
+   {
+    log_ret = 0.5 * (log_hi[4] + log(x/M_PI));
+    temp = 1;
+   }
+
+   int p;
+   for (p=1; p<=orderX2/2; p++)
+   {
+    log_ret += log_half_x;
+    log_ret -= log_hi[p*2 + temp];
+   }
+  }
+
+ // Iterate through following summands, calculating each with the aid of the previous...
+  float log_summand = log_ret;
+  int r;
+  
+  float block[block_size];
+  
+  for (r=1; r<limit; )
+  {
+   int s;
+   float max_bs = log_ret;
+   for (s=0; s<block_size; s++, r++)
+   {
+    log_summand += log_main_mult;
+    log_summand -= log_hi[2*r + orderX2];
+    log_summand -= log_hi[2*r];
+    
+    block[s] = log_summand;
+    if (log_summand>max_bs) max_bs = log_summand;
+   }
+   
+   float total = exp(log_ret - max_bs);
+   for (s=0; s<block_size; s++)
+   {
+    total += exp(block[s] - max_bs);
+   }
+   log_ret = max_bs + log(total);
+
+   if ((log_summand<accuracy)&&(block[block_size-2]>=log_summand)) break;
+  }
+
+ return log_ret;
+}
+
+
+
+float LogModBesselFirstAlt(int orderX2, float x, float accuracy, int limit)
+{
  // Special case problem values...
-  if (orderX2==0) return LogModBesselFirstAlt(orderX2, x, accuracy, limit);
+  if (orderX2==0) return LogModBesselFirst(orderX2, x, accuracy, limit);
   if (x<1e-12) return -1e32;
  
  accuracy = log(accuracy);
@@ -112,53 +215,6 @@ float LogModBesselFirst(int orderX2, float x, float accuracy, int limit)
  
  // Return...
   return ret;
-}
-
-
-
-float LogModBesselFirstAlt(int orderX2, float x, float accuracy, int limit)
-{
- accuracy = log(accuracy);
- 
- // Various simple things...
-  float log_half_x = log(0.5 * x);
-  float order = 0.5 * orderX2;
-  float log_main_mult = 2.0 * log_half_x;
-
- // Calculate the initial summand, for r==0, putting it straight into ret...  
-  float log_ret = 0.0;
-  {
-   float temp = 0.0;
-   if ((orderX2%2)==1)
-   {
-    log_ret = 0.5 * (log(2) + log(x) - log(M_PI));
-    temp = 0.5;
-   }
-
-   int p;
-   for (p=1; p<=orderX2/2; p++)
-   {
-    log_ret += log_half_x;
-    log_ret -= log(p + temp);
-   }
-  }
-
- // Iterate through following summands, calculating each with the aid of the previous...
-  float log_summand = log_ret;
-  int r;
-  for (r=1; r<limit; r++)
-  {
-   log_summand += log_main_mult;
-   log_summand -= log(order + r);
-   log_summand -= log(r);
-   
-   if (log_ret>log_summand) log_ret += log(1.0 + exp(log_summand - log_ret));
-   else log_ret = log_summand + log(1.0 + exp(log_ret - log_summand));
-
-   if (log_summand<accuracy) break;
-  }
-
- return log_ret;
 }
 
 
@@ -238,4 +294,11 @@ float LogLowerIncompleteGamma(int x2, float limit)
   }
  
  return ret;
+}
+
+
+
+void FreeBesselMemory(PyObject * ignored)
+{
+ free(log_array_data);
 }
