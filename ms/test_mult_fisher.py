@@ -134,7 +134,8 @@ for sample in ms.get_dm():
       except:
         pass
     except ValueError:
-      print 'Nan:-('
+      pass
+      #print 'NaN:-('
 
 modes, _ = ms.cluster()
 
@@ -157,7 +158,8 @@ for ii, sample in enumerate(modes):
       except:
         pass
     except ValueError:
-      print 'Nan:-('
+      pass
+      #print 'NaN:-('
 
 img = array2cv(255.0 * img)
 cv.SaveImage('mult_fisher_mult.png', img)

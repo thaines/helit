@@ -830,13 +830,14 @@ struct FisherConfig
 KernelConfig Fisher_config_new(int dims, const char * config)
 {
  FisherConfig * ret = (FisherConfig*)malloc(sizeof(FisherConfig));
+ static const float epsilon = 1e-6;
  
  // Basic value storage...
   ret->ref_count = 1;
   ret->alpha = atof(config+1); // +1 to skip the '('.
   
  // Record the log of the normalising constant - we return normalised values for this distribution for reasons of numerical stability...
-  float bessel = LogModBesselFirst(dims-2, ret->alpha, 1e-6, 1024);
+  float bessel = LogModBesselFirst(dims-2, ret->alpha, epsilon, 1024);
   
   ret->log_norm  = (0.5 * dims - 1) * log(ret->alpha);
   ret->log_norm -= (0.5 * dims) * log(2 * M_PI);
@@ -856,8 +857,8 @@ KernelConfig Fisher_config_new(int dims, const char * config)
   for (i=0;i<size_big; i++)
   {
    float dot = ((float)(2*i)) / (size_big-1) - 1.0;
-   if (dot<(-1+1e-12)) dot = -1 + 1e-12; // Tolerances to avoid infinities
-   if (dot>(1-1e-12))  dot =  1 - 1e-12; // "
+   if (dot<(-1+epsilon)) dot = -1 + epsilon; // To avoid infinities
+   if (dot>(1-epsilon))  dot =  1 - epsilon; // "
      
    culm[i] = ret->alpha * dot + log_base;
    if (dims!=3) culm[i] += (0.5 * (dims - 3)) * log(1.0 - dot*dot);
@@ -894,10 +895,12 @@ KernelConfig Fisher_config_new(int dims, const char * config)
   {
    // Set j to be one above the value...
     float pos = ((float)i) / (size-1);
-    while (culm[j]<pos) j++;
+    while (culm[j]<pos) j += 1;
     
    // Interpolate to fill in the relevant inverse value...
-    float t = (pos - culm[j-1]) / (culm[j] - culm[j+1]);
+    float div = culm[j] - culm[j-1];
+    if (div<epsilon) div = epsilon;
+    float t = (pos - culm[j-1]) / div;
     float low = ((float)(2*(j-1))) / (size_big-1) - 1.0;
     float high = ((float)(2*j)) / (size_big-1) - 1.0;
     

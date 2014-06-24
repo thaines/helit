@@ -156,7 +156,7 @@ float LogModBesselFirst(int orderX2, float x, float accuracy, int limit)
 
    if ((log_summand<accuracy)&&(block[block_size-2]>=log_summand)) break;
   }
-
+  
  return log_ret;
 }
 

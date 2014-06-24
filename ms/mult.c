@@ -238,7 +238,7 @@ float mult_area_fisher(float conc, float log_norm, int dims, int terms, const fl
     for (i=0; i<dims; i++) dot += dir[i] * fv[j][i];
     exp_me += conc * dot + log_norm;
    }
-  
+ 
  return exp(exp_me);
 }
 
