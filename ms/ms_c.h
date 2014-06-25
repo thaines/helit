@@ -59,6 +59,10 @@ struct MeanShift
   float ident_dist;
   float merge_range;
   int merge_check_step;
+  
+ // For the rng...
+  MeanShift * rng_link; // Allows the rng between MeanShift objects to be linked; this is subject to proper reference counting.
+  unsigned int rng[4];
 };
 
 

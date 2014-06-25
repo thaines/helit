@@ -111,7 +111,7 @@ cv.SaveImage('draw_density.png', image)
 
 
 # Draw a new set of samples from the KDE approximation of the distribution, and visualise...
-draw = ms.draws(data.shape[0], 0)
+draw = ms.draws(data.shape[0])
 
 image = numpy.zeros((dim, dim, 3), dtype=numpy.float32)
 
@@ -129,7 +129,7 @@ cv.SaveImage('draw_normal.png', image)
 
 
 # Do a bootstrap draw, to test that feature - slightly different rendering as we are expecting repeats...
-bootstrap = ms.bootstrap(data.shape[0], 0)
+bootstrap = ms.bootstrap(data.shape[0])
 
 image = numpy.zeros((dim, dim, 3), dtype=numpy.float32)
 

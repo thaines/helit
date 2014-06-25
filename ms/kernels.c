@@ -112,25 +112,16 @@ float Uniform_range(int dims, KernelConfig config, float quality)
  return 1.0;
 }
 
-void Uniform_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
+void Uniform_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
 {
- unsigned int random[4];
- 
  // Put a Gaussian into each out, keeping track of the squared length...
   int i;
   float radius = 0.0;
   for (i=0; i<dims; i+=2)
   {
-   // We need some random data...
-    random[0] = index[0];
-    random[1] = index[1];
-    random[2] = index[2];
-    random[3] = i;
-    philox(random);
-    
    // Output...
     float * second = (i+1<dims) ? (out+i+1) : NULL;
-    out[i] = box_muller(random[0], random[1], second);
+    out[i] = PhiloxRNG_Gaussian(rng, second);;
     
     radius += out[i] * out[i];
     if (second!=NULL) radius += out[i+1] * out[i+1];
@@ -140,16 +131,7 @@ void Uniform_draw(int dims, KernelConfig config, const unsigned int index[3], co
   radius = sqrt(radius);
   
  // Draw the radius we are going to emit; prepare the multiplier...
-  if ((dims&1)==0)
-  {
-   random[0] = index[0];
-   random[1] = index[1];
-   random[2] = index[2];
-   random[3] = dims;
-   philox(random);
-  }
-    
-  radius = pow(uniform(random[3]), 1.0/dims) / radius;
+  radius = pow(PhiloxRNG_uniform(rng), 1.0/dims) / radius;
  
  // Normalise so its at the required distance...
   for (i=0; i<dims; i++)
@@ -235,25 +217,16 @@ float Triangular_range(int dims, KernelConfig config, float quality)
  return 1.0;
 }
 
-void Triangular_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
+void Triangular_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
 {
- unsigned int random[4];
- 
  // Put a Gaussian into each out, keeping track of the squared length...
   int i;
   float radius = 0.0;
   for (i=0; i<dims; i+=2)
   {
-   // We need some random data...
-    random[0] = index[0];
-    random[1] = index[1];
-    random[2] = index[2];
-    random[3] = i;
-    philox(random);
-    
    // Output...
     float * second = (i+1<dims) ? (out+i+1) : NULL;
-    out[i] = box_muller(random[0], random[1], second);
+    out[i] = PhiloxRNG_Gaussian(rng, second);
     
     radius += out[i] * out[i];
     if (second!=NULL) radius += out[i+1] * out[i+1];
@@ -263,16 +236,7 @@ void Triangular_draw(int dims, KernelConfig config, const unsigned int index[3],
   radius = sqrt(radius);
   
  // Draw the radius we are going to emit; prepare the multiplier...
-  if ((dims&1)==0)
-  {
-   random[0] = index[0];
-   random[1] = index[1];
-   random[2] = index[2];
-   random[3] = dims;
-   philox(random);
-  }
-    
-  radius = (1.0 - sqrt(1.0 - uniform(random[3]))) / radius;
+  radius = (1.0 - sqrt(1.0 - PhiloxRNG_uniform(rng))) / radius;
  
  // Normalise so its at the required distance...
   for (i=0; i<dims; i++)
@@ -358,25 +322,16 @@ float Epanechnikov_range(int dims, KernelConfig config, float quality)
  return 1.0;
 }
 
-void Epanechnikov_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
+void Epanechnikov_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
 {
- unsigned int random[4];
- 
  // Put a Gaussian into each out, keeping track of the squared length...
   int i;
   float radius = 0.0;
   for (i=0; i<dims; i+=2)
   {
-   // We need some random data...
-    random[0] = index[0];
-    random[1] = index[1];
-    random[2] = index[2];
-    random[3] = i;
-    philox(random);
-    
    // Output...
     float * second = (i+1<dims) ? (out+i+1) : NULL;
-    out[i] = box_muller(random[0], random[1], second);
+    out[i] = PhiloxRNG_Gaussian(rng, second);
     
     radius += out[i] * out[i];
     if (second!=NULL) radius += out[i+1] * out[i+1];
@@ -386,16 +341,7 @@ void Epanechnikov_draw(int dims, KernelConfig config, const unsigned int index[3
   radius = sqrt(radius);
   
  // Draw the radius we are going to emit; prepare the multiplier...
-  if ((dims&1)==0)
-  {
-   random[0] = index[0];
-   random[1] = index[1];
-   random[2] = index[2];
-   random[3] = dims;
-   philox(random);
-  }
-  
-  float u = uniform(random[3]);
+  float u = PhiloxRNG_uniform(rng);
   radius = -2.0 * cos((atan2(sqrt(1.0-u*u), u) + 4*M_PI) / 3.0) / radius;
  
  // Normalise so its at the required distance...
@@ -500,25 +446,16 @@ float Cosine_range(int dims, KernelConfig config, float quality)
  return 1.0;
 }
 
-void Cosine_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
+void Cosine_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
 {
- unsigned int random[4];
- 
  // Put a Gaussian into each out, keeping track of the squared length...
   int i;
   float radius = 0.0;
   for (i=0; i<dims; i+=2)
   {
-   // We need some random data...
-    random[0] = index[0];
-    random[1] = index[1];
-    random[2] = index[2];
-    random[3] = i;
-    philox(random);
-    
    // Output...
     float * second = (i+1<dims) ? (out+i+1) : NULL;
-    out[i] = box_muller(random[0], random[1], second);
+    out[i] = PhiloxRNG_Gaussian(rng, second);
     
     radius += out[i] * out[i];
     if (second!=NULL) radius += out[i+1] * out[i+1];
@@ -528,16 +465,7 @@ void Cosine_draw(int dims, KernelConfig config, const unsigned int index[3], con
   radius = sqrt(radius);
   
  // Draw the radius we are going to emit; prepare the multiplier...
-  if ((dims&1)==0)
-  {
-   random[0] = index[0];
-   random[1] = index[1];
-   random[2] = index[2];
-   random[3] = dims;
-   philox(random);
-  }
-  
-  radius = 2.0*asin(uniform(random[3])) / (M_PI * radius);
+  radius = 2.0*asin(PhiloxRNG_uniform(rng)) / (M_PI * radius);
  
  // Normalise so its at the required distance...
   for (i=0; i<dims; i++)
@@ -622,24 +550,15 @@ float Gaussian_range(int dims, KernelConfig config, float quality)
  return (1.0-quality)*1.0 + quality*3.0;
 }
 
-void Gaussian_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
+void Gaussian_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
 {
- unsigned int random[4];
- 
  // Put a unit Gaussian into each out - that is all...
   int i;
   for (i=0; i<dims; i+=2)
   {
-   // We need some random data...
-    random[0] = index[0];
-    random[1] = index[1];
-    random[2] = index[2];
-    random[3] = i;
-    philox(random);
-    
    // Output...
     float * second = (i+1<dims) ? (out+i+1) : NULL;
-    out[i] = center[i] + box_muller(random[0], random[1], second);
+    out[i] = center[i] + PhiloxRNG_Gaussian(rng, second);
     if (second!=NULL) *second += center[i+1];
   }
 }
@@ -714,25 +633,16 @@ float Cauchy_range(int dims, KernelConfig config, float quality)
  return (1.0-quality)*2.0 + quality*6.0;
 }
 
-void Cauchy_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
+void Cauchy_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
 {
- unsigned int random[4];
- 
  // Put a Gaussian into each out, keeping track of the squared length...
   int i;
   float radius = 0.0;
   for (i=0; i<dims; i+=2)
   {
-   // We need some random data...
-    random[0] = index[0];
-    random[1] = index[1];
-    random[2] = index[2];
-    random[3] = i;
-    philox(random);
-    
    // Output...
     float * second = (i+1<dims) ? (out+i+1) : NULL;
-    out[i] = box_muller(random[0], random[1], second);
+    out[i] = PhiloxRNG_Gaussian(rng, second);
     
     radius += out[i] * out[i];
     if (second!=NULL) radius += out[i+1] * out[i+1];
@@ -741,17 +651,8 @@ void Cauchy_draw(int dims, KernelConfig config, const unsigned int index[3], con
  // Convert from squared radius to not-squared radius...
   radius = sqrt(radius);
   
- // Draw the radius we are going to emit; prepare the multiplier...
-  if ((dims&1)==0)
-  {
-   random[0] = index[0];
-   random[1] = index[1];
-   random[2] = index[2];
-   random[3] = dims;
-   philox(random);
-  }
-  
-  radius = tan(0.5*M_PI*uniform(random[3])) / radius;
+ // Draw the radius we are going to emit; prepare the multiplier...  
+  radius = tan(0.5*M_PI*PhiloxRNG_uniform(rng)) / radius;
  
  // Normalise so its at the required distance, add the center offset...
   for (i=0; i<dims; i++)
@@ -1010,11 +911,9 @@ float Fisher_offset(int dims, KernelConfig config, float * fv, const float * off
  return delta;
 }
 
-void Fisher_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
+void Fisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
 {
  FisherConfig * self = (FisherConfig*)config;
- 
- unsigned int random[4];
 
  // Generate a uniform draw into all but the first dimension of out, which is currently the mean direction...
   int i;
@@ -1022,33 +921,16 @@ void Fisher_draw(int dims, KernelConfig config, const unsigned int index[3], con
   
   for (i=1; i<dims; i+=2)
   {
-   // We need some random data...
-    random[0] = index[0];
-    random[1] = index[1];
-    random[2] = index[2];
-    random[3] = i;
-    philox(random);
-    
    // Output...
     float * second = (i+1<dims) ? (out+i+1) : NULL;
-    out[i] = box_muller(random[0], random[1], second);
+    out[i] = PhiloxRNG_Gaussian(rng, second);
     
     radius += out[i] * out[i];
     if (second!=NULL) radius += out[i+1] * out[i+1];
   }
   
- // Make sure random[2] and random[3] contain unused random bits...
-  if ((dims&1)!=0)
-  {
-   random[0] = index[0];
-   random[1] = index[1];
-   random[2] = index[2];
-   random[3] = dims;
-   philox(random);
-  }
-  
  // Draw the value of the dot product between the output vector and the kernel direction (1, 0, 0, ...), putting it into out[0]...
-  float t = uniform(random[2]) * (self->inv_culm_size-1);
+  float t = PhiloxRNG_uniform(rng) * (self->inv_culm_size-1);
   int low = (int)t;
   if ((low+1)==self->inv_culm_size) low -= 1;
   t -= low;
@@ -1367,23 +1249,17 @@ float Composite_offset(int dims, KernelConfig config, float * fv, const float * 
  return ret;
 }
 
-void Composite_draw(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out)
+void Composite_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
 {
  CompositeConfig * self = (CompositeConfig*)config;
- 
- unsigned int pos[3];
- pos[0] = index[0];
- pos[1] = index[1];
- pos[2] = index[2];
  
  int child;
  for (child=0; child<self->children; child++)
  {
-  self->child[child].kernel->draw(self->child[child].dims, self->child[child].config, pos, center, out);
+  self->child[child].kernel->draw(self->child[child].dims, self->child[child].config, rng, center, out);
    
   center += self->child[child].dims;
   out    += self->child[child].dims;
-  pos[2] += 1;
  }
 }
 

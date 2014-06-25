@@ -31,16 +31,22 @@ void MeanShift_new(MeanShift * this)
  this->norm = -1.0;
  this->spatial = NULL;
  this->balls = NULL;
+ 
  this->quality = 0.5;
  this->epsilon = 1e-3;
  this->iter_cap = 1024;
  this->ident_dist = 0.0;
  this->merge_range = 0.5;
  this->merge_check_step = 4;
+ 
+ this->rng_link = NULL;
+ int i;
+ for (i=0; i<4; i++) this->rng[i] = 0;
 }
 
 void MeanShift_dealloc(MeanShift * this)
 {
+ Py_XDECREF(this->rng_link);
  DataMatrix_deinit(&this->dm);
  if (this->spatial!=NULL) Spatial_delete(this->spatial);
  if (this->balls!=NULL) Balls_delete(this->balls);
@@ -181,6 +187,31 @@ static PyObject * MeanShift_copy_kernel_py(MeanShift * self, PyObject * args)
    Py_INCREF(self->name);
   }
  
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+static PyObject * MeanShift_link_rng_py(MeanShift * self, PyObject * args)
+{
+ // Get the parameters - another mean shift object...
+  MeanShift * other = NULL;
+  if (!PyArg_ParseTuple(args, "|O!", &MeanShiftType, &other)) return NULL;
+
+ // Unlink the current...
+  Py_XDECREF(self->rng_link);
+  self->rng_link = NULL;
+  
+ // If required link the other MeanShift object 
+  if (other!=NULL)
+  {
+   while (other->rng_link!=NULL) other = other->rng_link;
+   
+   self->rng_link = other;
+   Py_INCREF(self->rng_link);
+  }
+  
  // Return None...
   Py_INCREF(Py_None);
   return Py_None;
@@ -1041,16 +1072,16 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
 
 static PyObject * MeanShift_draw_py(MeanShift * self, PyObject * args)
 {
- // Get the arguments - indices for the rng... 
-  unsigned int index[3] = {0, 0, 0};
-  if (!PyArg_ParseTuple(args, "I|II", &index[0], &index[1], &index[2])) return NULL;
+ // Setup the rng...
+  PhiloxRNG rng;
+  PhiloxRNG_init(&rng, (self->rng_link!=NULL)?self->rng_link->rng:self->rng);
   
  // Create the return array...
   npy_intp feats = DataMatrix_features(&self->dm);
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats, NPY_FLOAT32);
   
  // Generate the return...
-  draw(&self->dm, self->kernel, self->config, index, (float*)PyArray_DATA(ret));
+  draw(&self->dm, self->kernel, self->config, &rng, (float*)PyArray_DATA(ret));
   
  // Return the draw...
   return (PyObject*)ret;
@@ -1060,20 +1091,24 @@ static PyObject * MeanShift_draw_py(MeanShift * self, PyObject * args)
 
 static PyObject * MeanShift_draws_py(MeanShift * self, PyObject * args)
 {
- // Get the arguments - how many to output and indices for the rng... 
+ // Get the argument - how many to output... 
   npy_intp shape[2];
-  unsigned int index[3] = {0, 0, 0};
-  if (!PyArg_ParseTuple(args, "iI|I", &shape[0], &index[0], &index[1])) return NULL;
+  if (!PyArg_ParseTuple(args, "n", &shape[0])) return NULL;
   
+ // Setup the rng...
+  PhiloxRNG rng;
+  PhiloxRNG_init(&rng, (self->rng_link!=NULL)?self->rng_link->rng:self->rng);
+
  // Create the return array...
   shape[1] = DataMatrix_features(&self->dm);
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, shape, NPY_FLOAT32);
   
  // Fill in the return matrix...
-  for (index[2]=0; index[2]<shape[0]; index[2]++)
+  int i;
+  for (i=0; i<shape[0]; i++)
   {
-   float * out = (float*)PyArray_GETPTR2(ret, index[2], 0);
-   draw(&self->dm, self->kernel, self->config, index, out);
+   float * out = (float*)PyArray_GETPTR2(ret, i, 0);
+   draw(&self->dm, self->kernel, self->config, &rng, out);
   }
   
  // Return the draw...
@@ -1084,25 +1119,29 @@ static PyObject * MeanShift_draws_py(MeanShift * self, PyObject * args)
 
 static PyObject * MeanShift_bootstrap_py(MeanShift * self, PyObject * args)
 {
- // Get the arguments - how many to output and indices for the rng... 
+ // Get the arguments - how many to output... 
   npy_intp shape[2];
-  unsigned int index[4] = {0, 0, 0, 0};
-  if (!PyArg_ParseTuple(args, "iI|II", &shape[0], &index[0], &index[1], &index[2])) return NULL;
+  if (!PyArg_ParseTuple(args, "n", &shape[0])) return NULL;
   
  // Create the return array...
   shape[1] = DataMatrix_features(&self->dm);
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, shape, NPY_FLOAT32);
+ 
+ // Prepare the rng...
+  PhiloxRNG rng;
+  PhiloxRNG_init(&rng, (self->rng_link!=NULL)?self->rng_link->rng:self->rng);
   
  // Fill in the return matrix...
-  for (index[3]=0; index[3]<shape[0]; index[3]++)
+  int j;
+  for (j=0; j<shape[0]; j++)
   {
-   int ind = DataMatrix_draw(&self->dm, index);
+   int ind = DataMatrix_draw(&self->dm, &rng);
    float * fv = DataMatrix_fv(&self->dm, ind, NULL);
    
    int i;
    for (i=0; i<shape[1]; i++)
    {
-    *(float*)PyArray_GETPTR2(ret, index[3], i) = fv[i] / self->dm.mult[i];
+    *(float*)PyArray_GETPTR2(ret, j, i) = fv[i] / self->dm.mult[i];
    }
   }
   
@@ -1683,15 +1722,13 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   PyObject * multiplicands;
   PyArrayObject * output;
   
-  unsigned int rng0 = 0;
-  unsigned int rng1 = 0;
   int gibbs = 16;
   int mci = 64;
   int mh = 8;
   int fake = 0;
   
-  static char * kw_list[] = {"multiplicands", "output", "rng0", "rng1", "gibbs", "mci", "mh", "fake", NULL};
-  if (!PyArg_ParseTupleAndKeywords(args, kw, "O!O!|IIiiii", kw_list, &PyList_Type, &multiplicands, &PyArray_Type, &output, &rng0, &rng1, &gibbs, &mci, &mh, &fake)) return NULL;
+  static char * kw_list[] = {"multiplicands", "output", "gibbs", "mci", "mh", "fake", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kw, "O!O!|iiii", kw_list, &PyList_Type, &multiplicands, &PyArray_Type, &output, &gibbs, &mci, &mh, &fake)) return NULL;
   
  // Verify the parameters are all good...
   int terms = PyList_Size(multiplicands);
@@ -1780,17 +1817,17 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
    return NULL;
   }
   
+ // Prepare the rng...
+  PhiloxRNG rng;
+  PhiloxRNG_init(&rng, (self->rng_link!=NULL)?self->rng_link->rng:self->rng);
+  
  // Check for the degenerate situation of only one multiplicand, in which case we can just draw from it to generate the output...
   if (terms==1)
   {
-   unsigned int rng_index[3];
-   rng_index[0] = rng0;
-   rng_index[1] = rng1;
-    
-   for (rng_index[2]=0; rng_index[2]<PyArray_DIMS(output)[0]; rng_index[2]++)
+   for (i=0;i<PyArray_DIMS(output)[0]; i++)
    {
-    float * out = (float*)PyArray_GETPTR2(output, rng_index[2], 0);
-    draw(&self->dm, self->kernel, self->config, rng_index, out);
+    float * out = (float*)PyArray_GETPTR2(output, i, 0);
+    draw(&self->dm, self->kernel, self->config, &rng, out);
    }
    
    Py_INCREF(Py_None);
@@ -1801,8 +1838,7 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   MultCache mc;
   MultCache_new(&mc);
   
-  mc.rng_index[0] = rng0;
-  mc.rng_index[1] = rng1;
+  mc.rng = &rng;
   
   mc.gibbs_samples = gibbs;
   mc.mci_samples = mci;
@@ -1855,6 +1891,11 @@ static PyMemberDef MeanShift_members[] =
  {"ident_dist", T_FLOAT, offsetof(MeanShift, ident_dist), 0, "If two exemplars are found at any point to have a distance less than this from each other whilst clustering it is assumed they will go to the same destination, saving computation."},
  {"merge_range", T_FLOAT, offsetof(MeanShift, merge_range), 0, "Controls how close two mean shift locations have to be to be merged in the clustering method."},
  {"merge_check_step", T_INT, offsetof(MeanShift, merge_check_step), 0, "When clustering this controls how many mean shift iterations it does between checking for convergance - simply a tradeoff between wasting time doing mean shift when it has already converged and doing proximity checks for convergance. Should only affect runtime."},
+ {"rng0", T_UINT, offsetof(MeanShift, rng[0]), 0, "Lets you set the random number generators position index - defaults to 0. Position 0 - the highest 32 bits."},
+ {"rng1", T_UINT, offsetof(MeanShift, rng[1]), 0, "Lets you set the random number generators position index - defaults to 0. Position 1."},
+ {"rng2", T_UINT, offsetof(MeanShift, rng[2]), 0, "Lets you set the random number generators position index - defaults to 0. Position 2."},
+ {"rng3", T_UINT, offsetof(MeanShift, rng[3]), 0, "Lets you set the random number generators position index - defaults to 0. Position 3 - the lowest 32 bits."},
+ {"link", T_OBJECT, offsetof(MeanShift, rng_link), READONLY, "Allows you to access the linked MeanShift object from which its getting its random number generator, None if its using its own rng0..rng3 values."},
  {NULL}
 };
 
@@ -1866,6 +1907,7 @@ static PyMethodDef MeanShift_methods[] =
  {"get_kernel", (PyCFunction)MeanShift_get_kernel_py, METH_NOARGS, "Returns the string that identifies the current kernel; for complex kernels this may be a complex string containing parameters etc."},
  {"set_kernel", (PyCFunction)MeanShift_set_kernel_py, METH_VARARGS, "Sets the current kernel, as identified by a string. For complex kernels this will probably need to include extra information - e.g. the fisher kernel is given as fisher(alpha) where alpha is a floating point concentration parameter. Note that some kernels (e.g. fisher) take into account the number of features in the data when set - in such cases you must set the kernel type after calling set_data."},
  {"copy_kernel", (PyCFunction)MeanShift_copy_kernel_py, METH_VARARGS, "Given another MeanShift object this copies the settings from it. This is highly recomended when speed matters and you have lots of kernels, as it copies pointers to the internal configuration object and reference counts - for objects with complex configurations this can be an order of magnitude faster. It can also save a lot of memory, via shared caches."},
+ {"link_rng", (PyCFunction)MeanShift_link_rng_py, METH_VARARGS, "Links this MeanShift object to use the same random number generator as the given MeanShift object, or unlinks the RNG if no argument given. Will do path shortening if you attempt to chain a bunch together. Will ignore attempts to create loops. The other MeanShift does not even have to be initialised - they don't need to share any common characteristics. Setting the rng* values of a linked MeanShift object acheives nothing."},
  
  {"spatials", (PyCFunction)MeanShift_spatials_py, METH_NOARGS | METH_STATIC, "A static method that returns a list of spatial indexing structures you can use, as strings."},
  {"get_spatial", (PyCFunction)MeanShift_get_spatial_py, METH_NOARGS, "Returns the string that identifies the current spatial indexing structure."},
@@ -1902,9 +1944,9 @@ static PyMethodDef MeanShift_methods[] =
  {"prob", (PyCFunction)MeanShift_prob_py, METH_VARARGS, "Given a feature vector returns its probability, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},
  {"probs", (PyCFunction)MeanShift_probs_py, METH_VARARGS, "Given a data matrix returns an array (1D) containing the probability of each feature, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},
  
- {"draw", (PyCFunction)MeanShift_draw_py, METH_VARARGS, "Allows you to draw from the distribution represented by the kernel density estimate. It is actually entirly deterministic - you hand over three unsigned 32 bit integers which index into the rng, so you should iterate them to get a sequence. (Second two rng indices are optional, and default to 0.) Returns a vector."},
- {"draws", (PyCFunction)MeanShift_draws_py, METH_VARARGS, "Allows you to draw from the distribution represented by the kernel density estimate. Same as draw except it returns a matrix - the first number handed in is how many draws to make, the next two indices going into the Philox rng. The same as calling the draw method with the first two rng indices set as passed in and the third set to 0 then 1, 2 etc. (Second index is optional and defaults to 0 if not provided.) Returns an array, <# draws>X<# exemplars>."},
- {"bootstrap", (PyCFunction)MeanShift_bootstrap_py, METH_VARARGS, "Does a bootstrap draw from the samples - essentially the same as draws but assuming a Dirac delta function for the kernel. You provide the number of draws as the first parameter, then 3 rng indexing parameters, that make it deterministic (Last two are optional - default to 0). Returns an array, <# draws>X<# exemplars>."},
+ {"draw", (PyCFunction)MeanShift_draw_py, METH_NOARGS, "Allows you to draw from the distribution represented by the kernel density estimate. Returns a vector and makes use of the internal RNG."},
+ {"draws", (PyCFunction)MeanShift_draws_py, METH_VARARGS, "Allows you to draw from the distribution represented by the kernel density estimate. Same as draw except it returns a matrix - you provide a single argument of how many draws to make. Returns an array, <# draws>X<# exemplars> and makes use of the internal RNG."},
+ {"bootstrap", (PyCFunction)MeanShift_bootstrap_py, METH_VARARGS, "Does a bootstrap draw from the samples - essentially the same as draws but assuming a Dirac delta function for the kernel. You provide the number of draws; it returns an array, <# draws>X<# exemplars>. Makes use of the contained Philox RNG."},
  
  {"mode", (PyCFunction)MeanShift_mode_py, METH_VARARGS, "Given a feature vector returns its mode as calculated using mean shift - essentially the maxima in the kernel density estimate to which you converge by climbing the gradient."},
  {"modes", (PyCFunction)MeanShift_modes_py, METH_VARARGS, "Given a data matrix [exemplar, feature] returns a matrix of the same size, where each feature has been replaced by its mode, as calculated using mean shift."},
@@ -1918,7 +1960,7 @@ static PyMethodDef MeanShift_methods[] =
  {"manifolds", (PyCFunction)MeanShift_manifolds_py, METH_VARARGS, "Given a data matrix [exemplar, feature] and the dimensionality of the manifold projects the feature vectors onto the manfold using subspace constrained mean shift. Returns a data matrix with the same shape as the input. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
  {"manifolds_data", (PyCFunction)MeanShift_manifolds_data_py, METH_VARARGS, "Given the dimensionality of the manifold projects the feature vectors that are defining the density estimate onto the manfold using subspace constrained mean shift. The return value will be indexed in the same way as the provided data matrix, but without the feature dimensions, with an extra dimension at the end to index features. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
  
- {"mult", (PyCFunction)MeanShift_mult_py, METH_KEYWORDS | METH_VARARGS | METH_STATIC, "A static method that allows you to multiply a bunch of kernel density estimates, and draw some samples from the resulting distribution, outputing the samples into an array. The first input must be a list of MeanShift objects (At least of length 1, though if length 1 it just resamples the input), the second a numpy array for the output - it must be 2D and have the same number of columns as all the MeanShift objects have features/dims. Its row count is how many samples will be drawn from the distribution implied by multiplying the KDEs together. Note that the first object in the MeanShift object list gets to set the kernel - it is assumed that all further objects have the same kernel, though if they don't it will still run through under that assumption just fine. Further to the first two inputs dictionary parameters it allows parameters to be set by name: {'rng0': Controls the deterministic random number generator, 'rng1': Ditto, 'gibbs': Number of Gibbs samples to do, noting its multiplied by the length of the multiplication list and is the number of complete passes through the state, 'mci': Number of samples to do if it has to do monte carlo integration, 'mh': Number of Metropolis-Hastings steps it will do if it has to, multiplied by the length of the multiplicand list, 'fake': Allows you to request an incorrect-but-useful result - the default of 0 is the correct output, 1 is a mode from the Gibbs sampled mixture component instead of a draw, whilst 2 is the average position of the components that made up the selected mixture component.}"},
+ {"mult", (PyCFunction)MeanShift_mult_py, METH_KEYWORDS | METH_VARARGS | METH_STATIC, "A static method that allows you to multiply a bunch of kernel density estimates, and draw some samples from the resulting distribution, outputing the samples into an array. The first input must be a list of MeanShift objects (At least of length 1, though if length 1 it just resamples the input), the second a numpy array for the output - it must be 2D and have the same number of columns as all the MeanShift objects have features/dims. Its row count is how many samples will be drawn from the distribution implied by multiplying the KDEs together. Note that the first object in the MeanShift object list gets to set the kernel - it is assumed that all further objects have the same kernel, though if they don't it will still run through under that assumption just fine. Further to the first two inputs dictionary parameters it allows parameters to be set by name: {'gibbs': Number of Gibbs samples to do, noting its multiplied by the length of the multiplication list and is the number of complete passes through the state, 'mci': Number of samples to do if it has to do monte carlo integration, 'mh': Number of Metropolis-Hastings steps it will do if it has to, multiplied by the length of the multiplicand list, 'fake': Allows you to request an incorrect-but-useful result - the default of 0 is the correct output, 1 is a mode from the Gibbs sampled mixture component instead of a draw, whilst 2 is the average position of the components that made up the selected mixture component.}. Note that this method makes extensive use of the built in rng."},
  
  {NULL}
 };
@@ -1987,21 +2029,11 @@ static PyMethodDef ms_c_methods[] =
 
 PyMODINIT_FUNC initms_c(void)
 {
- PyObject * mod = Py_InitModule3("ms_c", ms_c_methods, "Primarily provides a mean shift implementation, but also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Includes multiple spatial indexing schemes and kernel types, including support for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario efficiently. Exemplars can also be weighted.");
+ PyObject * mod = Py_InitModule3("ms_c", ms_c_methods, "Primarily provides a mean shift implementation, but also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Includes multiple spatial indexing schemes and kernel types, including support for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario efficiently. Exemplars can also be weighted. Note that this module is not multithread safe - use multiprocessing instead.");
  
  import_array();
  
  if (PyType_Ready(&MeanShiftType) < 0) return;
- 
- /*int order, x;
- for (order=0; order<7; order++)
- {
-  for (x=0; x<9; x++)
-  {
-   printf("modified bessel function , first kind (order=%f,x=%f) = %f = %f\n", (float)(0.5*order), (float)x, ModBesselFirst(order, x, 1e-6, 1024), exp(LogModBesselFirst(order, x, 1e-6, 1024)));
-  }
- }
- printf("modified bessel function , first kind (order=3,x=48) = %f = %f\n", ModBesselFirst(6, 48.0, 1e-6, 1024), exp(LogModBesselFirst(6, 48.0, 1e-6, 1024)));*/
  
  Py_INCREF(&MeanShiftType);
  PyModule_AddObject(mod, "MeanShift", (PyObject*)&MeanShiftType);

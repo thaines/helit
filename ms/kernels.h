@@ -13,6 +13,7 @@
 
 #include <stddef.h>
 
+#include "philox.h"
 #include "mult.h"
 
 // Defines the kernels that mean shift uses - as a set of structures containing function pointers that define the functionality, so they can easily be swapped out...
@@ -52,7 +53,7 @@ typedef float (*KernelRange)(int dims, KernelConfig config, float quality);
 typedef float (*KernelOffset)(int dims, KernelConfig config, float * fv, const float * offset);
 
 // Allows you to draw from the kernel (At position centre in the scaled space) - you provide the first 3 indices for the philox rng (It then has the entire range of the 4th value for its own use, whilst remaining entirly predictable.), and also provide an output vector, as well as the configuration as per usual...
-typedef void (*KernelDraw)(int dims, KernelConfig config, const unsigned int index[3], const float * center, float * out);
+typedef void (*KernelDraw)(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out);
 
 // Given a set of feature vectors, each the centre of an instance of this kernel type, with different scales, this returns how much probability mass is in the multiplication of them - 1 if they all perfectly overlap, 0 if there is no overlap. It is the weight assigned to the multiplication of components if constructing a mixture model via multiplication. In addition to the usual takes as input pointers to arrays of feature vectors and scales, plus a MultCache, which controls how it behaves...
 typedef float (*KernelMultMass)(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache);

@@ -9,7 +9,6 @@
 
 
 #include "data_matrix.h"
-#include "philox.h"
 
 #include <stdlib.h>
 
@@ -354,19 +353,13 @@ float * DataMatrix_fv(DataMatrix * dm, int index, float * weight)
 
 
 
-int DataMatrix_draw(DataMatrix * dm, const unsigned int index[4])
+int DataMatrix_draw(DataMatrix * dm, PhiloxRNG * rng)
 {
- // Random bytes ahoy!..
-  int i;
-  unsigned int key[4];
-  for (i=0; i<4; i++) key[i] = index[i];
-  philox(key);
- 
  // Two scenarios - all samples have the same weight, or they don't, resulting in different approaches...
   if (dm->weight_index<0) // All samples have the same weight
   { 
    // Uniform draw multiplied by the number of exemplars...
-    float pos = dm->exemplars * uniform(key[0]);
+    float pos = dm->exemplars * PhiloxRNG_uniform(rng);
     
    // Return the index of the sample that is that far in...
     return (int)pos;
@@ -379,6 +372,7 @@ int DataMatrix_draw(DataMatrix * dm, const unsigned int index[4])
      dm->weight_cum = (float*)malloc(dm->exemplars * sizeof(float));
      
      float sum = 0.0;
+     int i;
      for (i=0; i<dm->exemplars; i++)
      {
       float weight;
@@ -389,7 +383,7 @@ int DataMatrix_draw(DataMatrix * dm, const unsigned int index[4])
     }
     
    // Uniform draw multiplied by the total weight, as given by weight_cum...
-    float pos = dm->weight_cum[dm->exemplars-1] * uniform(key[0]);
+    float pos = dm->weight_cum[dm->exemplars-1] * PhiloxRNG_uniform(rng);
     
    // Use a biased binary search (under the assumption that similar weights are more likelly) to find the index of the relevant item; return it...
     int low  = 0;
@@ -414,5 +408,4 @@ int DataMatrix_draw(DataMatrix * dm, const unsigned int index[4])
     
     return low;
   }
-  
 }

@@ -71,3 +71,61 @@ float box_muller(unsigned int pa, unsigned int pb, float * second)
  if (second!=NULL) *second = mult * sin(inner);
  return mult * cos(inner);
 }
+
+
+
+void PhiloxRNG_init(PhiloxRNG * this, unsigned int * index)
+{
+ this->index = index;
+ this->next = 4;
+}
+
+unsigned int PhiloxRNG_next(PhiloxRNG * this)
+{
+ if (this->next>3)
+ {
+  this->next = 0;
+  // Copy the index into data...
+   int i;
+   for (i=0; i<4; i++) this->data[i] = this->index[i];
+   
+  // Move to the next index...
+   this->index[3] += 1;
+   if (this->index[3]==0)
+   {
+    this->index[2] += 1;
+    if (this->index[2]==0)
+    {
+     this->index[1] += 1;
+     if (this->index[1]==0)
+     {
+      this->index[0] += 1; 
+     }
+    }
+   }
+   
+  // Randomise the data with the Philox function...
+   philox(this->data);
+ }
+ 
+ unsigned int ret = this->data[this->next];
+ this->next += 1;
+ return ret;
+}
+
+float PhiloxRNG_uniform(PhiloxRNG * this)
+{
+ return (float)PhiloxRNG_next(this) / 4294967296.0; 
+}
+
+float PhiloxRNG_Gaussian(PhiloxRNG * this, float * second)
+{
+ float ra = (float)PhiloxRNG_next(this) / 4294967296.0;
+ float rb = (float)PhiloxRNG_next(this) / 4294967296.0;
+ 
+ float mult = sqrt(-2.0 * log(ra));
+ float inner = 2 * M_PI * rb;
+ 
+ if (second!=NULL) *second = mult * sin(inner);
+ return mult * cos(inner);
+}

@@ -106,7 +106,7 @@ cv.SaveImage('fisher_mercator_kde.png', image)
 # Draw a new set of samples; visualise them...
 print 'Draw...'
 
-draw = ms.draws(8*1024, 0)
+draw = ms.draws(8*1024)
 
 image = numpy.zeros((height, width, 3), dtype=numpy.float32)
 for vec in draw:

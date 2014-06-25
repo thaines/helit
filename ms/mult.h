@@ -11,6 +11,7 @@
 
 
 
+#include "philox.h"
 #include "spatial.h"
 
 
@@ -41,8 +42,8 @@ struct MultCache
   const float ** fv;
   const float ** scale;
  
- // Random number generation index...
-  unsigned int rng_index[3];
+ // Random number generator...
+  PhiloxRNG * rng;
  
  // Parameters for the various samplers...
   int gibbs_samples; // Defaults to 1, scaled by the number of terms.
@@ -57,9 +58,6 @@ void MultCache_delete(MultCache * self);
 
 // Makes sure it has enough cache for the given size, re-allocating it if need be...
 void MultCache_ensure(MultCache * self, int dims, int terms);
-
-// Each time the rng_index is used this is called, to move it to the next location...
-void MultCache_inc_rng(MultCache * self);
 
 
 

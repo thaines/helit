@@ -17,6 +17,8 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/ndarrayobject.h>
 
+#include "philox.h"
+
 // Provides a wrapper around a numpy matrix that converts it into a data matrix of floats - allows each index of the dat matrix to be assigned to one of three classes - data, feature or spatial. It does linearisation to allow indexing of the exemplars/features, always in row major order...
 
 
@@ -92,8 +94,8 @@ void DataMatrix_set_scale(DataMatrix * dm, float * scale, float weight_scale);
 // Fetches a feature vector, using a single index to do row-major indexing into all dimensions marked as data or dual. Note that the returned pointer is to internal storage, that is replaced every time this method is called. The dual dimensions will always be first, followed by all the feature dimensions in row major flattened order. If you want the weight as well provide a pointer and it will be filled...
 float * DataMatrix_fv(DataMatrix * dm, int index, float * weight);
 
-// Draws the index of a random exemplar from the datamatrix, using the philox random number generator, hence you provide it with an index (If exemplars are weighted it will be a weighted draw)...
-int DataMatrix_draw(DataMatrix * dm, const unsigned int index[4]);
+// Draws the index of a random exemplar from the datamatrix, using the philox random number generator (If exemplars are weighted it will be a weighted draw)...
+int DataMatrix_draw(DataMatrix * dm, PhiloxRNG * rng);
 
 
 

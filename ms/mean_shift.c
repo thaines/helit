@@ -79,24 +79,18 @@ float prob(Spatial spatial, const Kernel * kernel, KernelConfig config, const fl
 
 
 
-void draw(DataMatrix * dm, const Kernel * kernel, KernelConfig config, const unsigned int index[3], float * out)
+void draw(DataMatrix * dm, const Kernel * kernel, KernelConfig config, PhiloxRNG * rng, float * out)
 {
  int feats = DataMatrix_features(dm);
  
  // First draw the exemplar we are to play with...
-  unsigned int key[4];
-  key[0] = index[0];
-  key[1] = index[1];
-  key[2] = index[2];
-  key[3] = 0xFFFFFFFF;
-  
-  int exemplar = DataMatrix_draw(dm, key);
+  int exemplar = DataMatrix_draw(dm, rng);
   
  // Get the exemplars location...
   float * fv = DataMatrix_fv(dm, exemplar, NULL);
   
  // Draw from the kernel in question...
-  kernel->draw(feats, config, index, fv, out);
+  kernel->draw(feats, config, rng, fv, out);
  
  // Convert from scaled space to normal space...
   int i;

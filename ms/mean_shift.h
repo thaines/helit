@@ -35,7 +35,7 @@ float prob(Spatial spatial, const Kernel * kernel, KernelConfig config, const fl
 
 
 // This draws a sample from the distribution - you provide the usual indexing structure, which contains the data matrix, the kernel to use and an index into the philox rng, which it then uses to deterministically draw into out. out must be long enough to store the # of dimensions within the data matrix...
-void draw(DataMatrix * dm, const Kernel * kernel, KernelConfig config, const unsigned int index[3], float * out);
+void draw(DataMatrix * dm, const Kernel * kernel, KernelConfig config, PhiloxRNG * rng, float * out);
 
 
 

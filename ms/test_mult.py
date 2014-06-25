@@ -185,7 +185,7 @@ for kernel in kernels:
   output = numpy.empty((draw, 2), dtype=numpy.float32);
   for i in xrange(draw):
     p.callback(i, draw)
-    MeanShift.mult(ms, output[i,:].reshape((1,-1)), rng0=i, fake=0)
+    MeanShift.mult(ms, output[i,:].reshape((1,-1)), fake=0)
   del p
   
   mult = to_ms(output)

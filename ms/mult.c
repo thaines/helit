@@ -32,9 +32,7 @@ void MultCache_new(MultCache * self)
  self->fv = NULL;
  self->scale = NULL;
  
- self->rng_index[0] = 0;
- self->rng_index[1] = 0;
- self->rng_index[2] = 0;
+ self->rng = NULL;
  
  self->gibbs_samples = 1;
  self->mci_samples = 1000;
@@ -77,19 +75,6 @@ void MultCache_ensure(MultCache * self, int dims, int terms)
  }
 }
 
-void MultCache_inc_rng(MultCache * self)
-{
- self->rng_index[2] += 1;
- if (self->rng_index[2]==0)
- {
-  self->rng_index[1] += 1;
-  if (self->rng_index[1]==0)
-  {
-   self->rng_index[0] += 1;
-  }
- }
-}
-
 
 
 float mult_area_mci(const Kernel * kernel, KernelConfig config, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache)
@@ -107,8 +92,7 @@ float mult_area_mci(const Kernel * kernel, KernelConfig config, int dims, int te
  for (s=0; s<samples; s++)
  {
   // Draw from the first distribution, convert to global space...
-   kernel->draw(dims, config, cache->rng_index, fv[0], draw);
-   MultCache_inc_rng(cache);
+   kernel->draw(dims, config, cache->rng, fv[0], draw);
    
    int i;
    for (i=0; i<dims; i++) draw[i] /= scale[0][i];
@@ -258,12 +242,8 @@ int mult_draw_mh(const Kernel * kernel, KernelConfig config, int dims, int terms
  int accepts = 0;
  const float norm = 1.0; //kernel->norm(dims, config); // Always cancels out.
  
- unsigned int random[4]; // Buffer of random data used for acceptance draws.
- int random_use = 4;
- 
  // Create an initial proposal - just draw from the first distribution, scale, and fill in the probability values in out_prob...
-  kernel->draw(dims, config, cache->rng_index, fv[0], out);
-  MultCache_inc_rng(cache);
+  kernel->draw(dims, config, cache->rng, fv[0], out);
   
   for (j=0; j<dims; j++) out[j] /= scale[0][j];
   
@@ -286,8 +266,7 @@ int mult_draw_mh(const Kernel * kernel, KernelConfig config, int dims, int terms
     term = (term+1) % terms;
     
    // Draw from that term, converting the draw to global space...
-     kernel->draw(dims, config, cache->rng_index, fv[term], proposal);
-     MultCache_inc_rng(cache);
+     kernel->draw(dims, config, cache->rng, fv[term], proposal);
      
      for (j=0; j<dims; j++) proposal[j] /= scale[term][j];
     
@@ -317,21 +296,7 @@ int mult_draw_mh(const Kernel * kernel, KernelConfig config, int dims, int terms
     float threshold = 0.0;
     if (ap<1.0)
     {
-     // Do a uniform draw for the threshold, but only if needed...
-      if (random_use>3)
-      {
-       random[0] = cache->rng_index[0];
-       random[1] = cache->rng_index[1];
-       random[2] = cache->rng_index[2];
-       random[3] = 0x80808080;
-       MultCache_inc_rng(cache);
-      
-       philox(random);
-       random_use = 0;
-      }
-      
-      threshold = uniform(random[random_use]);
-      random_use += 1;
+     threshold = PhiloxRNG_uniform(cache->rng);
     }
     
     if (ap>threshold)
@@ -391,8 +356,7 @@ void mult_draw_gaussian(int dims, int terms, const float ** fv, const float ** s
   }
 
  // Do the proper thing - draw from the distribution...
-  Gaussian.draw(dims, NULL, cache->rng_index, fv_mult, out);
-  MultCache_inc_rng(cache);
+  Gaussian.draw(dims, NULL, cache->rng, fv_mult, out);
   
   for (i=0; i<dims; i++) out[i] /= scale_mult[i];
 }
@@ -411,9 +375,6 @@ void mult(const Kernel * kernel, KernelConfig config, int terms, Spatial * spati
   
   float range = 2.0 * kernel->range(dims, config, quality);
   
-  unsigned int random[4];
-  int random_use = 4;
-  
  // Store the scales into the cache...
   int t;
   for (t=0; t<terms; t++)
@@ -422,14 +383,8 @@ void mult(const Kernel * kernel, KernelConfig config, int terms, Spatial * spati
   }
   
  // Randomly draw our starting point from the first distribution - this is a straight draw...
-  unsigned int rng_index[4];
-  rng_index[0] = cache->rng_index[0];
-  rng_index[1] = cache->rng_index[1];
-  rng_index[2] = cache->rng_index[2];
-  rng_index[3] = 1234567890;
-  MultCache_inc_rng(cache);
    
-  i = DataMatrix_draw(Spatial_dm(spatials[0]), rng_index);
+  i = DataMatrix_draw(Spatial_dm(spatials[0]), cache->rng);
   cache->fv[0] = DataMatrix_fv(Spatial_dm(spatials[0]), i, NULL);
  
  // Iterate and sample in turn, noting that the first pass is rigged to incrimentally initialise...
@@ -462,33 +417,14 @@ void mult(const Kernel * kernel, KernelConfig config, int terms, Spatial * spati
      if (pos==0)
      {
       // Problem - no neighbours found - almost certainly means its gone sideways - attempt to recover by putting something random in...
-       rng_index[0] = cache->rng_index[0];
-       rng_index[1] = cache->rng_index[1];
-       rng_index[2] = cache->rng_index[2];
-       rng_index[3] = 1234567890;
-       MultCache_inc_rng(cache);
-   
-       i = DataMatrix_draw(Spatial_dm(spatials[t]), rng_index);
+       i = DataMatrix_draw(Spatial_dm(spatials[t]), cache->rng);
        cache->fv[t] = DataMatrix_fv(Spatial_dm(spatials[t]), i, NULL);
   
       continue;
      }
 
     // Draw a uniform...
-     if (random_use>3)
-     {
-      random[0] = cache->rng_index[0];
-      random[1] = cache->rng_index[1];
-      random[2] = cache->rng_index[2];
-      random[3] = 0xbbc2bbc2;
-      MultCache_inc_rng(cache);
-      
-      philox(random);
-      random_use = 0;
-     }
-      
-     float loc = prob[pos-1] * uniform(random[random_use]);
-     random_use += 1;
+     float loc = prob[pos-1] * PhiloxRNG_uniform(cache->rng);
      
     // Go through and select the item that matches with the uniform - binary search...
      int low = 0;

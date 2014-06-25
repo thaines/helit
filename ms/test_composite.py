@@ -101,7 +101,7 @@ cv.SaveImage('composite_input.png', img)
 
 
 # Now draw the same number of cameras again and visualise so a fleshy can check they are similar...
-draw = ms.draws(data.shape[0], 0)
+draw = ms.draws(data.shape[0])
 
 img = numpy.zeros((size, size, 3), dtype=numpy.float32)
 
