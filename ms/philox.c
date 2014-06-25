@@ -12,6 +12,11 @@
 #include <stdint.h>
 #include <math.h>
 
+// For C99...
+#ifndef M_PI
+#define M_PI 3.141592653589793238462643383279502884L
+#endif
+
 
 
 static unsigned int mul_hi(unsigned int a, unsigned int b)

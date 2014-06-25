@@ -14,8 +14,10 @@
 #include <Python.h>
 #include <structmember.h>
 
+#ifndef __APPLE__
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#include <numpy/ndarrayobject.h>
+#endif
+#include <numpy/arrayobject.h>
 
 #include "mean_shift.h"
 

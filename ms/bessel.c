@@ -12,6 +12,11 @@
 
 #include <math.h>
 
+// For C99...
+#ifndef M_PI
+#define M_PI 3.141592653589793238462643383279502884L
+#endif
+
 
 
 // Giant cache of the logs of the integers and half integers, to accelerate the below...

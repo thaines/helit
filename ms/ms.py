@@ -13,7 +13,7 @@ try:
   from utils.make import make_mod
   import os.path
 
-  make_mod('ms_c', os.path.dirname(__file__), ['philox.h', 'philox.c', 'bessel.h', 'bessel.c', 'eigen.h', 'eigen.c', 'mult.h', 'mult.c', 'kernels.h', 'kernels.c', 'data_matrix.h', 'data_matrix.c', 'spatial.h', 'spatial.c', 'balls.h', 'balls.c', 'mean_shift.h', 'mean_shift.c', 'ms_c.h', 'ms_c.c'])
+  make_mod('ms_c', os.path.dirname(__file__), ['philox.h', 'philox.c', 'bessel.h', 'bessel.c', 'eigen.h', 'eigen.c', 'mult.h', 'mult.c', 'kernels.h', 'kernels.c', 'data_matrix.h', 'data_matrix.c', 'spatial.h', 'spatial.c', 'balls.h', 'balls.c', 'mean_shift.h', 'mean_shift.c', 'ms_c.h', 'ms_c.c'], numpy=True)
 except: pass
 
 
