@@ -1883,6 +1883,57 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
 
 
 
+static Py_ssize_t MeanShift_Length(MeanShift * self)
+{
+ return DataMatrix_exemplars(&self->dm);
+}
+
+static PyObject * MeanShift_GetItem(MeanShift * self, Py_ssize_t i)
+{
+ // Safety tests...
+  Py_ssize_t exemplars = DataMatrix_exemplars(&self->dm);
+ 
+  if (i<0) i += exemplars;
+  if ((i<0)||(i>=exemplars))
+  {
+   PyErr_SetString(PyExc_IndexError, "MeanShift index out of range.");
+   return NULL; 
+  }
+
+ // Get the actual data...
+  float * fv = DataMatrix_fv(&self->dm, i, NULL);
+ 
+ // Convert into a numpy array...
+  npy_intp feats = DataMatrix_features(&self->dm);
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats, NPY_FLOAT32);
+  
+  npy_intp j;
+  for (j=0; j<feats; j++)
+  {
+   *(float*)PyArray_GETPTR1(ret, j) = fv[j];
+  }
+ 
+ // Return the shiny new numpy array...
+  return (PyObject*)ret;
+}
+
+
+static PySequenceMethods MeanShift_as_sequence =
+{
+ (lenfunc)MeanShift_Length,          /* sq_length */
+ NULL,                               /* sq_concat */
+ NULL,                               /* sq_repeat */
+ (ssizeargfunc)MeanShift_GetItem,    /* sq_item */
+ NULL,                               /* sq_slice */
+ NULL,                               /* sq_ass_item */
+ NULL,                               /* sq_ass_slice */
+ NULL,                               /* sq_contains */
+ NULL,                               /* sq_inplace_concat */
+ NULL,                               /* sq_inplace_repeat */
+};
+
+
+
 static PyMemberDef MeanShift_members[] =
 {
  {"quality", T_FLOAT, offsetof(MeanShift, quality), 0, "Value between 0 and 1, inclusive - for kernel types that have an infinite domain this controls how much of that domain to use for the calculations - 0 for lowest quality, 1 for the highest quality. (Ignored by kernel types that have a finite kernel.)"},
@@ -1981,7 +2032,7 @@ static PyTypeObject MeanShiftType =
  0,                                /*tp_compare*/
  0,                                /*tp_repr*/
  0,                                /*tp_as_number*/
- 0,                                /*tp_as_sequence*/
+ &MeanShift_as_sequence,           /*tp_as_sequence*/
  0,                                /*tp_as_mapping*/
  0,                                /*tp_hash */
  0,                                /*tp_call*/
@@ -1990,7 +2041,7 @@ static PyTypeObject MeanShiftType =
  0,                                /*tp_setattro*/
  0,                                /*tp_as_buffer*/
  Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /*tp_flags*/
- "An object implimenting mean shift; also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Includes multiple spatial indexing schemes and kernel types, including one for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario.", /* tp_doc */
+ "An object implimenting mean shift; also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Includes multiple spatial indexing schemes and kernel types, including one for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario. Note that it pretends to be a readonly list, from which you can get copies of each feature vector (len(self) will return self.exemplars())", /* tp_doc */
  0,                                /* tp_traverse */
  0,                                /* tp_clear */
  0,                                /* tp_richcompare */
