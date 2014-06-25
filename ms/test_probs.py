@@ -15,7 +15,7 @@ from ms import MeanShift
 
 
 
-# Create a dataset - equally spaced samples weighted by a Gaussian, such that it should estimate a Gaussian...
+# Create a dataset - draws from a Gaussian...
 data = numpy.array(map(lambda _: random.normalvariate(0.0, 2.0), xrange(1000)))
 
 
