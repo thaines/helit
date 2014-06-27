@@ -112,6 +112,9 @@ extern const Kernel Cauchy;
 // A kernel based on the von-Mises-Fisher distribution, for dealing with directional data. Requires all samples be on the unit circle. Uses the alpha parameter as the concentration of the kernel being used...
 extern const Kernel Fisher;
 
+// A wrapper kernel for the Fisher distribution that allows you to work with angles represented at radians...
+extern const Kernel Angle;
+
 // A kernel that allows you to combine kernels, so you can have different kernels on different features within a feature vector.
 extern const Kernel Composite;
 

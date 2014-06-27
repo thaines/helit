@@ -1363,6 +1363,7 @@ const Kernel * ListKernel[] =
  &Gaussian,
  &Cauchy,
  &Fisher,
+ //&Angle,
  &Composite,
  NULL
 };

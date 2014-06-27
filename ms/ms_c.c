@@ -590,8 +590,16 @@ static PyObject * MeanShift_set_data_py(MeanShift * self, PyObject * args)
 
 static PyObject * MeanShift_get_dm_py(MeanShift * self, PyObject * args)
 {
- Py_INCREF((PyObject*)self->dm.array);
- return (PyObject*)self->dm.array;
+ if (self->dm.array!=NULL) // Verify that there is a data matrix to in fact return!
+ {
+  Py_INCREF((PyObject*)self->dm.array);
+  return (PyObject*)self->dm.array;
+ }
+ else
+ {
+  Py_INCREF(Py_None);
+  return Py_None;
+ }
 }
 
 
@@ -1789,8 +1797,20 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   
   if (PyArray_DIMS(output)[1]!=dims)
   {
-   PyErr_SetString(PyExc_RuntimeError, "Output array must have the same number of colums as the input KDEs have features");
+   PyErr_SetString(PyExc_RuntimeError, "Output array must have the same number of columns as the input KDEs have features");
    return NULL; 
+  }
+  
+  if (PyArray_DESCR(output)->kind!='f')
+  {
+   PyErr_SetString(PyExc_RuntimeError, "Output array must be a floating point type");
+   return NULL;  
+  }
+  
+  if ((PyArray_DESCR(output)->elsize!=4)&&(PyArray_DESCR(output)->elsize!=8))
+  {
+   PyErr_SetString(PyExc_RuntimeError, "Output array must be of type float or double");
+   return NULL;  
   }
   
   if (gibbs<1)
@@ -1862,12 +1882,23 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
  // Call the multiplication method for each draw and let it do the work...
   int * temp1 = (int*)malloc(longest * sizeof(int));
   float * temp2 = (float*)malloc(longest * sizeof(float));
+  char cd = PyArray_DESCR(output)->elsize!=4;
   
   for (i=0; i<PyArray_DIMS(output)[0]; i++)
   {
    float * out = (float*)PyArray_GETPTR2(output, i, 0);
    
    mult(self->kernel, self->config, terms, sl, out, &mc, temp1, temp2, self->quality, fake);
+   
+   // This is nasty - we just wrote floats into an array of doubles - convert...
+    if (cd)
+    {
+     int j;
+     for (j=dims-1; j>=0; j--)
+     {
+      *(double*)PyArray_GETPTR2(output, i, j) = out[j];
+     }
+    }
   }
  
  // Clean up the MultCache object and other stuff...
@@ -2011,7 +2042,7 @@ static PyMethodDef MeanShift_methods[] =
  {"manifolds", (PyCFunction)MeanShift_manifolds_py, METH_VARARGS, "Given a data matrix [exemplar, feature] and the dimensionality of the manifold projects the feature vectors onto the manfold using subspace constrained mean shift. Returns a data matrix with the same shape as the input. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
  {"manifolds_data", (PyCFunction)MeanShift_manifolds_data_py, METH_VARARGS, "Given the dimensionality of the manifold projects the feature vectors that are defining the density estimate onto the manfold using subspace constrained mean shift. The return value will be indexed in the same way as the provided data matrix, but without the feature dimensions, with an extra dimension at the end to index features. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
  
- {"mult", (PyCFunction)MeanShift_mult_py, METH_KEYWORDS | METH_VARARGS | METH_STATIC, "A static method that allows you to multiply a bunch of kernel density estimates, and draw some samples from the resulting distribution, outputing the samples into an array. The first input must be a list of MeanShift objects (At least of length 1, though if length 1 it just resamples the input), the second a numpy array for the output - it must be 2D and have the same number of columns as all the MeanShift objects have features/dims. Its row count is how many samples will be drawn from the distribution implied by multiplying the KDEs together. Note that the first object in the MeanShift object list gets to set the kernel - it is assumed that all further objects have the same kernel, though if they don't it will still run through under that assumption just fine. Further to the first two inputs dictionary parameters it allows parameters to be set by name: {'gibbs': Number of Gibbs samples to do, noting its multiplied by the length of the multiplication list and is the number of complete passes through the state, 'mci': Number of samples to do if it has to do monte carlo integration, 'mh': Number of Metropolis-Hastings steps it will do if it has to, multiplied by the length of the multiplicand list, 'fake': Allows you to request an incorrect-but-useful result - the default of 0 is the correct output, 1 is a mode from the Gibbs sampled mixture component instead of a draw, whilst 2 is the average position of the components that made up the selected mixture component.}. Note that this method makes extensive use of the built in rng."},
+ {"mult", (PyCFunction)MeanShift_mult_py, METH_KEYWORDS | METH_VARARGS | METH_STATIC, "A static method that allows you to multiply a bunch of kernel density estimates, and draw some samples from the resulting distribution, outputing the samples into an array. The first input must be a list of MeanShift objects (At least of length 1, though if length 1 it just resamples the input), the second a numpy array for the output - it must be 2D and have the same number of columns as all the MeanShift objects have features/dims; must be float or double. Its row count is how many samples will be drawn from the distribution implied by multiplying the KDEs together. Note that the first object in the MeanShift object list gets to set the kernel - it is assumed that all further objects have the same kernel, though if they don't it will still run through under that assumption just fine. Further to the first two inputs dictionary parameters it allows parameters to be set by name: {'gibbs': Number of Gibbs samples to do, noting its multiplied by the length of the multiplication list and is the number of complete passes through the state, 'mci': Number of samples to do if it has to do monte carlo integration, 'mh': Number of Metropolis-Hastings steps it will do if it has to, multiplied by the length of the multiplicand list, 'fake': Allows you to request an incorrect-but-useful result - the default of 0 is the correct output, 1 is a mode from the Gibbs sampled mixture component instead of a draw, whilst 2 is the average position of the components that made up the selected mixture component.}. Note that this method makes extensive use of the built in rng."},
  
  {NULL}
 };
