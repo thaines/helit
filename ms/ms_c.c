@@ -1844,11 +1844,32 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
  // Check for the degenerate situation of only one multiplicand, in which case we can just draw from it to generate the output...
   if (terms==1)
   {
+   float * out = (float*)malloc(dims * sizeof(float));
+   char cd = PyArray_DESCR(output)->elsize!=4;
+   
    for (i=0;i<PyArray_DIMS(output)[0]; i++)
    {
-    float * out = (float*)PyArray_GETPTR2(output, i, 0);
     draw(&self->dm, self->kernel, self->config, &rng, out);
+    
+    // Copy output to actual output array...
+     int j;
+     if (cd)
+     {
+      for (j=0; j<dims; j++)
+      {
+       *(double*)PyArray_GETPTR2(output, i, j) = out[j];
+      }
+     }
+     else
+     {
+      for (j=0; j<dims; j++)
+      {
+       *(float*)PyArray_GETPTR2(output, i, j) = out[j];
+      }
+     }
    }
+   
+   free(out);
    
    Py_INCREF(Py_None);
    return Py_None;
@@ -1882,28 +1903,36 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
  // Call the multiplication method for each draw and let it do the work...
   int * temp1 = (int*)malloc(longest * sizeof(int));
   float * temp2 = (float*)malloc(longest * sizeof(float));
+  
+  float * out = (float*)malloc(dims * sizeof(float));
   char cd = PyArray_DESCR(output)->elsize!=4;
   
   for (i=0; i<PyArray_DIMS(output)[0]; i++)
   {
-   float * out = (float*)PyArray_GETPTR2(output, i, 0);
-   
    mult(self->kernel, self->config, terms, sl, out, &mc, temp1, temp2, self->quality, fake);
    
-   // This is nasty - we just wrote floats into an array of doubles - convert...
+   // Copy output to actual output array...
+    int j;
     if (cd)
     {
-     int j;
-     for (j=dims-1; j>=0; j--)
+     for (j=0; j<dims; j++)
      {
       *(double*)PyArray_GETPTR2(output, i, j) = out[j];
+     }
+    }
+    else
+    {
+     for (j=0; j<dims; j++)
+     {
+      *(float*)PyArray_GETPTR2(output, i, j) = out[j];
      }
     }
   }
  
  // Clean up the MultCache object and other stuff...
-  free(temp1);
+  free(out);
   free(temp2);
+  free(temp1);
   free(sl);
   MultCache_delete(&mc);
  

@@ -112,8 +112,17 @@ extern const Kernel Cauchy;
 // A kernel based on the von-Mises-Fisher distribution, for dealing with directional data. Requires all samples be on the unit circle. Uses the alpha parameter as the concentration of the kernel being used...
 extern const Kernel Fisher;
 
+// A Fisher wrapper - this is for when a direction vector and its negated direction vector are equivalent, i.e. when rotations of 180 degrees don't matter. Whilst traditionally this is the realm of the Bingham distribution this simply takes two Fisher distributions, one with the direction of the input, the other its negative, and sums them together with equal probability. In the 2D case this is equivalent to the Binham distribution anyway...
+extern const Kernel MirrorFisher;
+
 // A wrapper kernel for the Fisher distribution that allows you to work with angles represented at radians...
 extern const Kernel Angle;
+
+// Given its name I think it should be fairly obvious - the above two ideas combined basically...
+extern const Kernel MirrorAngle;
+
+// For handling angle-axis vectors - it converts them into Quaternions and then applies a 4D MirrorFisher kernel, which is the correct way to handle an orientation...
+extern const Kernel AngleAxis;
 
 // A kernel that allows you to combine kernels, so you can have different kernels on different features within a feature vector.
 extern const Kernel Composite;

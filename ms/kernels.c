@@ -724,6 +724,8 @@ struct FisherConfig
  
  int inv_culm_size; // Length of below.
  float * inv_culm; // Array containing the inverse culmative of the distribution over the dot product result.
+ 
+ int * order; // Array of length dims that contains the integers 0..dims-1; used when drawing.
 };
 
 
@@ -809,6 +811,13 @@ KernelConfig Fisher_config_new(int dims, const char * config)
   }
   ret->inv_culm[size-1] = 1.0;
   
+ // Create the order array, for use when drawing...
+  ret->order = (int*)malloc(dims*sizeof(int));
+  for (i=0; i<dims; i++)
+  {
+   ret->order[i] = i;
+  }
+  
  // Clean up and return...
   free(culm);
  
@@ -852,6 +861,7 @@ void Fisher_config_release(KernelConfig config)
  
  if (self->ref_count==0)
  {
+  free(self->order);
   free(self->inv_culm);
   free(self); 
  }
@@ -941,32 +951,59 @@ void Fisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * c
   radius = sqrt(1.0 - out[0]*out[0]) / sqrt(radius);
   for (i=1; i<dims; i++) out[i] *= radius;
   
+ // Find the order of the indices, in self->order, such that center goes from highest absolute value to lowest - needed for numerical stability in the next bit. Use insertion sort as they indices count is typically very low, making quick sort a bad choice (Note that we start from the previous order, as draw is often called repeatedly for the same centre value - fast escape)...
+  for (i=0;i<dims-1; i++)
+  {
+   float abs_val_i = fabs(center[self->order[i]]);
+   int j;
+   for (j=i+1; j<dims; j++)
+   {
+    float abs_val = fabs(center[self->order[j]]); 
+    if (abs_val>abs_val_i)
+    {
+     int temp = self->order[i];
+     self->order[i] = self->order[j];
+     self->order[j] = temp;
+     abs_val_i = abs_val; 
+    }
+   }
+  }
+  
  // Rotate to put the orthonormal basis in the correct position - apply 2x2 rotation matrices in sequence to rotate the (1, 0, 0, ...) vector to center...
   float tail = 1.0;
   for (i=0; i<dims-1; i++)
   {
+   // The positions we are working with - for numerical stability...
+   int pos = self->order[i];
+   int npos = self->order[i+1];
+   
    // Calculate the rotation matrix that leaves tail at the value in the center vector...
-    float cos_theta = center[i] / tail;
+    float cos_theta = center[pos] / tail;
     float sin_theta = sqrt(1.0  - cos_theta*cos_theta);
     if (sin_theta!=sin_theta) sin_theta = 0.0; // NaN safety
    
    // Apply the rotation matrix to the tail, but offset to the row below, ready for the next time around the loop...
     tail *= sin_theta;
-    if (tail<1e-6) tail = 1e-6; // Avoids divide by zeros.
+    //if (tail<1e-6) tail = 1e-6; // Avoids divide by zeros.
    
    // In the sqrt above we might want the negative answer - check and make the change if so...
-    if ((tail * center[i+1]) < 0.0)
+    if ((tail * center[npos]) < 0.0)
     {
      sin_theta *= -1.0;
      tail      *= -1.0;
     }
     
    // Apply the 2x2 rotation we have calculated...
-    float oi  = out[i];
-    float oi1 = out[i+1];
+    float oi  = out[pos];
+    float oi1 = out[npos];
     
-    out[i]   = cos_theta * oi - sin_theta * oi1;
-    out[i+1] = sin_theta * oi + cos_theta * oi1;
+    out[pos]  = cos_theta * oi - sin_theta * oi1;
+    out[npos] = sin_theta * oi + cos_theta * oi1;
+  }
+  
+  if (tail < 0.0)
+  {
+   out[self->order[dims-1]] *= -1.0;
   }
 }
 
@@ -1003,6 +1040,67 @@ const Kernel Fisher =
  Fisher_draw,
  Fisher_mult_mass,
  Fisher_mult_draw,
+};
+
+
+
+// The mirrored von-Mises Fisher kernel - reuse the data structure from the non-mirrored version...
+float MirrorFisher_weight(int dims, KernelConfig config, float * offset)
+{
+ FisherConfig * self = (FisherConfig*)config;
+ 
+ int i;
+ float d_sqr = 0.0;
+ for (i=0; i<dims; i++) d_sqr += offset[i] * offset[i];
+ 
+ float cos_ang = 1.0 - 0.5*d_sqr; // Uses the law of cosines - how to calculate the dot product of unit vectors given their difference.
+ 
+ return 0.5 * exp(self->alpha * cos_ang + self->log_norm) + 0.5 * exp(-self->alpha * cos_ang + self->log_norm);
+}
+
+float MirrorFisher_range(int dims, KernelConfig config, float quality)
+{
+ return 2.5; // Due to the nature of the distribution this optimisation is not possible - 2.5 effectivly switches it off.
+}
+
+void MirrorFisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
+{
+ Fisher_draw(dims, config, rng, center, out);
+ 
+ // 50% chance of negating the output...
+  if (PhiloxRNG_uniform(rng)<0.5)
+  {
+   int i;
+   for (i=0; i<dims; i++)
+   {
+    out[i] = -out[i]; 
+   }
+  }
+}
+
+void MirrorFisher_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ mult_draw_mh(&MirrorFisher, config, dims, terms, fv, scale, out, cache);
+}
+
+
+
+const Kernel MirrorFisher =
+{
+ "mirror_fisher",
+ "A kernel for dealing with directional data where a 180 degree rotation is meaningless; one specific use case is for rotations expressed with unit quaternions. It wraps the Fisher distribution such that it is an even mixture of two of them - one with the correct unit vector, one with its negation. All other behaviours and requirements are basically the same as a Fisher distribution however.",
+ "Specified as mirror_fisher(alpha), e.g. mirror_fisher(10), where alpha is the concentration parameter used for both of the von-Mises Fisher distributions.",
+ Fisher_config_new,
+ Fisher_config_verify,
+ Fisher_config_acquire,
+ Fisher_config_release,
+ MirrorFisher_weight,
+ Fisher_norm,
+ MirrorFisher_range,
+ Fisher_offset,
+ MirrorFisher_draw,
+ Fisher_mult_mass,
+ MirrorFisher_mult_draw,
 };
 
 
@@ -1363,7 +1461,10 @@ const Kernel * ListKernel[] =
  &Gaussian,
  &Cauchy,
  &Fisher,
+ &MirrorFisher,
  //&Angle,
+ //&MirrorAngle,
+ //&AngleAxis,
  &Composite,
  NULL
 };
