@@ -62,7 +62,7 @@ void MultCache_ensure(MultCache * self, int dims, int terms);
 
 
 // Uses monte carlo integration to approximate the area under the multiplication of several exemplars with associated kernel - effectivly the weight to use if you multiply these mixtures components together and put them into a mixture model with other ones...
-// Inputs are: kernel - the kernel applied to all feature vectors plus its configuration; dims - the number of dimensions; terms is the number of terms in the multiplication; fv is an array of length terms pointing to an array of length dims - they are the feature centers fot the kernel to multiply together; scale is the scale parameters associated with each fv, for if they do not match (It has been applied to those passed in - for conversion between spaces); finally the cache is an initialised MultCache.
+// Inputs are: kernel - the kernel applied to all feature vectors plus its configuration; dims - the number of dimensions; terms is the number of terms in the multiplication; fv is an array of length terms pointing to an array of length dims - they are the feature centers for the kernel to multiply together; scale is the scale parameters associated with each fv, for if they do not match (It has been applied to those passed in - for conversion between spaces); finally the cache is an initialised MultCache.
 // Return value is the area under the function created by multiplying the pdf's together.
 float mult_area_mci(const Kernel * kernel, KernelConfig config, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache);
 
@@ -75,6 +75,11 @@ float mult_area_gaussian(int dims, int terms, const float ** fv, const float ** 
 
 // As above, but for the Fisher distribution - can also be done analytically basically, but with extra nasty normalisation terms...
 float mult_area_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache);
+
+
+
+// Very much as above - this takes an array of angles, assumed independent, and converts each into a Fisher for the area calculation...
+float mult_area_angle(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache);
 
 
 

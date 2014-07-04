@@ -1013,8 +1013,6 @@ float Fisher_mult_mass(int dims, KernelConfig config, int terms, const float ** 
 {
  FisherConfig * self = (FisherConfig*)config;
  return mult_area_fisher(self->alpha, self->log_norm, dims, terms, fv, scale, cache);
-
- //return mult_area_mci(&Fisher, config, dims, terms, fv, scale, cache);
 }
 
 void Fisher_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
@@ -1099,8 +1097,92 @@ const Kernel MirrorFisher =
  MirrorFisher_range,
  Fisher_offset,
  MirrorFisher_draw,
- Fisher_mult_mass,
+ Fisher_mult_mass, // ************************ This is wrong!
  MirrorFisher_mult_draw,
+};
+
+
+
+// Angle kernel - just a wrapper around the Fihser kernel and uses the same internal structure...
+KernelConfig Angle_config_new(int dims, const char * config)
+{
+ return Fisher_config_new(2, config);
+}
+
+const char * Angle_config_verify(int dims, const char * config, int * length)
+{
+ return Angle_config_verify(2, config, length);
+}
+
+float Angle_weight(int dims, KernelConfig config, float * offset)
+{
+ int i;
+ float n[2];
+ float ret = 1.0;
+ 
+ for (i=0; i<dims; i++)
+ { 
+  n[0] = cos(offset[i]);
+  n[1] = sin(offset[i]);
+  
+  ret *= Fisher_weight(2, config, n);
+ }
+ 
+ return ret;
+}
+
+float Angle_range(int dims, KernelConfig config, float quality)
+{
+ // Can't do this optimisation:-(
+ return 1e32;
+}
+
+void Angle_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
+{
+ int i;
+ float n[2];
+ float o[2];
+ 
+ for (i=0; i<dims; i++)
+ {
+  n[0] = cos(center[i]);
+  n[1] = sin(center[i]);
+  
+  Fisher_draw(2, config, rng, n, o); 
+  
+  out[i] = atan2(o[1], o[0]);
+ }
+}
+
+float Angle_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ FisherConfig * self = (FisherConfig*)config;
+ return mult_area_angle(self->alpha, self->log_norm, dims, terms, fv, scale, cache);
+}
+
+void Angle_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ mult_draw_mh(&Angle, config, dims, terms, fv, scale, out, cache);
+}
+
+
+
+const Kernel Angle =
+{
+ "angle",
+ "Kernel for use on an angle represented in radians - its just a wrapper around a Fisher distribution that does the conversion as needed. For dimensions higher than 1 it treats it as a sequence of independent angles, each with its own Fisher distribution - this is not valid for Euler angles, which would requires another Kernel.",
+ "Specified as angle(alpha) where alpha is the concentration parameter - higher means tighter.",
+ Angle_config_new,
+ Angle_config_verify,
+ Fisher_config_acquire,
+ Fisher_config_release,
+ Angle_weight,
+ Fisher_norm,
+ Angle_range,
+ Kernel_offset,
+ Angle_draw,
+ Angle_mult_mass,
+ Angle_mult_draw,
 };
 
 
@@ -1462,7 +1544,7 @@ const Kernel * ListKernel[] =
  &Cauchy,
  &Fisher,
  &MirrorFisher,
- //&Angle,
+ &Angle,
  //&MirrorAngle,
  //&AngleAxis,
  &Composite,
