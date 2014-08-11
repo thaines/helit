@@ -78,6 +78,11 @@ float mult_area_fisher(float conc, float log_norm, int dims, int terms, const fl
 
 
 
+// As above, but for the mirrored Fisher distribution - kinda nasty as the amount of computation is exponential in the number of terms, but it remains analytic...
+float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache);
+
+
+
 // Very much as above - this takes an array of angles, assumed independent, and converts each into a Fisher for the area calculation...
 float mult_area_angle(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache);
 

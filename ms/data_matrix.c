@@ -386,26 +386,27 @@ int DataMatrix_draw(DataMatrix * dm, PhiloxRNG * rng)
     float pos = dm->weight_cum[dm->exemplars-1] * PhiloxRNG_uniform(rng);
     
    // Use a biased binary search (under the assumption that similar weights are more likelly) to find the index of the relevant item; return it...
+    if (pos<=dm->weight_cum[0]) return 0;
+    
     int low  = 0;
     int high = dm->exemplars-1;
     
-    while (low<high)
+    while (low+1<high)
     {
      // Select a split point...
       float wc_low = dm->weight_cum[low];
       float wc_high = dm->weight_cum[high];
-      if (wc_low>pos) break; // It must be the element at position low - shortcut! (of the kind where it all goes wrong if its not taken.)
       
       int split = (int)(low + (high - low)*((pos - wc_low) / (wc_high-wc_low)));
       
-      if (split>=high) --split;
-      if (split<=low)  ++split;
+      if (split>=high) split = high-1;
+      if (split<=low)  split = low+1;
       
      // Recurse to the relevant side...
       if (dm->weight_cum[split]>pos) high = split;
                                 else low  = split;
     }
     
-    return low;
+    return high;
   }
 }

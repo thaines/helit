@@ -50,10 +50,10 @@ for spatial in ms.MeanShift.spatials():
   
 print
 print 'Balls:'
-for balls in ms.MeanShift.balls():
-  print '  >%s' % balls
+for ball in ms.MeanShift.balls():
+  print '  >%s' % ball
   
-  d = ms.MeanShift.info(balls)
+  d = ms.MeanShift.info(ball)
   for i in xrange(0, len(d), 60):
     print '    %s' % d[i:i+60].strip()
   print

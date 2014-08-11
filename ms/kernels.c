@@ -1076,6 +1076,14 @@ void MirrorFisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const flo
   }
 }
 
+
+
+float MirrorFisher_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ FisherConfig * self = (FisherConfig*)config;
+ return mult_area_mirror_fisher(self->alpha, self->log_norm, dims, terms, fv, scale, cache);
+}
+
 void MirrorFisher_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
 {
  mult_draw_mh(&MirrorFisher, config, dims, terms, fv, scale, out, cache);
@@ -1097,13 +1105,13 @@ const Kernel MirrorFisher =
  MirrorFisher_range,
  Fisher_offset,
  MirrorFisher_draw,
- Fisher_mult_mass, // ************************ This is wrong!
+ MirrorFisher_mult_mass,
  MirrorFisher_mult_draw,
 };
 
 
 
-// Angle kernel - just a wrapper around the Fihser kernel and uses the same internal structure...
+// Angle kernel - just a wrapper around the Fisher kernel and uses the same internal structure...
 KernelConfig Angle_config_new(int dims, const char * config)
 {
  return Fisher_config_new(2, config);
@@ -1111,7 +1119,7 @@ KernelConfig Angle_config_new(int dims, const char * config)
 
 const char * Angle_config_verify(int dims, const char * config, int * length)
 {
- return Angle_config_verify(2, config, length);
+ return Fisher_config_verify(2, config, length);
 }
 
 float Angle_weight(int dims, KernelConfig config, float * offset)
@@ -1546,7 +1554,7 @@ const Kernel * ListKernel[] =
  &MirrorFisher,
  &Angle,
  //&MirrorAngle,
- //&AngleAxis,
+ //&AngleAxisFisher,
  &Composite,
  NULL
 };

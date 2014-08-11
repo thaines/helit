@@ -1190,7 +1190,7 @@ static PyObject * MeanShift_mode_py(MeanShift * self, PyObject * args)
    self->spatial = Spatial_new(self->spatial_type, &self->dm); 
   }
   
- // Run the agorithm; we need some temporary storage...
+ // Run the algorithm; we need some temporary storage...
   float * temp = (float*)malloc(feats * sizeof(float));
   mode(self->spatial, self->kernel, self->config, (float*)PyArray_DATA(ret), temp, self->quality, self->epsilon, self->iter_cap);
   free(temp);
@@ -2140,7 +2140,7 @@ static PyMethodDef ms_c_methods[] =
 
 PyMODINIT_FUNC initms_c(void)
 {
- PyObject * mod = Py_InitModule3("ms_c", ms_c_methods, "Primarily provides a mean shift implementation, but also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Includes multiple spatial indexing schemes and kernel types, including support for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario efficiently. Exemplars can also be weighted. Note that this module is not multithread safe - use multiprocessing instead.");
+ PyObject * mod = Py_InitModule3("ms_c", ms_c_methods, "Primarily provides a mean shift implementation, but also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Includes multiple spatial indexing schemes and kernel types, including support for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario efficiently. Exemplars can also be weighted. There is extensive support for particle filters as well, including multiplication of distributions for non-parametric belief propagation. Note that this module is not multithread safe - use multiprocessing instead.");
  
  import_array();
  

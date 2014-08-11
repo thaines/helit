@@ -13,7 +13,7 @@ Contains the following key files:
 
 ms.py - The file a user imports - provides a single class - MeanShift.
 
-info.py - File that iterates and prints out information on all the modular components of the system.
+info.py - File that iterates and prints out information on all the modular components of the system. The html generated docs include the same information, as make_doc includes the same code.
 
 test_*.py - Many test scripts.
 

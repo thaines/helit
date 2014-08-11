@@ -22,6 +22,8 @@ from ms import MeanShift
 # Test the mirrored version of the von_mises Fisher distribution, this time in 5D...
 
 # Create a dataset - just a bunch of points in one direction, so we can test the mirroring effect (Abuse MeanShift object to do this)...
+print 'Mirrored draws:'
+
 vec = numpy.array([1.0, 0.5, 0.0, -0.5, -1.0])
 vec /= numpy.sqrt(numpy.square(vec).sum())
 
@@ -45,6 +47,40 @@ mirror.set_kernel('mirror_fisher(64.0)')
 
 resample = mirror.draws(16)
 
-print 'Mirrored draws:'
 for row in resample:
   print '[%6.3f %6.3f %6.3f %6.3f %6.3f]' % tuple(row)
+print
+
+
+
+# Test probabilities by ploting them...
+print 'Probability single 2D mirror Fisher:'
+mirror = MeanShift()
+mirror.set_data(numpy.array([1.0, 0.0]), 'f')
+mirror.set_kernel('mirror_fisher(16.0)')
+
+angles = numpy.linspace(0.0, numpy.pi*2.0, num=70, endpoint=False)
+vecs = numpy.concatenate((numpy.cos(angles)[:,numpy.newaxis], numpy.sin(angles)[:,numpy.newaxis]),axis=1)
+probs = mirror.probs(vecs)
+probs /= probs.max()
+
+steps = 12
+for i in xrange(steps):
+  threshold = 1.0 - (i+1)/float(steps)
+  
+  print ''.join(map(lambda p: '#' if p>threshold else ' ', probs))
+print
+
+
+
+# Test that mean shift still works; also test loo bandwidth estimation...
+
+## Abuse the mean shift object to draw 8 uniform locations on a sphere...
+
+
+
+
+
+# Try out multiplication, and throughroughly verify it works; for more fun include weighting...
+
+

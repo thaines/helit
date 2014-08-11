@@ -228,6 +228,64 @@ float mult_area_fisher(float conc, float log_norm, int dims, int terms, const fl
 
 
 
+float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ MultCache_ensure(cache, dims, terms);
+
+ // Loop and calculate the ratio for each of the parts, where each part isa multiplication of different halves from each distrubution in the multiplicand - use the mirroring to halve the number, but this remains very brute force...
+  float ret = 0.0;
+  int parts = 1 << (terms-1);
+  float * dir = cache->temp_dims1;
+  
+  int i, j, p;
+  for (p=0; p<parts; p++)
+  {
+   // Calculate direction and concentration of this part - summation and normalisation...
+    for (i=0; i<dims; i++) dir[i] = 0.0;
+    
+    for (j=0; j<terms; j++)
+    {
+     float fact = conc;
+     if (((p<<1)>>j)&1) fact = -conc; // Swap sign if part requires it - using index as flags with first item fixed positive.
+     
+     for (i=0; i<dims; i++) dir[i] += fact * fv[j][i];
+    }
+    
+    float mult_conc = 0.0;
+    for (i=0; i<dims; i++) mult_conc += dir[i] * dir[i];
+    mult_conc = sqrt(mult_conc);
+  
+    for (i=0; i<dims; i++) dir[i] /= mult_conc;
+    
+   // Calculate the area under the multiplied distribution using the single point ratio trick, and sum it into the return value...
+    float exp_me = 0.0;
+  
+    // Value of the normalised distribution...
+     exp_me -= mult_conc;
+     exp_me -= (0.5 * dims - 1) * log(mult_conc);
+     exp_me += (0.5 * dims) * log(2 * M_PI);
+     exp_me += LogModBesselFirst(dims-2, mult_conc, 1e-6, 1024);
+   
+    // Divide by each Fisher in turn...
+     for (j=0; j<terms; j++)
+     {
+      int sign = 1;
+      if (((p<<1)>>j)&1) sign = -1;
+       
+      float dot = 0.0;
+      for (i=0; i<dims; i++) dot += sign * dir[i] * fv[j][i];
+      exp_me += conc * dot + log_norm;
+     }
+ 
+   ret += exp(exp_me);
+  }
+ 
+ // Return the sum of part volumes, divided through by the number of parts as they all have equal probability of being selected...
+  return ret / parts;
+}
+
+
+
 float mult_area_angle(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  MultCache_ensure(cache, dims*2, terms); // *2 for conversion into Fisher's.
