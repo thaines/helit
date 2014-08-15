@@ -14,6 +14,7 @@ import numpy.random
 
 import cv
 from utils.cvarray import *
+from utils.prog_bar import ProgBar
 
 from ms import MeanShift
 
@@ -74,13 +75,86 @@ print
 
 
 # Test that mean shift still works; also test loo bandwidth estimation...
-
 ## Abuse the mean shift object to draw 8 uniform locations on a sphere...
+usphere = MeanShift()
+usphere.set_data(numpy.array([1.0, 0.0, 0.0]), 'f')
+usphere.set_kernel('fisher(1e-6)') # Should be zero, but I don't support that.
 
+centers = usphere.draws(8)
+print('Distribution modes:')
+print(centers)
 
+## Use those modes to create a weighted mirror-fisher object, from which to draw lots of data...
+weights = map(lambda x: 2.0 / (2.0+x), xrange(centers.shape[0]))
+cext = numpy.concatenate((centers, numpy.array(weights)[:,numpy.newaxis]), axis=1)
+
+wmf = MeanShift()
+wmf.set_data(cext, 'df', 3)
+wmf.set_kernel('mirror_fisher(24.0)')
+
+## Create lots of data...
+data = wmf.draws(1024)
+
+swmf = MeanShift()
+swmf.set_data(data, 'df')
+swmf.set_kernel('mirror_fisher(128.0)')
+
+## Get the indices of pixels into directions for a Mercator projection...
+scale = 128
+height = scale * 2
+width = int(2.0 * numpy.pi * scale)
+
+x_to_nx = numpy.cos(numpy.linspace(0.0, 2.0 * numpy.pi, width, False))
+x_to_ny = numpy.sin(numpy.linspace(0.0, 2.0 * numpy.pi, width, False))
+y_to_nz = numpy.linspace(-0.99, 0.99, height)
+
+nx = x_to_nx.reshape((1,-1,1)).repeat(height, axis=0)
+ny = x_to_ny.reshape((1,-1,1)).repeat(height, axis=0)
+nz = y_to_nz.reshape((-1,1,1)).repeat(width, axis=1)
+
+block = numpy.concatenate((nx, ny, nz), axis=2)
+block[:,:,:2] *= numpy.sqrt(1.0 - numpy.square(y_to_nz)).reshape((-1,1,1))
+
+## Visualise the probability of the data...
+print 'Calculating Mercator probability:'
+p = ProgBar()
+locs = block.reshape((-1,3))
+prob = numpy.empty(locs.shape[0], dtype=numpy.float32)
+step = locs.shape[0] / scale
+
+for i in xrange(scale):
+  p.callback(i, scale)
+  prob[i*step:(i+1)*step] = swmf.probs(locs[i*step:(i+1)*step,:])
+del p
+
+prob = prob.reshape((height, width))
+image = array2cv(255.0 * prob / prob.max())
+cv.SaveImage('mirror_fisher_mercator_kde.png', image)
+
+## Apply mean shift and visualise the clustering...
+swmf.merge_range = 0.1
+modes, indices = swmf.cluster()
+
+print 'Meanshift clustering:'
+p = ProgBar()
+clusters = numpy.empty(locs.shape[0], dtype=numpy.int32)
+
+for i in xrange(scale):
+  p.callback(i, scale)
+  clusters[i*step:(i+1)*step] = swmf.assign_clusters(locs[i*step:(i+1)*step,:])
+del p
+
+clusters = clusters.reshape((height, width))
+image = numpy.zeros((height, width, 3), dtype=numpy.float32)
+
+for i in xrange(clusters.max()+1):
+  colour = numpy.random.random(3)
+  image[clusters==i,:] = colour.reshape((1,3))
+
+image = array2cv(255.0 * image)
+cv.SaveImage('mirror_fisher_mercator_ms.png', image)
 
 
 
 # Try out multiplication, and throughroughly verify it works; for more fun include weighting...
-
 

@@ -49,6 +49,9 @@ typedef float (*KernelNorm)(int dims, KernelConfig config);
 // Given the configuration and a quality parameter this returns a maximum offset range after which it can clip the samples and not factor them into the kernel. Quality goes from 0, for low quality, to 1, for high quality...
 typedef float (*KernelRange)(int dims, KernelConfig config, float quality);
 
+// Converts the given feature vector into an offset from the base feature vector, modifying it inplace - it is this converted offset that has the weight function applied and is then averaged to get the mean shift. For most kernels this is simply subtracting the base feature vector from the feature vectorn in place - exists to support really weird kernels...
+typedef void (*KernelToOffset)(int dims, KernelConfig config, float * fv, const float * base_fv);
+
 // Given the configuration plus a feature vector and an offset vector, this applies the offset, returning a delta measure of how much the feature vector has changed. The feature vector is updated inplace. For most kernels this is simple addition, plus a basic vector norm to measure the change...
 typedef float (*KernelOffset)(int dims, KernelConfig config, float * fv, const float * offset);
 
@@ -80,6 +83,7 @@ struct Kernel
  KernelWeight weight;
  KernelNorm   norm;
  KernelRange  range;
+ KernelToOffset to_offset;
  KernelOffset offset;
  KernelDraw   draw;
  

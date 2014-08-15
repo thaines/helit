@@ -181,7 +181,7 @@ void mode(Spatial spatial, const Kernel * kernel, KernelConfig config, float * f
      float w;
      float * loc = DataMatrix_fv(dm, targ, &w);
 
-     for (i=0; i<feats; i++) loc[i] -= fv[i];
+     kernel->to_offset(feats, config, loc, fv);
      w *= kernel->weight(feats, config, loc);
      
      if (w>1e-6)
@@ -297,8 +297,8 @@ void cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, Balls 
        if (targ<0) break;
        
        loc = DataMatrix_fv(dm, targ, &w);
-
-       for (i=0; i<feats; i++) loc[i] -= fv[i];
+       
+       kernel->to_offset(feats, config, loc, fv);
        w *= kernel->weight(feats, config, loc);
      
        if (w>1e-6)
@@ -379,7 +379,7 @@ int assign_cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, 
      float w;
      float * loc = DataMatrix_fv(dm, targ, &w);
 
-     for (i=0; i<feats; i++) loc[i] -= fv[i];
+     kernel->to_offset(feats, config, loc, fv);
      w *= kernel->weight(feats, config, loc);
      
      if (w>1e-6)

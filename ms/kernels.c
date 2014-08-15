@@ -43,6 +43,13 @@ void Kernel_config_release(KernelConfig config)
 
 
 
+// Most kernels have the same to offset method, as provided by this implimentation...
+void Kernel_to_offset(int dims, KernelConfig config, float * fv, const float * base_fv)
+{
+ int i;
+ for (i=0; i<dims; i++) fv[i] -= base_fv[i];
+}
+
 // Most kernels use the same offset method, as provided by this implimentaiton...
 float Kernel_offset(int dims, KernelConfig config, float * fv, const float * offset)
 {
@@ -184,6 +191,7 @@ const Kernel Uniform =
  Uniform_weight,
  Uniform_norm,
  Uniform_range,
+ Kernel_to_offset,
  Kernel_offset,
  Uniform_draw,
  Uniform_mult_mass,
@@ -289,6 +297,7 @@ const Kernel Triangular =
  Triangular_weight,
  Triangular_norm,
  Triangular_range,
+ Kernel_to_offset,
  Kernel_offset,
  Triangular_draw,
  Triangular_mult_mass,
@@ -395,6 +404,7 @@ const Kernel Epanechnikov =
  Epanechnikov_weight,
  Epanechnikov_norm,
  Epanechnikov_range,
+ Kernel_to_offset,
  Kernel_offset,
  Epanechnikov_draw,
  Epanechnikov_mult_mass,
@@ -518,6 +528,7 @@ const Kernel Cosine =
  Cosine_weight,
  Cosine_norm,
  Cosine_range,
+ Kernel_to_offset,
  Kernel_offset,
  Cosine_draw,
  Cosine_mult_mass,
@@ -590,6 +601,7 @@ const Kernel Gaussian =
  Gaussian_weight,
  Gaussian_norm,
  Gaussian_range,
+ Kernel_to_offset,
  Kernel_offset,
  Gaussian_draw,
  Gaussian_mult_mass,
@@ -705,6 +717,7 @@ const Kernel Cauchy =
  Cauchy_weight,
  Cauchy_norm,
  Cauchy_range,
+ Kernel_to_offset,
  Kernel_offset,
  Cauchy_draw,
  Cauchy_mult_mass,
@@ -951,7 +964,7 @@ void Fisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * c
   radius = sqrt(1.0 - out[0]*out[0]) / sqrt(radius);
   for (i=1; i<dims; i++) out[i] *= radius;
   
- // Find the order of the indices, in self->order, such that center goes from highest absolute value to lowest - needed for numerical stability in the next bit. Use insertion sort as they indices count is typically very low, making quick sort a bad choice (Note that we start from the previous order, as draw is often called repeatedly for the same centre value - fast escape)...
+ // Find the order of the indices, in self->order, such that center goes from highest absolute value to lowest - needed for numerical stability in the next bit. Use insertion sort as the indices count is typically very low, making quick sort a bad choice (Note that we start from the previous order, as draw is often called repeatedly for the same centre value - fast escape)...
   for (i=0;i<dims-1; i++)
   {
    float abs_val_i = fabs(center[self->order[i]]);
@@ -969,6 +982,14 @@ void Fisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * c
    }
   }
   
+ // Might need to swap the value of the first one...
+  if (self->order[0]!=0)
+  {
+   float temp = out[self->order[0]];
+   out[self->order[0]] = out[0];
+   out[0] = temp;
+  }
+  
  // Rotate to put the orthonormal basis in the correct position - apply 2x2 rotation matrices in sequence to rotate the (1, 0, 0, ...) vector to center...
   float tail = 1.0;
   for (i=0; i<dims-1; i++)
@@ -984,7 +1005,6 @@ void Fisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * c
    
    // Apply the rotation matrix to the tail, but offset to the row below, ready for the next time around the loop...
     tail *= sin_theta;
-    //if (tail<1e-6) tail = 1e-6; // Avoids divide by zeros.
    
    // In the sqrt above we might want the negative answer - check and make the change if so...
     if ((tail * center[npos]) < 0.0)
@@ -992,6 +1012,8 @@ void Fisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * c
      sin_theta *= -1.0;
      tail      *= -1.0;
     }
+    
+    if (fabs(tail)<1e-6) tail = copysignf(1e-6, tail); // Avoids divide by zeros.
     
    // Apply the 2x2 rotation we have calculated...
     float oi  = out[pos];
@@ -1001,7 +1023,7 @@ void Fisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * c
     out[npos] = sin_theta * oi + cos_theta * oi1;
   }
   
-  if (tail < 0.0)
+  if ((tail * center[self->order[dims-1]]) < 0.0)
   {
    out[self->order[dims-1]] *= -1.0;
   }
@@ -1034,6 +1056,7 @@ const Kernel Fisher =
  Fisher_weight,
  Fisher_norm,
  Fisher_range,
+ Kernel_to_offset,
  Fisher_offset,
  Fisher_draw,
  Fisher_mult_mass,
@@ -1059,6 +1082,23 @@ float MirrorFisher_weight(int dims, KernelConfig config, float * offset)
 float MirrorFisher_range(int dims, KernelConfig config, float quality)
 {
  return 2.5; // Due to the nature of the distribution this optimisation is not possible - 2.5 effectivly switches it off.
+}
+
+void MirrorFisher_to_offset(int dims, KernelConfig config, float * fv, const float * base_fv)
+{
+ // We have a mixture of two Fisher distributions - makes sense to choose the reflection closest to the base_fv - check the dot product and act on its sign...
+  int i;
+  float dot = 0.0;
+  for (i=0; i<dims; i++) dot += fv[i] * base_fv[i];
+  
+  if (dot>0.0)
+  {
+   for (i=0; i<dims; i++) fv[i] -= base_fv[i];   
+  }
+  else
+  {
+   for (i=0; i<dims; i++) fv[i] = -fv[i] - base_fv[i];
+  }
 }
 
 void MirrorFisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
@@ -1103,6 +1143,7 @@ const Kernel MirrorFisher =
  MirrorFisher_weight,
  Fisher_norm,
  MirrorFisher_range,
+ MirrorFisher_to_offset,
  Fisher_offset,
  MirrorFisher_draw,
  MirrorFisher_mult_mass,
@@ -1187,6 +1228,7 @@ const Kernel Angle =
  Angle_weight,
  Fisher_norm,
  Angle_range,
+ Kernel_to_offset,
  Kernel_offset,
  Angle_draw,
  Angle_mult_mass,
@@ -1419,6 +1461,20 @@ float Composite_range(int dims, KernelConfig config, float quality)
  return ret;
 }
 
+void Composite_to_offset(int dims, KernelConfig config, float * fv, const float * base_fv)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+
+ int child;
+ for (child=0; child<self->children; child++)
+ {
+  self->child[child].kernel->to_offset(self->child[child].dims, self->child[child].config, fv, base_fv);
+   
+  fv += self->child[child].dims;
+  base_fv += self->child[child].dims;
+ }
+}
+
 float Composite_offset(int dims, KernelConfig config, float * fv, const float * offset)
 {
  CompositeConfig * self = (CompositeConfig*)config;
@@ -1533,6 +1589,7 @@ const Kernel Composite =
  Composite_weight,
  Composite_norm,
  Composite_range,
+ Composite_to_offset,
  Composite_offset,
  Composite_draw,
  Composite_mult_mass,
