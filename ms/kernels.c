@@ -65,6 +65,17 @@ float Kernel_offset(int dims, KernelConfig config, float * fv, const float * off
  return delta;
 }
 
+// Most kernels have no states, hence the following two methods...
+int Kernel_states(int dims, KernelConfig config)
+{
+ return 1; 
+}
+
+void Kernel_next(int dims, KernelConfig config, int state, float * fv)
+{
+ // No-op. 
+}
+
 
 
 // The uniform kernel type...
@@ -196,6 +207,8 @@ const Kernel Uniform =
  Uniform_draw,
  Uniform_mult_mass,
  Uniform_mult_draw,
+ Kernel_states,
+ Kernel_next,
 };
 
 
@@ -302,6 +315,8 @@ const Kernel Triangular =
  Triangular_draw,
  Triangular_mult_mass,
  Triangular_mult_draw,
+ Kernel_states,
+ Kernel_next,
 };
 
 
@@ -409,6 +424,8 @@ const Kernel Epanechnikov =
  Epanechnikov_draw,
  Epanechnikov_mult_mass,
  Epanechnikov_mult_draw,
+ Kernel_states,
+ Kernel_next,
 };
 
 
@@ -533,6 +550,8 @@ const Kernel Cosine =
  Cosine_draw,
  Cosine_mult_mass,
  Cosine_mult_draw,
+ Kernel_states,
+ Kernel_next,
 };
 
 
@@ -606,6 +625,8 @@ const Kernel Gaussian =
  Gaussian_draw,
  Gaussian_mult_mass,
  Gaussian_mult_draw,
+ Kernel_states,
+ Kernel_next,
 };
 
 
@@ -722,6 +743,8 @@ const Kernel Cauchy =
  Cauchy_draw,
  Cauchy_mult_mass,
  Cauchy_mult_draw,
+ Kernel_states,
+ Kernel_next,
 };
 
 
@@ -1061,6 +1084,8 @@ const Kernel Fisher =
  Fisher_draw,
  Fisher_mult_mass,
  Fisher_mult_draw,
+ Kernel_states,
+ Kernel_next,
 };
 
 
@@ -1131,6 +1156,22 @@ void MirrorFisher_mult_draw(int dims, KernelConfig config, int terms, const floa
 
 
 
+int MirrorFisher_states(int dims, KernelConfig config)
+{
+ return 2;  
+}
+
+void MirrorFisher_next(int dims, KernelConfig config, int state, float * fv)
+{
+ int i;
+ for (i=0; i<dims; i++)
+ {
+  fv[i] *= -1; 
+ }
+}
+
+
+
 const Kernel MirrorFisher =
 {
  "mirror_fisher",
@@ -1148,6 +1189,8 @@ const Kernel MirrorFisher =
  MirrorFisher_draw,
  MirrorFisher_mult_mass,
  MirrorFisher_mult_draw,
+ MirrorFisher_states,
+ MirrorFisher_next,
 };
 
 
@@ -1233,6 +1276,8 @@ const Kernel Angle =
  Angle_draw,
  Angle_mult_mass,
  Angle_mult_draw,
+ Kernel_states,
+ Kernel_next,
 };
 
 
@@ -1577,6 +1622,52 @@ void Composite_mult_draw(int dims, KernelConfig config, int terms, const float *
 
 
 
+int Composite_states(int dims, KernelConfig config)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+ 
+ int child;
+ int ret = 1;
+ 
+ for (child=0; child<self->children; child++)
+ {
+  int c_dims = self->child[child].dims;
+  ret *= self->child[child].kernel->states(c_dims, self->child[child].config);
+ }
+ 
+ return ret;
+}
+
+void Composite_next(int dims, KernelConfig config, int state, float * fv)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+ 
+ int child;
+ int step_size = 1;
+ 
+ for (child=0; child<self->children; child++)
+ {
+  int c_dims = self->child[child].dims;
+  KernelConfig c_config = self->child[child].config;
+  
+  int steps = self->child[child].kernel->states(c_dims, c_config);
+  
+  if (steps>1)
+  {
+   if ((state%step_size)==0)
+   {
+    self->child[child].kernel->next(c_dims, c_config, state / step_size, fv);
+   }
+    
+   step_size *= steps;
+  }
+  
+  fv += c_dims;
+ }
+}
+
+
+
 const Kernel Composite =
 {
  "composite",
@@ -1594,6 +1685,8 @@ const Kernel Composite =
  Composite_draw,
  Composite_mult_mass,
  Composite_mult_draw,
+ Composite_states,
+ Composite_next,
 };
 
 

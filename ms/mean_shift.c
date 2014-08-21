@@ -209,6 +209,7 @@ void cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, Balls 
   int exemplars = DataMatrix_exemplars(dm);
   int feats = DataMatrix_features(dm);
   float range = kernel->range(feats, config, quality);
+  int states = kernel->states(feats, config);
  
  // Create some temporary storage...
   float * fv   = (float*)malloc(feats * sizeof(float));
@@ -281,7 +282,21 @@ void cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, Balls 
      // Check if we collided with a mode that already exists...
       if ((iters%check_step)==0)
       {
-       out[ei] = Balls_within(balls, fv);
+       if (states>1)
+       {
+        int s;
+        for (s=0; s<states; s++)
+        {
+         out[ei] = Balls_within(balls, fv);
+         if (out[ei]>=0) break;
+         kernel->next(feats, config, s, fv);
+        }
+       }
+       else
+       {
+        out[ei] = Balls_within(balls, fv);
+       }
+       
        if (out[ei]>=0) break;
       }
      
@@ -319,7 +334,20 @@ void cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, Balls 
     if (out[ei]<0)
     {
      // Check if it got to the point it should merge in the last few iterations...
-      out[ei] = Balls_within(balls, fv);
+      if (states>1)
+      {
+       int s;
+       for (s=0; s<states; s++)
+       {
+        out[ei] = Balls_within(balls, fv);
+        if (out[ei]>=0) break;
+        kernel->next(feats, config, s, fv);
+       }
+      }
+      else
+      {
+       out[ei] = Balls_within(balls, fv);
+      }
       
      // If not we have no choice but to create a mode...
       if (out[ei]<0)
@@ -350,6 +378,7 @@ int assign_cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, 
   
   int feats = DataMatrix_features(dm);
   float range = kernel->range(feats, config, quality);
+  int states = kernel->states(feats, config);
 
  // Converge the feature vector, regularly checking if its bumped into a ball...
   float delta = 2.0 * epsilon;
@@ -360,8 +389,21 @@ int assign_cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, 
    // Check if we collided with a mode that already exists...
     if ((iters%check_step)==0)
     {
-     int ret = Balls_within(balls, fv);
-     if (ret>=0) return ret;
+     if (states>1)
+     {
+      int s;
+      for (s=0; s<states; s++)
+      {
+       int ret = Balls_within(balls, fv);
+       if (ret>=0) return ret;
+       kernel->next(feats, config, s, fv);
+      }
+     }
+     else
+     {
+      int ret = Balls_within(balls, fv);
+      if (ret>=0) return ret;
+     }
     }
      
    // Prepare the temporary for incrimental mean calculation...
@@ -396,7 +438,21 @@ int assign_cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, 
     iters += 1; 
   }
   
- return Balls_within(balls, fv);
+ if (states>1)
+ {
+  int s;
+  for (s=0; s<states; s++)
+  {
+   int ret = Balls_within(balls, fv);
+   if (ret>=0) return ret;
+   kernel->next(feats, config, s, fv);
+  }
+  return -1;
+ }
+ else
+ {
+  return Balls_within(balls, fv);
+ }
 }
 
 

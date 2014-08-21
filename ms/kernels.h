@@ -49,7 +49,7 @@ typedef float (*KernelNorm)(int dims, KernelConfig config);
 // Given the configuration and a quality parameter this returns a maximum offset range after which it can clip the samples and not factor them into the kernel. Quality goes from 0, for low quality, to 1, for high quality...
 typedef float (*KernelRange)(int dims, KernelConfig config, float quality);
 
-// Converts the given feature vector into an offset from the base feature vector, modifying it inplace - it is this converted offset that has the weight function applied and is then averaged to get the mean shift. For most kernels this is simply subtracting the base feature vector from the feature vectorn in place - exists to support really weird kernels...
+// Converts the given feature vector into an offset from the base feature vector, modifying it inplace - it is this converted offset that has the weight function applied and is then averaged to get the mean shift. For most kernels this is simply subtracting the base feature vector from the feature vector in place - exists to support really weird kernels...
 typedef void (*KernelToOffset)(int dims, KernelConfig config, float * fv, const float * base_fv);
 
 // Given the configuration plus a feature vector and an offset vector, this applies the offset, returning a delta measure of how much the feature vector has changed. The feature vector is updated inplace. For most kernels this is simple addition, plus a basic vector norm to measure the change...
@@ -64,6 +64,12 @@ typedef float (*KernelMultMass)(int dims, KernelConfig config, int terms, const 
 // Given a set of features vectors, each the centre of an instance of this kernel type, with different scales, this outputs a draw from the distribution created by multiplying them together. The parameter fake indicates how fake it can be - 0 means it must be a proper draw, 1 means a mode of the resulting distribution is an acceptable alternative, 2 means the 'average' of the locations is allowed (If the distribution is not on Euclidean space this may still be complex.). Only mode 0 has to be truly supported - the others are optional optimisations. Rest of the parameters are identical to KernelMultMass, except for the new 'out' parameter - this must be of length dims so the draw can be dumped into it; note that the draw is output in unscaled space...
 typedef void (*KernelMultDraw)(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake);
 
+// Returns the number of states a feature vector using this kernel can be in - this is used for convergance detection when sending vectors to the balls system for mean shift, with all states being tried...
+typedef int (*KernelStates)(int dims, KernelConfig config);
+
+// Transitions the given feature vector from the current state to the next one - note that this must be cyclic, such that if called KernelStates times you end up back where you started. State is how many times this method has been called on the given feature vector - it could loop many times!..
+typedef void (*KernelNext)(int dims, KernelConfig config, int state, float * fv);
+
 
 
 // Define the struct that defines a kernel type...
@@ -73,22 +79,25 @@ struct Kernel
 {
  const char * name;
  const char * description;
- const char * configuration; // NULL if it requires no configuration, otherwise a human readable string describing what is required. If NULL the kernel is assumed to be initialised with its name alone.
+ const char * configuration; // NULL if it requires no configuration, otherwise a human readable string describing what is required. If NULL the kernel is assumed to be initialised with its name alone - this fact can be used by code.
  
  KernelConfigNew     config_new;
  KernelConfigVerify  config_verify;
  KernelConfigAcquire config_acquire;
  KernelConfigRelease config_release;
  
- KernelWeight weight;
- KernelNorm   norm;
- KernelRange  range;
+ KernelWeight   weight;
+ KernelNorm     norm;
+ KernelRange    range;
  KernelToOffset to_offset;
- KernelOffset offset;
- KernelDraw   draw;
+ KernelOffset   offset;
+ KernelDraw     draw;
  
  KernelMultMass mult_mass;
  KernelMultDraw mult_draw;
+ 
+ KernelStates states;
+ KernelNext next;
 };
 
 
