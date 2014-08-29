@@ -286,70 +286,6 @@ float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, c
 
 
 
-float mult_area_angle(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache)
-{
- MultCache_ensure(cache, dims*2, terms); // *2 for conversion into Fisher's.
- 
- // Calculate the direction and concentration of the multiplication of the terms - convert angles into vectors, followed by vector addition followed by normalisation at the end basically...
-  float * dir = cache->temp_dims1;
-  
-  int i;
-  for (i=0; i<dims*2; i++) dir[i] = 0.0;
-
-  int j;
-  for (j=0; j<terms; j++)
-  {
-   for (i=0; i<dims; i++)
-   {
-    dir[i*2+0] += conc * cos(fv[j][i]);
-    dir[i*2+1] += conc * sin(fv[j][i]);
-   }
-  }
-  
-  float * mult_conc = cache->temp_dims2;
-  for (i=0; i<dims; i++)
-  {
-   float mc  = dir[2*i+0] * dir[2*i+0];
-         mc += dir[2*i+1] * dir[2*i+1];
-         
-   mult_conc[i] = sqrt(mc);
-   
-   dir[2*i+0] /= mult_conc[i];
-   dir[2*i+1] /= mult_conc[i];
-  }
-
- // For each angle choose a point - the mode of the multiplied distributions (dir) is safe - and work out the ratio between the area one value and multiplication value, as this gives us the area under the multiplication of the distributions - these all need to be multiplied together...
-  float exp_me = 0.0;
-  
-  // Put in the value of the normalised distributions, multiplied...
-   for (i=0; i<dims; i++)
-   {
-    exp_me -= mult_conc[i];
-    exp_me -= 0.5 * log(mult_conc[i]);
-    exp_me += log(2 * M_PI);
-    exp_me += LogModBesselFirst(0, mult_conc[i], 1e-6, 1024);
-   }
-
-  // Loop through and divide by each implied Fisher in turn...
-   for (j=0; j<terms; j++)
-   {
-    for (i=0; i<dims; i++)
-    {
-     float n[2]; 
-     n[0] = cos(fv[j][i]);
-     n[1] = sin(fv[j][i]);
-     
-     float dot = n[0] * dir[i*2+0] + n[1] * dir[i*2+1];
-     
-     exp_me += conc * dot + log_norm;
-    }
-   }
- 
- return exp(exp_me);
-}
-
-
-
 int mult_draw_mh(const Kernel * kernel, KernelConfig config, int dims, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache)
 {
  MultCache_ensure(cache, dims, terms);
@@ -531,6 +467,7 @@ void mult(const Kernel * kernel, KernelConfig config, int terms, Spatial * spati
       float weight;
       cache->fv[t] = DataMatrix_fv(Spatial_dm(spatials[t]), index[pos], &weight);
       prob[pos] = weight * kernel->mult_mass(dims, config, (s==0)?(t+1):terms, cache->fv, cache->scale, cache);
+
       if (pos!=0) prob[pos] += prob[pos-1];
       pos += 1;
      }

@@ -1736,23 +1736,29 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   int fake = 0;
   
   static char * kw_list[] = {"multiplicands", "output", "gibbs", "mci", "mh", "fake", NULL};
-  if (!PyArg_ParseTupleAndKeywords(args, kw, "O!O!|iiii", kw_list, &PyList_Type, &multiplicands, &PyArray_Type, &output, &gibbs, &mci, &mh, &fake)) return NULL;
+  if (!PyArg_ParseTupleAndKeywords(args, kw, "OO!|iiii", kw_list, &multiplicands, &PyArray_Type, &output, &gibbs, &mci, &mh, &fake)) return NULL;
   
  // Verify the parameters are all good...
-  int terms = PyList_Size(multiplicands);
+  if (PySequence_Check(multiplicands)==0)
+  {
+   PyErr_SetString(PyExc_RuntimeError, "First argument does not impliment the sequence protocol, e.g. its not a list, tuple, or equivalent.");
+   return NULL; 
+  }
+  
+  int terms = PySequence_Size(multiplicands);
   if (terms<1)
   {
    PyErr_SetString(PyExc_RuntimeError, "Need some MeanShift objects to multiply");
    return NULL;
   }
   
-  if (PyObject_IsInstance(PyList_GetItem(multiplicands, 0), (PyObject*)&MeanShiftType)!=1)
+  if (PyObject_IsInstance(PySequence_GetItem(multiplicands, 0), (PyObject*)&MeanShiftType)!=1)
   {
    PyErr_SetString(PyExc_RuntimeError, "First item in multiplicand list is not a MeanShift object");
    return NULL; 
   }
   
-  self = (MeanShift*)PyList_GetItem(multiplicands, 0); // Bit weird, but why not? - self is avaliable and free to dance!
+  self = (MeanShift*)PySequence_GetItem(multiplicands, 0); // Bit weird, but why not? - self is avaliable and free to dance!
   int dims = DataMatrix_features(&self->dm);
   
   int longest = DataMatrix_exemplars(&self->dm);
@@ -1765,7 +1771,7 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   int i;
   for (i=1; i<terms; i++)
   {
-   PyObject * temp = PyList_GetItem(multiplicands, i);
+   PyObject * temp = PySequence_GetItem(multiplicands, i);
    if (PyObject_IsInstance(temp, (PyObject*)&MeanShiftType)!=1)
    {
     PyErr_SetString(PyExc_RuntimeError, "Multiplicand list contains an entity that is not a MeanShift object");
@@ -1890,7 +1896,7 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   
   for (i=0; i<terms; i++)
   {
-   MeanShift * targ = (MeanShift*)PyList_GetItem(multiplicands, i);
+   MeanShift * targ = (MeanShift*)PySequence_GetItem(multiplicands, i);
    
    if (targ->spatial==NULL)
    {
