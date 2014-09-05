@@ -49,8 +49,10 @@ float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float
 void mode(Spatial spatial, const Kernel * kernel, KernelConfig config, float * fv, float * temp, float quality, float epsilon, int iter_cap);
 
 
+// Like mode, except its trying to find the relevant cluster in a provided Balls object to merge with, noting that if it doesn't do so it will create a new ball. Returns the index of the ball it reaches. Parameters match up with those for mode and cluster - this really is a half-way house between them (though no path shortening), for when you want to cluster data using a different set of exemplars to define the desnity estimate...
+int mode_merge(Spatial spatial, const Kernel * kernel, KernelConfig config, Balls balls, float * fv, float * temp, float quality, float epsilon, int iter_cap, float merge_range, int check_step);
 
-// Given a Spatial, a Kernel (with its alpha parameter) and an (empty) Balls this assigns modes to every single point in the data matrix contained within the Spatial - after running the Balls object contains the modes, and the output array, aligned with the exemplar index of the data matrix, contains the indices of the modes for each data point (check_step is how many iterations to do between checking if its intersected a hyper-sphere that indicates convergance - exists because that check is much slower than doing a bunch of iterations.) Note that if spatial has an ingored vector then the same vector must be ignored by balls...
+// Given a Spatial, a Kernel (with its alpha parameter) and an (empty) Balls this assigns modes to every single point in the data matrix contained within the Spatial - after running the Balls object contains the modes, and the output array, aligned with the exemplar index of the data matrix, contains the indices of the modes for each data point (check_step is how many iterations to do between checking if its intersected a hyper-sphere that indicates convergance - exists because that check is much slower than doing a bunch of iterations.) Note that if spatial has an ignored vector then the same vector must be ignored by balls...
 void cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, Balls balls, int * out, float quality, float epsilon, int iter_cap, float ident_dist, float merge_range, int check_step);
 
 

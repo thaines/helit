@@ -201,6 +201,107 @@ void mode(Spatial spatial, const Kernel * kernel, KernelConfig config, float * f
 
 
 
+int mode_merge(Spatial spatial, const Kernel * kernel, KernelConfig config, Balls balls, float * fv, float * temp, float quality, float epsilon, int iter_cap, float merge_range, int check_step)
+{
+ // Extract some things that we need... 
+  DataMatrix * dm = Spatial_dm(spatial);
+  int feats = DataMatrix_features(dm);
+  float range = kernel->range(feats, config, quality);
+  int states = kernel->states(feats, config);
+  
+ // Converge the provided feature vector, with breaks every check_step-s to find out if its hit a mode or not...
+  float delta = 2.0 * epsilon;
+  int iters = 0;
+  
+  int out = -1; // Output
+    
+  while ((delta>epsilon)&&(iters<iter_cap))
+  {
+   // Check if we collided with a mode that already exists...
+    if ((iters%check_step)==0)
+    {
+     if (states>1)
+     {
+      int s;
+      for (s=0; s<states; s++)
+      {
+       out = Balls_within(balls, fv);
+       if (out>=0) break;
+       kernel->next(feats, config, s, fv);
+      }
+     }
+     else
+     {
+      out = Balls_within(balls, fv);
+     }
+       
+     if (out>=0) break;
+    }
+    
+   // Prepare the temporary for incrimental mean calculation...
+    float weight = 0.0;
+    int i;
+    for (i=0; i<feats; i++) temp[i] = 0.0;
+   
+   // Iterate all relevant samples, to calculate the mean...
+    Spatial_start(spatial, fv, range);
+    while (1)
+    {
+     int targ = Spatial_next(spatial);
+     if (targ<0) break;
+     
+     float w;
+     float * loc = DataMatrix_fv(dm, targ, &w);
+       
+     kernel->to_offset(feats, config, loc, fv);
+     w *= kernel->weight(feats, config, loc);
+     
+     if (w>1e-6)
+     {
+      weight += w;
+      for (i=0; i<feats; i++) temp[i] += w * (loc[i] - temp[i]) / weight;
+     }
+    }
+   
+   // Copy into the fv, calculating delta as well...
+    delta = kernel->offset(feats, config, fv, temp);
+      
+   // We just iterated...
+    iters += 1; 
+  }
+  
+ // If it has not merged with an existing mode create a new one to assign it to...
+  if (out<0)
+  {
+   // Check if it got to the point it should merge in the last few iterations...
+    if (states>1)
+    {
+     int s;
+     for (s=0; s<states; s++)
+     {
+      out = Balls_within(balls, fv);
+      if (out>=0) break;
+      kernel->next(feats, config, s, fv);
+     }
+    }
+    else
+    {
+     out = Balls_within(balls, fv);
+    }
+      
+   // If not we have no choice but to create a mode...
+    if (out<0)
+    {
+     out = Balls_create(balls, fv, merge_range);
+    }
+  }
+  
+ // Return the assigned cluster...  
+  return out; 
+}
+
+
+
 void cluster(Spatial spatial, const Kernel * kernel, KernelConfig config, Balls balls, int * out, float quality, float epsilon, int iter_cap, float ident_dist, float merge_range, int check_step)
 {
  // Extract some things that we need... 

@@ -639,6 +639,65 @@ static PyObject * MeanShift_get_weight_dim_py(MeanShift * self, PyObject * args)
 
 
 
+static PyObject * MeanShift_fetch_dm_py(MeanShift * self, PyObject * args)
+{
+ // Handle there being no data by returning None...
+  if (self->dm.array==NULL)
+  {
+   Py_INCREF(Py_None);
+   return Py_None;
+  }
+ 
+ // Calculate the dimensions and create the matrix to return...
+  npy_intp dim[2];
+  dim[0] = DataMatrix_exemplars(&self->dm);
+  dim[1] = DataMatrix_features(&self->dm);
+   
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, dim, NPY_FLOAT32);
+  
+ // Loop and fill in the feature vectors...
+  int i;
+  for (i=0; i<dim[0]; i++)
+  {
+   float * fv = DataMatrix_fv(&self->dm, i, NULL); 
+   
+   int j;
+   for (j=0; j<dim[1]; j++)
+   {
+    *(float*)PyArray_GETPTR2(ret, i, j) = fv[j];
+   }
+  }
+  
+ // Return the new data matrix...
+  return (PyObject*)ret;
+}
+
+
+static PyObject * MeanShift_fetch_weight_py(MeanShift * self, PyObject * args)
+{
+ if (self->dm.array==NULL)
+ {
+  Py_INCREF(Py_None);
+  return Py_None;
+ }
+ 
+ // Create the matrix to return...
+  npy_intp exemplars = DataMatrix_exemplars(&self->dm);
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &exemplars, NPY_FLOAT32);
+ 
+// Loop and fill in the weights...
+  int i;
+  for (i=0; i<exemplars; i++)
+  {
+   DataMatrix_fv(&self->dm, i, (float*)PyArray_GETPTR1(ret, i)); 
+  }
+ 
+ // Return the new weight matrix...
+  return (PyObject*)ret; 
+}
+
+
+
 static PyObject * MeanShift_set_scale_py(MeanShift * self, PyObject * args)
 {
  // Extract the parameters...
@@ -1505,6 +1564,80 @@ static PyObject * MeanShift_assign_clusters_py(MeanShift * self, PyObject * args
 }
 
 
+static PyObject * MeanShift_cluster_on_py(MeanShift * self, PyObject * args)
+{
+ // Get the argument - a data matrix... 
+  PyArrayObject * dm;
+  if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &dm)) return NULL;
+
+ // Check the input is acceptable...
+  int feats = DataMatrix_features(&self->dm);
+  if ((PyArray_NDIM(dm)!=2)||(PyArray_DIMS(dm)[1]!=feats))
+  {
+   PyErr_SetString(PyExc_RuntimeError, "input matrix must be 2D with the same length as the number of features in the second dimension");
+   return NULL;
+  }
+  ToFloat atof = KindToFunc(PyArray_DESCR(dm));
+  
+ // If spatial is null create it...
+  if (self->spatial==NULL)
+  {
+   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+  }
+  
+ // We need a balls object to detect clustering...
+  Balls balls = Balls_new(self->balls_type, self->dm.feats, self->merge_range);
+  
+ // Create the output matrix of cluster indices...
+  npy_intp exemplars = PyArray_DIMS(dm)[0];
+  PyArrayObject * index = (PyArrayObject*)PyArray_SimpleNew(1, &exemplars, NPY_INT32);
+  
+ // Go through and converge each exemplar in turn...
+  float * fv   = (float*)malloc(feats * sizeof(float));
+  float * temp = (float*)malloc(feats * sizeof(float));
+  
+  int i;
+  for (i=0; i<exemplars; i++)
+  {
+   // Extract and convert to correct coordinate space...
+    int j;
+    for (j=0; j<feats; j++)
+    {
+     fv[j] = atof(PyArray_GETPTR2(dm, i, j)) * self->dm.mult[j];
+    }
+    
+   // Process...
+    *(int*)PyArray_GETPTR1(index, i) = mode_merge(self->spatial, self->kernel, self->config, balls, fv, temp, self->quality, self->epsilon, self->iter_cap, self->merge_range, self->merge_check_step);
+  }
+  
+ // Extract the modes, which are the centers of the balls...
+  npy_intp dims[2];
+  dims[0] = Balls_count(balls);
+  dims[1] = Balls_dims(balls);
+  
+  PyArrayObject * modes = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+  
+  for (i=0; i<dims[0]; i++)
+  {
+   const float * loc = Balls_pos(balls, i);
+   
+   int j;
+   for (j=0; j<dims[1]; j++)
+   {
+    *(float*)PyArray_GETPTR2(modes, i, j) = loc[j] / self->dm.mult[j]; 
+   }
+  }
+  
+ // Clean up...
+  free(fv);
+  free(temp);
+  Balls_delete(balls);
+  
+ // Return the tuple of (modes, assignment)...
+  return Py_BuildValue("(N,N)", modes, index);
+}
+
+
 
 static PyObject * MeanShift_manifold_py(MeanShift * self, PyObject * args)
 {
@@ -2045,6 +2178,9 @@ static PyMethodDef MeanShift_methods[] =
  {"get_dim", (PyCFunction)MeanShift_get_dim_py, METH_NOARGS, "Returns the string that gives the meaning of each dimension, as matched to the number of dimensions in the data matrix."},
  {"get_weight_dim", (PyCFunction)MeanShift_get_weight_dim_py, METH_NOARGS, "Returns the feature vector index that provides the weight of each sample, or None if there is not one and they are all fixed to 1."},
  
+ {"fetch_dm", (PyCFunction)MeanShift_fetch_dm_py, METH_NOARGS, "Returns a new numpy ndarray, of float32 type to be indexed [exemplar, feature], regardless of what was provided to the set_data method. Basically a predicatable version of get_dm that hides weirdness. Note that the order is the same as if you were to use the numpy flatten() method on the data matrix, if you extracted one feature at a time first."},
+ {"fetch_weight", (PyCFunction)MeanShift_fetch_weight_py, METH_NOARGS, "Returns a new numpy ndarray, of float32 type indexed by [exemplar] - each entry will be the weight assigned to the given exemplar, noting that if no weights are given then its just going to be a vector of ones. Partner to fetch_dm."},
+ 
  {"set_scale", (PyCFunction)MeanShift_set_scale_py, METH_VARARGS, "Given two parameters. First is an array indexed by feature to get a multiplier that is applied before the kernel (Which is always of radius 1, or some approximation of.) is considered - effectivly an inverse bandwidth in kernel density estimation terms or the inverse standard deviation if you are using the Gaussian kernel. Second is an optional scale for the weight assigned to each feature vector via the set_data method (In the event that no weight is assigned this parameter is the weight of each feature vector, as the default is 1)."},
  {"get_scale", (PyCFunction)MeanShift_get_scale_py, METH_NOARGS, "Returns a copy of the scale array (Inverse bandwidth)."},
  {"get_weight_scale", (PyCFunction)MeanShift_get_weight_scale_py, METH_NOARGS, "Returns the scalar for the weight of each sample - typically left as 1."},
@@ -2072,6 +2208,7 @@ static PyMethodDef MeanShift_methods[] =
  {"cluster", (PyCFunction)MeanShift_cluster_py, METH_NOARGS, "Clusters the exemplars provided by the data matrix - returns a two tuple (data matrix of all the modes in the dataset, indexed [mode, feature], A matrix of integers, indicating which mode each one has been assigned to by indexing the mode array. Indexing of this array is identical to the provided data matrix, with any feature dimensions removed.). The clustering is replaced each time this is called - do not expect cluster indices to remain consistant after calling this."},
  {"assign_cluster", (PyCFunction)MeanShift_assign_cluster_py, METH_VARARGS, "After the cluster method has been called this can be called with a single feature vector. It will then return the index of the cluster to which it has been assigned, noting that this will map to the mode array returned by the cluster method. In the event it does not map to a pre-existing cluster it will return a negative integer - this usually means it is so far from the provided data that the kernel does not include any samples."},
  {"assign_clusters", (PyCFunction)MeanShift_assign_clusters_py, METH_VARARGS, "After the cluster method has been called this can be called with a data matrix. It will then return the indices of the clusters to which each feature vector has been assigned, as a 1D numpy array, noting that this will map to the mode array returned by the cluster method. In the event any entry does not map to a pre-existing cluster it will return a negative integer for it - this usually means it is so far from the provided data that the kernel does not include any samples."},
+ {"cluster_on", (PyCFunction)MeanShift_cluster_on_py, METH_VARARGS, "Acts like cluster, but instead of clustering the contained data it clusters the exemplars provided as a data matrix (only parameter) on the surface of the contained data. This can be thought of as calling the modes method on the provided data matrix and then merging modes that are sufficiently close together to obtain a set of clusters. It returns the same output as cluster, specifically a two tuple: (data matrix of all the modes on the dataset that are represented within the given exemplars, indexed [mode, feature], A matrix of integers, matching the number of provided exemplars, indicating which mode they landed in.). Note that if a provided exemplar is too far away from the given data it will form a cluster where it started; the provided exemplars only interact via cluster merging and are not included in the KDE for which modes are being found. Mode numbers will not match anything else, either other calls to this or calls to cluster."},
  
  {"manifold", (PyCFunction)MeanShift_manifold_py, METH_VARARGS, "Given a feature vector and the dimensionality of the manifold projects the feature vector onto the manfold using subspace constrained mean shift. Returns an array with the same shape as the input. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
  {"manifolds", (PyCFunction)MeanShift_manifolds_py, METH_VARARGS, "Given a data matrix [exemplar, feature] and the dimensionality of the manifold projects the feature vectors onto the manfold using subspace constrained mean shift. Returns a data matrix with the same shape as the input. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},

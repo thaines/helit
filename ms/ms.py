@@ -68,3 +68,52 @@ class MeanShift(MeanShiftC):
     # Set it to the best...
     self.set_scale(best_scale)
     return best_score
+  
+  
+  def hierarchy(self, low = 1.0, high = 512.0, steps = 64, callback = None):
+    """Does a sweep of scale, exactly like scale_loo_nll (same behaviour for low and high with vector vs single value), except it clusters the data at each level and builds a hierarchy of clusters, noting which cluster at a lower level ends up in which cluster at the next level. Note that low and high are inverted before use so that they equate to the typical mean shift parameters. Return is a list indexed by level, with index 0 representing the original data (where every data point is its own segment). Each level is represented by a tuple: (modes - array of [segment, feature], parents - array of [segment], giving the index of its parent segment in the next level. None in the highest level, sizes - array of [segment] giving the total weight of all exemplars in that segment.)"""
+    
+    # Select values for low and high as needed...
+    if isinstance(low, float) or isinstance(high, float):
+      _, silverman = self.stats()
+      silverman = 1.0 / (silverman * (self.weight() * (silverman.shape[0] + 2.0) / 4.0) ** (-1.0 / (silverman.shape[0] + 4.0)))
+      
+      if isinstance(low, float):
+        low = silverman * low
+      
+      if isinstance(high, float):
+        high = silverman * high
+        
+    # Stuff needed for the below...
+    if steps<2: steps = 2
+    
+    log_low = numpy.log(low)
+    log_step = (numpy.log(high) - log_low) / (steps-1)
+    
+    ret = [[self.fetch_dm(), None, self.fetch_weight()]] # Start with level 0 only.
+    
+    # Iterate, recording the clustering at each scale...
+    for i in xrange(steps):
+      if callback!=None:
+        callback(i, steps)
+
+      scale = 1.0 / numpy.exp(log_low + i*log_step)
+      self.set_scale(scale)
+      
+      # Different behaviour for first level...
+      if i==0:
+        clusters, parents = self.cluster()
+        parents = parents.flatten()
+        safe = parents>=0
+        sizes = numpy.bincount(parents[safe], weights=self.fetch_weight()[safe], minlength=clusters.shape[0])
+      else:
+        #clusters, _ = self.cluster()
+        #parents = self.assign_clusters(ret[-1][0])
+        clusters, parents = self.cluster_on(ret[-1][0])
+        safe = parents>=0
+        sizes = numpy.bincount(parents[safe], weights=ret[-1][2][safe], minlength=clusters.shape[0])
+      
+      ret[-1][1] = parents
+      ret.append([clusters, None, sizes])
+    
+    return ret
