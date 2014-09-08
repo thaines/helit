@@ -130,7 +130,8 @@ else:
   
   # Store data...
   for l, level in enumerate(hier):
-    f.create_dataset('%i.clusters'%l, data=level[0], compression='gzip')
+    if l!=0: # Original image contains this, and much better compressed - save space.
+      f.create_dataset('%i.clusters'%l, data=level[0], compression='gzip')
     if level[1]!=None:
       f.create_dataset('%i.parents'%l, data=level[1], compression='gzip')
     f.create_dataset('%i.sizes'%l, data=level[2], compression='gzip')
