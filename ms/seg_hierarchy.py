@@ -23,7 +23,7 @@ from ms import MeanShift
 
 # Check an image filename has been provided on the command line...
 if len(sys.argv)<2:
-  print "Need an image filename"
+  print "Needs an image filename. An arbitrary second parameter causes it to store its results in a hsf5 file rather than dump them as images."
   sys.exit(1)
 
 fn = sys.argv[1]
