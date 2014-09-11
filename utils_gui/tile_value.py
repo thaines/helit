@@ -29,6 +29,7 @@ class TileValue(Layer):
     # Store various bits of info...
     self.tile_size = tile_size
     self.cache_size = cache_size
+    self.visible = True
 
     # Setup the cache and stroe the values...
     self.cache = OrderedDict()
@@ -180,6 +181,8 @@ class TileValue(Layer):
     
   def draw(self, ctx, vp):
     """Draws the image into the provided context, matching the provided viewport."""
+    if not self.visible:
+      return
     
     # Calculate the scale, base coordinates and number of tiles in each dimension...
     scale = vp.width / float(vp.end_x - vp.start_x)
