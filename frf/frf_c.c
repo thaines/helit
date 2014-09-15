@@ -407,7 +407,7 @@ static PyObject * Forest_size_from_initial_py(Forest * self, PyObject * args)
   }
   ForestHeader * fh = (ForestHeader*)data;
   
-  if ((fh->magic[0]!='F')||(fh->magic[1]!='R')||(fh->magic[2]!='F')||(fh->magic[3]!='F')||(fh->revision!=1))
+  if ((fh->magic[0]!='F')||(fh->magic[1]!='R')||(fh->magic[2]!='F')||(fh->magic[3]!='F')||(fh->revision!=FRF_REVISION))
   {
    PyErr_SetString(PyExc_ValueError, "Forest initial header appears corrupted.");
    return NULL; 
@@ -720,7 +720,7 @@ static PyObject * Forest_save_py(Forest * self, PyObject * args)
   fh->magic[1] = 'R';
   fh->magic[2] = 'F';
   fh->magic[3] = 'F';
-  fh->revision = 1;
+  fh->revision = FRF_REVISION;
   fh->size = size;
   
   fh->trees = self->trees;

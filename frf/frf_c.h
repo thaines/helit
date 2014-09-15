@@ -32,7 +32,7 @@ typedef struct ForestHeader ForestHeader;
 struct ForestHeader
 {
  char magic[4]; // 'FRFF'
- int revision;
+ int revision; // Whatever FRF_REVISION is defined as.
  long long size; // Total size of just the header, ignoring trees.
  
  int trees; // Number of trees that follow this header. Can be ignored if appropriate.
