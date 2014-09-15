@@ -53,7 +53,7 @@ void Info_remove(Info this, int exemplar)
  type->remove(this, exemplar);
 }
 
-int Info_count(Info this)
+float Info_count(Info this)
 {
  const InfoType * type = *(const InfoType**)this;
  return type->count(this);
@@ -73,7 +73,9 @@ typedef struct Nothing Nothing;
 struct Nothing
 {
  const InfoType * type;
- int count;
+ 
+ DataMatrix * dm;
+ float count;
 };
 
 
@@ -82,14 +84,16 @@ static Info Nothing_new(DataMatrix * dm, int feature)
  Nothing * this = (Nothing*)malloc(sizeof(Nothing));
  this->type = &NothingInfo;
  
- this->count = 0;
+ this->dm = dm;
+ this->count = 0.0;
+ 
  return this;  
 }
 
 static void Nothing_reset(Info self)
 {
  Nothing * this = (Nothing*)self;
- this->count = 0;
+ this->count = 0.0;
 }
 
 static void Nothing_delete(Info this)
@@ -100,19 +104,19 @@ static void Nothing_delete(Info this)
 static void Nothing_add(Info self, int exemplar)
 {
  Nothing * this = (Nothing*)self;
- this->count += 1;
+ this->count += DataMatrix_GetWeight(this->dm, exemplar);
 }
 
 static void Nothing_remove(Info self, int exemplar)
 {
  Nothing * this = (Nothing*)self;
- this->count -= 1;
+ this->count -= DataMatrix_GetWeight(this->dm, exemplar);
 }
 
-static int Nothing_count(Info self)
+static float Nothing_count(Info self)
 {
  Nothing * this = (Nothing*)self;
- return this->count; 
+ return this->count;
 }
 
 static float Nothing_entropy(Info this)
@@ -143,7 +147,7 @@ typedef struct Categorical Categorical;
 
 struct CategoricalInner
 {
- int count;
+ float count;
  float log_count; // Only valid when count!=0.
 };
 
@@ -154,8 +158,8 @@ struct Categorical
  DataMatrix * dm;
  int feature;
  
- int exemplars; // Number of exemplars in the system.
- int total; // Sum if you add up count - can be less than exemplars due to unknown values.
+ float exemplars; // Number of exemplars in the system.
+ float total; // Sum if you add up count - can be less than exemplars due to unknown values.
  
  int cats;
  CategoricalInner cat[0];
@@ -171,14 +175,14 @@ static Info Categorical_new(DataMatrix * dm, int feature)
  this->dm = dm;
  this->feature = feature;
  
- this->exemplars = 0;
- this->total = 0;
+ this->exemplars = 0.0;
+ this->total = 0.0;
  
  this->cats = cats;
  int i;
  for (i=0; i<cats; i++)
  {
-  this->cat[i].count = 0;
+  this->cat[i].count = 0.0;
  }
  
  return this;  
@@ -188,13 +192,13 @@ static void Categorical_reset(Info self)
 {
  Categorical * this = (Categorical*)self;
  
- this->exemplars = 0;
- this->total = 0;
+ this->exemplars = 0.0;
+ this->total = 0.0;
  
  int i;
  for (i=0; i<this->cats; i++)
  {
-  this->cat[i].count = 0; 
+  this->cat[i].count = 0.0; 
  }
 }
 
@@ -206,38 +210,45 @@ static void Categorical_delete(Info this)
 static void Categorical_add(Info self, int exemplar)
 {
  Categorical * this = (Categorical*)self;
- this->exemplars += 1;
+ float w = DataMatrix_GetWeight(this->dm, exemplar);
+ 
+ this->exemplars += w;
  
  int val = DataMatrix_GetDiscrete(this->dm, exemplar, this->feature);
  if ((val>=0)&&(val<this->cats))
  {
-  this->total += 1;
-  this->cat[val].count += 1;
-  this->cat[val].log_count = log(this->cat[val].count);
+  this->total += w;
+  this->cat[val].count += w;
+  if (this->cat[val].count>1e-6)
+  {
+   this->cat[val].log_count = log(this->cat[val].count);
+  }
  }
 }
 
 static void Categorical_remove(Info self, int exemplar)
 {
  Categorical * this = (Categorical*)self;
- this->exemplars -= 1;
+ float w = DataMatrix_GetWeight(this->dm, exemplar);
+ 
+ this->exemplars -= w;
  
  int val = DataMatrix_GetDiscrete(this->dm, exemplar, this->feature);
  if ((val>=0)&&(val<this->cats))
  {
-  this->total -= 1;
-  this->cat[val].count -= 1;
-  if (this->cat[val].count!=0)
+  this->total -= w;
+  this->cat[val].count -= w;
+  if (this->cat[val].count>1e-6)
   {
    this->cat[val].log_count = log(this->cat[val].count); 
   }
  }
 }
 
-static int Categorical_count(Info self)
+static float Categorical_count(Info self)
 {
  Categorical * this = (Categorical*)self;
- return this->exemplars; 
+ return this->exemplars;
 }
 
 static float Categorical_entropy(Info self)
@@ -250,7 +261,7 @@ static float Categorical_entropy(Info self)
  int i;
  for (i=0; i<this->cats; i++)
  {
-  if (this->cat[i].count!=0)
+  if (this->cat[i].count>1e-6)
   {
    ret -= mult * this->cat[i].count * this->cat[i].log_count;
   }
@@ -286,7 +297,7 @@ struct Gaussian
  DataMatrix * dm;
  int feature;
  
- int exemplars; // Number of exemplars in the system.
+ float exemplars; // Number of exemplars in the system.
  
  float mean;
  float scatter; // i.e. variance multiplied by exemplars.
@@ -301,7 +312,7 @@ static Info Gaussian_new(DataMatrix * dm, int feature)
  this->dm = dm;
  this->feature = feature;
  
- this->exemplars = 0;
+ this->exemplars = 0.0;
  
  this->mean = 0.0;
  this->scatter = 0.0;
@@ -313,7 +324,7 @@ static void Gaussian_reset(Info self)
 {
  Gaussian * this = (Gaussian*)self;
  
- this->exemplars = 0;
+ this->exemplars = 0.0;
  
  this->mean = 0.0;
  this->scatter = 0.0;
@@ -328,25 +339,33 @@ static void Gaussian_add(Info self, int exemplar)
 {
  Gaussian * this = (Gaussian*)self;
  float val = DataMatrix_GetContinuous(this->dm, exemplar, this->feature);
+ float w = DataMatrix_GetWeight(this->dm, exemplar);
  
- this->exemplars += 1;
+ float new_exemplars = this->exemplars + w;
  float delta = val - this->mean;
- this->mean += delta / this->exemplars;
- this->scatter += delta * (val - this->mean);
+ float offset = (w * delta) / new_exemplars;
+ 
+ this->mean += offset;
+ this->scatter += this->exemplars * delta * offset;
+ this->exemplars = new_exemplars;
 }
 
 static void Gaussian_remove(Info self, int exemplar)
 {
  Gaussian * this = (Gaussian*)self;
  float val = DataMatrix_GetContinuous(this->dm, exemplar, this->feature);
+ float w = DataMatrix_GetWeight(this->dm, exemplar);
  
- this->exemplars -= 1;
+ float new_exemplars = this->exemplars - w;
  float delta = val - this->mean;
- this->mean -= delta / this->exemplars;
- this->scatter -= delta * (val - this->mean);
+ float offset = (w * delta) / new_exemplars;
+ 
+ this->mean -= offset;
+ this->scatter -= this->exemplars * delta * offset;
+ this->exemplars = new_exemplars;
 }
 
-static int Gaussian_count(Info self)
+static float Gaussian_count(Info self)
 {
  Gaussian * this = (Gaussian*)self;
  return this->exemplars; 
@@ -389,7 +408,7 @@ struct BiGaussian
  DataMatrix * dm;
  int feature;
  
- int exemplars; // Number of exemplars in the system.
+ float exemplars; // Number of exemplars in the system.
  
  float mean[2];
  float scatter_var[2]; // i.e. variance multiplied by exemplars.
@@ -405,7 +424,7 @@ static Info BiGaussian_new(DataMatrix * dm, int feature)
  this->dm = dm;
  this->feature = feature;
  
- this->exemplars = 0;
+ this->exemplars = 0.0;
  
  int i;
  for (i=0; i<2; i++)
@@ -422,7 +441,7 @@ static void BiGaussian_reset(Info self)
 {
  BiGaussian * this = (BiGaussian*)self;
  
- this->exemplars = 0;
+ this->exemplars = 0.0;
  
  int i;
  for (i=0; i<2; i++)
@@ -445,20 +464,24 @@ static void BiGaussian_add(Info self, int exemplar)
  float val[2];
  val[0] = DataMatrix_GetContinuous(this->dm, exemplar, this->feature);
  val[1] = DataMatrix_GetContinuous(this->dm, exemplar, this->feature+1);
- 
- this->exemplars += 1;
+ float w = DataMatrix_GetWeight(this->dm, exemplar);
  
  int i;
  float delta[2];
+ float offset[2];
  
+ float new_exemplars = this->exemplars + w;
  for (i=0; i<2; i++)
  {
   delta[i] = val[i] - this->mean[i];
-  this->mean[i] += delta[i] / this->exemplars;
-  this->scatter_var[i] += delta[i] * (val[i] - this->mean[i]);
+  offset[i] = delta[i] * w / new_exemplars;
+  
+  this->mean[i] += offset[i];
+  this->scatter_var[i] += this->exemplars * delta[i] * offset[i];
  }
  
- this->scatter_co += delta[0] * (val[1] - this->mean[1]);
+ this->scatter_co += this->exemplars * delta[0] * offset[1];
+ this->exemplars = new_exemplars;
 }
 
 static void BiGaussian_remove(Info self, int exemplar)
@@ -468,23 +491,27 @@ static void BiGaussian_remove(Info self, int exemplar)
  float val[2];
  val[0] = DataMatrix_GetContinuous(this->dm, exemplar, this->feature);
  val[1] = DataMatrix_GetContinuous(this->dm, exemplar, this->feature+1);
- 
- this->exemplars -= 1;
+ float w = DataMatrix_GetWeight(this->dm, exemplar);
  
  int i;
  float delta[2];
+ float offset[2];
  
+ float new_exemplars = this->exemplars - w;
  for (i=0; i<2; i++)
  {
   delta[i] = val[i] - this->mean[i];
-  this->mean[i] -= delta[i] / this->exemplars;
-  this->scatter_var[i] -= delta[i] * (val[i] - this->mean[i]);
+  offset[i] = delta[i] * w / new_exemplars;
+  
+  this->mean[i] -= offset[i];
+  this->scatter_var[i] -= this->exemplars * delta[i] * offset[i];
  }
  
- this->scatter_co -= delta[0] * (val[1] - this->mean[1]);
+ this->scatter_co -= this->exemplars * delta[0] * offset[1];
+ this->exemplars = new_exemplars;
 }
 
-static int BiGaussian_count(Info self)
+static float BiGaussian_count(Info self)
 {
  BiGaussian * this = (BiGaussian*)self;
  return this->exemplars; 
@@ -493,7 +520,7 @@ static int BiGaussian_count(Info self)
 static float BiGaussian_entropy(Info self)
 {
  BiGaussian * this = (BiGaussian*)self;
- if (this->exemplars==0) return 0.0;
+ if (this->exemplars<1e-6) return 0.0;
  
  float covar = this->scatter_co / this->exemplars;
  float det = (this->scatter_var[0] / this->exemplars) * (this->scatter_var[1] / this->exemplars) - covar*covar;
@@ -696,10 +723,12 @@ float InfoSet_entropy(InfoSet * this, int depth)
   
   if (ratio>1e-6)
   {
-   int fail_total = Info_count(this->pair[i].fail);
-   int pass_total = Info_count(this->pair[i].pass);
-   int total = fail_total + pass_total;
-   float weight = ((float)fail_total) / ((float)total);
+   float fail_total = Info_count(this->pair[i].fail);
+   float pass_total = Info_count(this->pair[i].pass);
+   float total = fail_total + pass_total;
+   if (total<1e-6) total = 1e-6;
+   
+   float weight = fail_total / total;
    
    float entropy = weight * Info_entropy(this->pair[i].fail) + (1.0 - weight) * Info_entropy(this->pair[i].pass);
    

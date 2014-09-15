@@ -167,7 +167,7 @@ static void Split_delete(Learner this)
  free(this); 
 }
 
-// Helper for below - try not to think too much about what that static variable is for...
+// Helper for below - try not to think too much about what that static variable is for, or what it means for thread safety...
 int sort_for_split(const void * a, const void * b)
 {
  static const Split * this = NULL;

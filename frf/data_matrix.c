@@ -319,6 +319,9 @@ DataMatrix * DataMatrix_new(PyObject * obj, int * max)
   int fbc = 1;
   int feats = 0;
   int i;
+ 
+  PyArrayObject * weights = NULL;
+  int weights_index = 2147483647;
   
   if (PyArray_Check(obj)==0)
   {
@@ -328,16 +331,49 @@ DataMatrix * DataMatrix_new(PyObject * obj, int * max)
     return NULL;
    }
    
-   // Its a sequence - check it only contains numpy arrays...
+   // Its a sequence - check it only contains numpy arrays, and a maximum of one weight spec...
     fbc = PySequence_Size(obj);
     for (i=0; i<fbc; i++)
     {
      PyObject * member = PySequence_GetItem(obj, i);
      if (PyArray_Check(member)==0)
      {
-      Py_DECREF(member);
-      PyErr_SetString(PyExc_TypeError, "List element in data matrix initialisation not a numpy array.");
-      return NULL;
+      if (PyTuple_Check(member))
+      {
+       if ((weights!=NULL) || (PyTuple_Size(member)!=2))
+       {
+        Py_DECREF(member);
+        PyErr_SetString(PyExc_TypeError, "Tuple parameter found in list, but already had a weight vector or tuple not of length 2.");
+        return NULL; 
+       }
+       
+       PyObject * w = PyTuple_GetItem(member, 0);
+       weights = (PyArrayObject*)PyTuple_GetItem(member, 1);
+       weights_index = i;
+       
+       if ((!PyString_Check(w))||(strcmp(PyString_AsString(w),"w")!=0))
+       {
+        Py_DECREF(member);
+        PyErr_SetString(PyExc_TypeError, "Tuple parameter found in list did not identify itself as containing a weight vector.");
+        return NULL; 
+       }
+       
+       if ((!PyArray_Check(weights)) || (PyArray_NDIM(weights)!=1))
+       {
+        Py_DECREF(member);
+        PyErr_SetString(PyExc_TypeError, "Tuple parameter did not contain a valid weight vector.");
+        return NULL; 
+       }
+       
+       Py_DECREF(member);
+       continue;
+      }
+      else
+      {
+       Py_DECREF(member);
+       PyErr_SetString(PyExc_TypeError, "List element in data matrix initialisation not a numpy array.");
+       return NULL;
+      }
      }
      
      feats += (PyArray_NDIM((PyArrayObject*)member)>1) ? PyArray_DIMS((PyArrayObject*)member)[1] : 1;
@@ -351,8 +387,16 @@ DataMatrix * DataMatrix_new(PyObject * obj, int * max)
   
  // Checks passed - malloc the object...
   DataMatrix * this = (DataMatrix*)malloc(sizeof(DataMatrix) + fbc*sizeof(FeatureBlock) + feats*sizeof(int));
+  this->weights = weights;
   this->blocks = fbc;
   this->max = (int*)((char*)this + sizeof(DataMatrix) + fbc*sizeof(FeatureBlock));
+  
+  if (this->weights!=NULL)
+  {
+   Py_INCREF(this->weights);
+   this->weights_continuous = KindToContinuousFunc(PyArray_DESCR(this->weights));
+   this->blocks -= 1;
+  }
   
  // Fill in the feature blocks...
   for (i=0; i<this->blocks; i++)
@@ -366,7 +410,10 @@ DataMatrix * DataMatrix_new(PyObject * obj, int * max)
     }
     else
     {
-     array = (PyArrayObject*)PySequence_GetItem(obj, i);
+     int ind = i;
+     if (ind >= weights_index) ind += 1;
+     
+     array = (PyArrayObject*)PySequence_GetItem(obj, ind);
     }
     
    // Initalise the feature block...
@@ -406,6 +453,9 @@ DataMatrix * DataMatrix_new(PyObject * obj, int * max)
 
 void DataMatrix_delete(DataMatrix * this)
 {
+ // Total the weights...
+  Py_XDECREF(this->weights);
+  
  // Deinit the FeatureBlock-s...
   int i;
   for (i=0; i<this->blocks; i++)
@@ -472,6 +522,22 @@ float DataMatrix_GetContinuous(DataMatrix * this, int exemplar, int feature)
 
  // Do the block lookup...
   return FeatureBlock_GetContinuous(this->block + block, exemplar, offset);
+}
+
+float DataMatrix_GetWeight(DataMatrix * this, int exemplar)
+{
+ if (this->weights)
+ {
+  exemplar = exemplar % PyArray_DIMS(this->weights)[0]; 
+  char * ptr = PyArray_DATA(this->weights);
+  ptr += PyArray_STRIDES(this->weights)[0] * exemplar;
+   
+  return this->weights_continuous(ptr);
+ }
+ else
+ {
+  return 1.0; 
+ }
 }
 
 int DataMatrix_Max(DataMatrix * this, int feature)

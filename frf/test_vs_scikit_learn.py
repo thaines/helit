@@ -83,7 +83,7 @@ def make_politician():
 
   offset = 0
   for att in attributes:
-    ret[offset:offset+att.length] = numpy.random.multivariate_normal(att.politician_mean, att.politician_covar)
+    ret[offset:offset+att.length] = numpy.random.multivariate_normal(att.politician_mean, att.politician_covar, 1)
     offset += att.length
 
   return ret
@@ -94,7 +94,7 @@ def make_marketing():
 
   offset = 0
   for att in attributes:
-    ret[offset:offset+att.length] = numpy.random.multivariate_normal(att.marketing_mean, att.marketing_covar)
+    ret[offset:offset+att.length] = numpy.random.multivariate_normal(att.marketing_mean, att.marketing_covar, 1)
     offset += att.length
 
   return ret
@@ -105,7 +105,7 @@ def make_tele_sales():
 
   offset = 0
   for att in attributes:
-    ret[offset:offset+att.length] = numpy.random.multivariate_normal(att.tele_sales_mean, att.tele_sales_covar)
+    ret[offset:offset+att.length] = numpy.random.multivariate_normal(att.tele_sales_mean, att.tele_sales_covar, 1)
     offset += att.length
 
   return ret

@@ -21,13 +21,18 @@
 
 
 
+// To be incrimented each time the previous file format no longer works and I am too lazy to add conversion capabilities...
+#define FRF_REVISION 2
+
+
+
 // Define struct used for Forest I/O...
 typedef struct ForestHeader ForestHeader;
 
 struct ForestHeader
 {
  char magic[4]; // 'FRFF'
- int revision; // 1 in current versions.
+ int revision;
  long long size; // Total size of just the header, ignoring trees.
  
  int trees; // Number of trees that follow this header. Can be ignored if appropriate.
@@ -94,7 +99,7 @@ struct Forest
   
   PyArrayObject * info_ratios; // 2D array indexed by depth (modulus) then feature, of weight to assign to information of feature when optimising at that depth.
   
- // Store the trees as a straight array of pointers (The cost of loading a tree, let alone learning one, compared to a realloc means doing anything more dcomplicated is pointless.)...
+ // Store the trees as a straight array of pointers (The cost of loading a tree, let alone learning one, compared to a realloc means doing anything more complicated is pointless.)...
   int trees;
   TreeBuffer ** tree;
   

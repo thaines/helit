@@ -39,8 +39,8 @@ typedef void (*InfoDelete)(Info this);
 typedef void (*InfoAdd)(Info this, int exemplar);
 typedef void (*InfoRemove)(Info this, int exemplar);
 
-// Return how many exemplars are in the object right now...
-typedef int (*InfoCount)(Info this);
+// Return how many exemplars are in the object right now - float because exemplars can be weighted...
+typedef float (*InfoCount)(Info this);
 
 // Returns the entropy (in nats) of the current set of exemplars...
 typedef float (*InfoEntropy)(Info this);
@@ -77,7 +77,7 @@ void Info_delete(Info this);
 void Info_add(Info this, int exemplar);
 void Info_remove(Info this, int exemplar);
 
-int Info_count(Info this);
+float Info_count(Info this);
 float Info_entropy(Info this);
 
 
@@ -120,7 +120,7 @@ typedef struct InfoSet InfoSet;
 struct InfoSet
 {
  PyArrayObject * ratios;
- ToContinuous rat_func;
+ ToContinuous rat_func; // For above matrix.
  
  int features;
  InfoPair pair[0];

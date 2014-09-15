@@ -146,11 +146,11 @@ size_t Tree_type_size(int count)
 // The learn method and supporting function - fairly involved due to the insane packing requirements. Learning is done recursivly using a general array of pointers structure above, so it can all be packed at the end...
 void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, IndexView * view, ReportSummarisation rs, void * rs_ptr)
 {
- // Attempt to learn a split, unless we have already reached some split-prevebnting limit...
+ // Attempt to learn a split, unless we have already reached some split-preventing limit...
   int do_node = 0;
   if (depth<param->max_splits)
   {
-   do_node = LearnerSet_optimise(param->ls, param->is, view, param->opt_features, depth, param->key); 
+   do_node = LearnerSet_optimise(param->ls, param->is, view, param->opt_features, depth, param->key);
   }
   
  // If we have found a split create the node...

@@ -84,6 +84,10 @@ struct DataMatrix
  
  // Maximum values, for making categorical distributions...
   int * max;
+  
+ // Weights...
+  PyArrayObject * weights;
+  ToContinuous weights_continuous;
  
  // Feature blocks...
   int blocks;
@@ -100,6 +104,8 @@ void DataMatrix_delete(DataMatrix * this);
 NumberType DataMatrix_Type(DataMatrix * this, int feature);
 int DataMatrix_GetDiscrete(DataMatrix * this, int exemplar, int feature);
 float DataMatrix_GetContinuous(DataMatrix * this, int exemplar, int feature);
+
+float DataMatrix_GetWeight(DataMatrix * this, int exemplar);
 
 // Returns the maximum value of a discrete feature, noting that it always includes zero and can be fixed in construction if the user wants space for extra values/to ignore values past a fixed point - its basically how big to make categorical distributions from the data...
 int DataMatrix_Max(DataMatrix * this, int feature);

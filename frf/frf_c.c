@@ -434,9 +434,9 @@ static PyObject * Forest_load_py(Forest * self, PyObject * args)
   }
   ForestHeader * fh = (ForestHeader*)data;
   
-  if ((fh->magic[0]!='F')||(fh->magic[1]!='R')||(fh->magic[2]!='F')||(fh->magic[3]!='F')||(fh->revision!=1))
+  if ((fh->magic[0]!='F')||(fh->magic[1]!='R')||(fh->magic[2]!='F')||(fh->magic[3]!='F')||(fh->revision!=FRF_REVISION))
   {
-   PyErr_SetString(PyExc_ValueError, "Forest initial header appears corrupted.");
+   PyErr_SetString(PyExc_ValueError, "Forest initial header appears corrupted or wrong version.");
    return NULL; 
   }
   
@@ -1272,7 +1272,7 @@ static PyObject * Forest_error_py(Forest * self, PyObject * args)
   if (x->features!=self->x_feat)
   {
    DataMatrix_delete(x);
-   PyErr_SetString(PyExc_ValueError, "X datamatrix has wrong number features.");
+   PyErr_SetString(PyExc_ValueError, "X datamatrix has wrong number of features.");
    return NULL; 
   }
   
@@ -1284,7 +1284,7 @@ static PyObject * Forest_error_py(Forest * self, PyObject * args)
   }
   if (y->features!=self->y_feat)
   {
-   PyErr_SetString(PyExc_ValueError, "Y datamatrix has wrong number features.");
+   PyErr_SetString(PyExc_ValueError, "Y datamatrix has wrong number of features.");
    DataMatrix_delete(y);
    DataMatrix_delete(x);
    return NULL; 
@@ -1331,14 +1331,16 @@ static PyObject * Forest_error_py(Forest * self, PyObject * args)
    *(float*)PyArray_GETPTR1(ret, i) = 0.0;
   }
   
+  float divisor = 0.0;
   for (i=0; i<y->exemplars; i++)
   {
+   divisor += DataMatrix_GetWeight(y, i);
    SummarySet_error(self->trees, self->ss + self->trees*i, y, i, (float*)PyArray_DATA(ret));
   }
   
   for (i=0; i<self->y_feat; i++)
   {
-   *(float*)PyArray_GETPTR1(ret, i) /= x->exemplars;
+   *(float*)PyArray_GETPTR1(ret, i) /= divisor;
   }
  
  // Clean up and return...
@@ -1445,11 +1447,11 @@ static PySequenceMethods Forest_as_sequence =
 static PyMemberDef Forest_members[] =
 {
  {"x_feat", T_INT, offsetof(Forest, x_feat), READONLY, "Number of features it expect of the input x data matrix, which is the data matrix that is known."},
- {"y_feat", T_INT, offsetof(Forest, y_feat), READONLY, "Number of features it expect of the output y data matrix, which is the data matrix that it is learning to predeict from the x matrix."},
+ {"y_feat", T_INT, offsetof(Forest, y_feat), READONLY, "Number of features it expect of the output y data matrix, which is the data matrix that it is learning to predict from the x matrix."},
  
  {"summary_codes", T_STRING, offsetof(Forest, summary_codes), READONLY, "Returns the codes used for creating summary objects, a string indexed by y feature that gives the code of the summary to be used for that features."},
  {"info_codes", T_STRING, offsetof(Forest, info_codes), READONLY, "Returns the codes used for creating information gain objects, a string indexed by y feature that gives the code of the info calculator to be used for that features."},
- {"learn_codes", T_STRING, offsetof(Forest, learn_codes), READONLY, "Returns the codes used for creating learners, a string indexed by x feature that gives the code of the leaner to sugest splits for that features."}, 
+ {"learn_codes", T_STRING, offsetof(Forest, learn_codes), READONLY, "Returns the codes used for creating learners, a string indexed by x feature that gives the code of the leaner to sugest splits for that features."},
  
  {"ready", T_BOOL, offsetof(Forest, ready), READONLY, "True if its safe to train trees, False if the forest has not been setup - i.e. neither a header has been loaded not a header has been configured. Note that safe to train is not the same as safe to predict - it could contain 0 trees (check with len(forest))."},
  
@@ -1493,10 +1495,10 @@ static PyMethodDef Forest_methods[] =
  {"clear", (PyCFunction)Forest_clear_py, METH_NOARGS, "Removes all trees from the forest. Note that because you can't snipe individual trees if you want to be selective you can use the list interface to get all of them, clear the forest then append each tree that you want to keep."},
  {"append", (PyCFunction)Forest_append_py, METH_VARARGS, "Appends a Tree to the Forest, that has presumably been trained in another Forest and is now to be merged. Note that the Forest must be compatible (identical type codes given to configure), and this is not checked. Break this and expect the fan to get very brown."},
 
- {"train", (PyCFunction)Forest_train_py, METH_VARARGS, "Trains and appends more trees to this Forest - first parameter is the x/input data matrix, second is the y/output data matrix, third is the number of trees, which defaults to 1. Data matrices can be either a numpy array (exemplars X features) or a list of numpy arrays that are implicity joined to make the final data matrix - good when you want both continuous and discrete types. When a list 1D arrays are assumed to be indexed by exemplar. If boostrap is true this returns the out of bag error - an array indexed by output feature of how much error exists in that channel - note that they are independent calculations and its upto the user to combine them as desired if an overall error measure is required. A fourth optional parameter is a callback function, used to report progress - it will be called as func(# of work units done, total # of work units). Note that any errors it throws will be silently ignored, including not accepting those parameters."},
+ {"train", (PyCFunction)Forest_train_py, METH_VARARGS, "Trains and appends more trees to this Forest - first parameter is the x/input data matrix, second is the y/output data matrix, third is the number of trees, which defaults to 1. Data matrices can be either a numpy array (exemplars X features) or a list of numpy arrays that are implicity joined to make the final data matrix - good when you want both continuous and discrete types. When a list contains 1D arrays they are assumed to be indexed by exemplar. The list can also contain a tuple, ('w', 1D vector), which will contain a weight for each exemplar, as in how many exemplars it counts as - good for imbalanced data. Note that only a weight in y matters - a weighted x is silently ignored. If boostrap is true this returns the out of bag error - an array indexed by output feature of how much error exists in that channel - note that they are independent calculations and its upto the user to combine them as desired if an overall error measure is required. A fourth optional parameter is a callback function, used to report progress - it will be called as func(# of work units done, total # of work units). Note that any errors it throws will be silently ignored, including not accepting those parameters."},
  
  {"predict", (PyCFunction)Forest_predict_py, METH_VARARGS, "Given an x/input data matrix (With support for a tuple of matrices identical to train.) returns what it knows about the output data matrix. Return will be a list indexed by feature, with the contents defined by the summary codes (Typically a dictionary of arrays, often of things like 'prob' or 'mean'). You can provide a second parameter as in exemplar index if you want to just do one item from the data matrix, but note that this is very inefficient compared to doing everything at once in a single data matrix (Or several large data matrices if that is unreasonable)."},
- {"error", (PyCFunction)Forest_error_py, METH_VARARGS, "Given a x/input data matrix and a y/output data matrix of true answers (Same as train) this returns an array, indexed by output feature, of how much error exists in that channel. Same as the oob calculation, but using all trees and therefore for a hold out set etc."},
+ {"error", (PyCFunction)Forest_error_py, METH_VARARGS, "Given a x/input data matrix and a y/output data matrix of true answers (Same as train) this returns an array, indexed by output feature, of how much error exists in that channel. Same as the oob calculation, but using all trees and therefore for a hold out set etc. If you want a weighted output then it should be provided in the y data matrix - any weights in x will be ignored."},
  
  {NULL}
 };
@@ -1526,7 +1528,7 @@ static PyTypeObject ForestType =
  0,                                /*tp_setattro*/
  0,                                /*tp_as_buffer*/
  Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /*tp_flags*/
- "A random forest implimentation, designed with speed in mind, as well as I/O that doesn't suck (almost - should be 32/64 bit safe, but not endian change safe.) so it can actually be saved/loaded to disk. Remains fairly modular so it can be customised to specific use cases. Supports both classification and regression, as well as multivariate output (Including mixed classification/regression!). Input feature vectors can contain both discrete and continuous variables; kinda supports unknown values for discrete features. Provides the sequence interface, to access the individual Tree objects contained within.", /* tp_doc */
+ "A random forest implimentation, designed with speed in mind, as well as I/O that doesn't suck (almost - should be 32/64 bit safe, but not endian change safe.) so it can actually be saved/loaded to disk. Remains fairly modular so it can be customised to specific use cases. Supports both classification and regression, as well as multivariate output (Including mixed classification/regression!). Input feature vectors can contain both discrete and continuous variables; kinda supports unknown values for discrete features. Provides the sequence interface, to access the individual Tree objects contained within. Note that is not thread safe - use multiprocessing if parallism is required, for which it has good support.", /* tp_doc */
  0,                                /* tp_traverse */
  0,                                /* tp_clear */
  0,                                /* tp_richcompare */
@@ -1562,7 +1564,7 @@ static PyMethodDef frf_c_methods[] =
 PyMODINIT_FUNC initfrf_c(void)
 {
  // Create the module...
-  PyObject * mod = Py_InitModule3("frf_c", frf_c_methods, "Provides a straight forward random forest implimentation that is designed to be fast and have good loading/saving capabilities, unlike all the other Python ones.");
+  PyObject * mod = Py_InitModule3("frf_c", frf_c_methods, "Provides a straight forward random forest implimentation that is designed to be fast and have good loading/saving capabilities, unlike other Python ones.");
  
  // Call some initialisation code...
   import_array();

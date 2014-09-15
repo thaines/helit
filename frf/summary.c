@@ -113,7 +113,7 @@ typedef struct Categorical Categorical;
 
 struct Categorical
 {
- int count; // # Of samples that went into the distribution - has its uses.
+ float count; // # Of samples that went into the distribution - has its uses. (float for weighting)
  int cats; // Number of categories.
  float prob[0]; // Probability of each category.
 };
@@ -129,7 +129,7 @@ static void Categorical_init(Summary self, DataMatrix * dm, IndexView * view, in
 {
  Categorical * this = (Categorical*)self;
  
- this->count = 0;
+ this->count = 0.0;
  this->cats = DataMatrix_Max(dm, feature) + 1;
  
  int i;
@@ -145,12 +145,13 @@ static void Categorical_init(Summary self, DataMatrix * dm, IndexView * view, in
   
   if ((value>=0)&&(value<this->cats))
   {
-   this->count += 1;
-   this->prob[value] += 1.0;
+   float w = DataMatrix_GetWeight(dm, exemplar);
+   this->count += w;
+   this->prob[value] += w;
   }
  }
  
- if (this->count!=0)
+ if (this->count>1e-6)
  {
   for (i=0; i<this->cats; i++)
   {
@@ -199,14 +200,14 @@ static float Categorical_error(int trees, Summary * sums, SummaryMagic magic, in
  
  // Return 0 if its a match, 1 if its a mismatch...
   int v = DataMatrix_GetDiscrete(dm, exemplar, feature);
-  if (best!=v) return 1.0;
+  if (best!=v) return DataMatrix_GetWeight(dm, exemplar);
           else return 0.0;
 }
 
 static PyObject * Categorical_merge_py(int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  // Setup the output...
-  int count = 0;
+  float count = 0.0;
   
   Categorical * first = (Categorical*)sums[0];
   if (magic!=NULL) first = (Categorical*)magic(first, extra);
@@ -242,7 +243,7 @@ static PyObject * Categorical_merge_py(int trees, Summary * sums, SummaryMagic m
   }
  
  // Build and return the dictionary...
-  return Py_BuildValue("{sisN}", "count", count, "prob", prob);
+  return Py_BuildValue("{sfsN}", "count", count, "prob", prob);
 }
 
 static PyObject * Categorical_merge_many_py(int exemplars, int trees, Summary * sums, SummaryMagic magic, int extra)
@@ -252,14 +253,14 @@ static PyObject * Categorical_merge_many_py(int exemplars, int trees, Summary * 
   if (magic!=NULL) first = (Categorical*)magic(first, extra);
   
   npy_intp size[2] = {exemplars, first->cats};
-  PyArrayObject * count = (PyArrayObject*)PyArray_SimpleNew(1, size, NPY_INT32);
+  PyArrayObject * count = (PyArrayObject*)PyArray_SimpleNew(1, size, NPY_FLOAT32);
   PyArrayObject * prob = (PyArrayObject*)PyArray_SimpleNew(2, size, NPY_FLOAT32);
  
   int i, j, k;
   
   for (k=0; k<size[0]; k++)
   {
-   *(int*)PyArray_GETPTR1(count, k) = 0;
+   *(float*)PyArray_GETPTR1(count, k) = 0.0;
    for (i=0; i<size[1]; i++)
    {
     *(float*)PyArray_GETPTR2(prob, k, i) = 0.0;
@@ -275,7 +276,7 @@ static PyObject * Categorical_merge_many_py(int exemplars, int trees, Summary * 
     Categorical * targ = (Categorical*)sums[k*trees + j];
     if (magic!=NULL) targ = (Categorical*)magic(targ, extra);
    
-    *(int*)PyArray_GETPTR1(count, k) += targ->count;
+    *(float*)PyArray_GETPTR1(count, k) += targ->count;
    
     for (i=0; i<size[1]; i++)
     {
@@ -319,7 +320,7 @@ static PyObject * Categorical_string(Summary self)
   PyMem_Free(s);
  }
  
- PyString_ConcatAndDel(&ret, PyString_FromFormat("]|%i)", this->count));
+ PyString_ConcatAndDel(&ret, PyString_FromFormat("]|%f)", this->count));
  return ret;
 }
 
@@ -328,7 +329,7 @@ const SummaryType CategoricalSummary =
 {
  'C',
  "Categorical",
- "A standard categorical distribution for discrete features. The indices are taken to go from 1 to the maximum given by the datamatrix, inclusive - any value outside this is ignored, effectivly being treated as unknown. Output when converted to a python object is a dictionary - the key 'count' gets the number of samples that went into the distribution, whilst 'prob' gets an array, indexed by category, of the probabilities of each. For the array case the count gets a 1D array and cat becomes 2D, indexed [exemplar, cat]. The error calculation is simply zero for most probable value matching, 1 for it not matching.",
+ "A standard categorical distribution for discrete features. The indices are taken to go from 1 to the maximum given by the datamatrix, inclusive - any value outside this is ignored, effectivly being treated as unknown. Output when converted to a python object is a dictionary - the key 'count' gets the number of samples that went into the distribution (flaot, due to weighting), whilst 'prob' gets an array, indexed by category, of the probabilities of each. For the array case the count gets a 1D array and cat becomes 2D, indexed [exemplar, cat]. The error calculation is simply zero for most probable value matching, feature weight for it not matching.",
  Categorical_init_size,
  Categorical_init,
  Categorical_error,
@@ -345,7 +346,7 @@ typedef struct Gaussian Gaussian;
 
 struct Gaussian
 {
- int count; // # Of samples that went into the distribution - has its uses.
+ float count; // # Of samples that went into the distribution - has its uses; weighted.
  float mean;
  float var;
 };
@@ -353,14 +354,14 @@ struct Gaussian
 
 static size_t Gaussian_init_size(DataMatrix * dm, IndexView * view, int feature)
 {
- return sizeof(Gaussian); 
+ return sizeof(Gaussian);
 }
 
 static void Gaussian_init(Summary self, DataMatrix * dm, IndexView * view, int feature)
 {
  Gaussian * this = (Gaussian*)self;
  
- this->count = 0;
+ this->count = 0.0;
  this->mean = 0.0;
  this->var = 0.0;
  
@@ -369,14 +370,18 @@ static void Gaussian_init(Summary self, DataMatrix * dm, IndexView * view, int f
  {
   int exemplar = view->vals[i];
   float value = DataMatrix_GetContinuous(dm, exemplar, feature);
+  float w = DataMatrix_GetWeight(dm, exemplar);
   
-  this->count += 1;
+  float new_count = this->count + w;
   float delta = value - this->mean;
-  this->mean += delta / this->count;
-  this->var += delta * (value - this->mean);
+  float offset = (delta * w) / new_count;
+  
+  this->mean += offset;
+  this->var += this->count * delta * offset;
+  this->count = new_count;
  }
  
- if (this->count!=0) this->var /= this->count;
+ if (this->count>1e-6) this->var /= this->count;
 }
 
 static float Gaussian_error(int trees, Summary * sums, SummaryMagic magic, int extra, DataMatrix * dm, int exemplar, int feature)
@@ -386,7 +391,7 @@ static float Gaussian_error(int trees, Summary * sums, SummaryMagic magic, int e
  
  // Calculate the mean of all the trees...
   float mean = 0.0;
-  float count = 0.0;
+  float weight = 0.0;
   
   int i;
   for (i=0; i<trees; i++)
@@ -394,19 +399,22 @@ static float Gaussian_error(int trees, Summary * sums, SummaryMagic magic, int e
    Gaussian * targ = (Gaussian*)sums[i];
    if (magic!=NULL) targ = (Gaussian*)magic(targ, extra);
    
-   count += targ->count;
-   mean += (targ->mean - mean) * targ->count / count;
+   float w = 1.0 / targ->var;
+   if (w>1e6) w = 1e6; // Clamp effect of really precise estimates.
+   
+   weight += w;
+   mean += (targ->mean - mean) * w / weight;
   }
  
  // Return the absolute difference between the provided value and the mean...
   float v = DataMatrix_GetContinuous(dm, exemplar, feature);
-  return fabs(v - mean);
+  return fabs(v - mean) * DataMatrix_GetWeight(dm, exemplar);
 }
 
 static PyObject * Gaussian_merge_py(int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  // Combine from all trees...
-  int count = 0;
+  float count = 0;
   float mean = 0.0;
   float var = 0.0;
   
@@ -416,25 +424,25 @@ static PyObject * Gaussian_merge_py(int trees, Summary * sums, SummaryMagic magi
    Gaussian * targ = (Gaussian*)sums[i];
    if (magic!=NULL) targ = (Gaussian*)magic(targ, extra);
    
-   int new_count = count + targ->count;
+   float new_count = count + targ->count;
    float delta = targ->mean - mean;
-   float offset = delta * targ->count / (float)new_count;
+   float offset = delta * targ->count / new_count;
    mean += offset;
    var += (targ->var * targ->count) + offset * count * delta;
    count = new_count;
   }
   
-  if (count!=0) var /= count;
+  if (count>1e-6) var /= count;
  
  // Build and return a dictionary containing the required values...
-  return Py_BuildValue("{sisfsf}", "count", count, "mean", mean, "var", var);
+  return Py_BuildValue("{sfsfsf}", "count", count, "mean", mean, "var", var);
 }
 
 static PyObject * Gaussian_merge_many_py(int exemplars, int trees, Summary * sums, SummaryMagic magic, int extra)
 {
  // Create the output numpy arrays...
   npy_intp size = exemplars;
-  PyArrayObject * count_arr = (PyArrayObject*)PyArray_SimpleNew(1, &size, NPY_INT32);
+  PyArrayObject * count_arr = (PyArrayObject*)PyArray_SimpleNew(1, &size, NPY_FLOAT32);
   PyArrayObject * mean_arr  = (PyArrayObject*)PyArray_SimpleNew(1, &size, NPY_FLOAT32);
   PyArrayObject * var_arr   = (PyArrayObject*)PyArray_SimpleNew(1, &size, NPY_FLOAT32);
  
@@ -442,11 +450,11 @@ static PyObject * Gaussian_merge_many_py(int exemplars, int trees, Summary * sum
   int i, j;
   for (j=0; j<exemplars; j++)
   {
-   int * count  = (int*)PyArray_GETPTR1(count_arr, j);
-   float * mean = (float*)PyArray_GETPTR1(mean_arr, j);
-   float * var  = (float*)PyArray_GETPTR1(var_arr, j);
+   float * count = (float*)PyArray_GETPTR1(count_arr, j);
+   float * mean  = (float*)PyArray_GETPTR1(mean_arr, j);
+   float * var   = (float*)PyArray_GETPTR1(var_arr, j);
    
-   *count = 0;
+   *count = 0.0;
    *mean = 0.0;
    *var = 0.0;
     
@@ -455,15 +463,15 @@ static PyObject * Gaussian_merge_many_py(int exemplars, int trees, Summary * sum
     Gaussian * targ = (Gaussian*)sums[j*trees + i];
     if (magic!=NULL) targ = (Gaussian*)magic(targ, extra);
     
-    int new_count = *count + targ->count;
+    float new_count = *count + targ->count;
     float delta = targ->mean - (*mean);
-    float offset = delta * targ->count / (float)new_count;
+    float offset = delta * targ->count / new_count;
     *mean += offset;
     *var += (targ->var * targ->count) + offset * (*count) * delta;
     *count = new_count;
    }
    
-   if (*count!=0) *var /= *count;
+   if (*count>1e-6) *var /= *count;
   }  
  
  // Build and return the dictionary of arrays...
@@ -482,7 +490,7 @@ static PyObject * Gaussian_string(Summary self)
  char * ms = PyOS_double_to_string(this->mean, 'f', 3, 0, NULL);
  char * vs = PyOS_double_to_string(this->var, 'f', 3, 0, NULL);
  
- PyObject * ret = PyString_FromFormat("gaussian(%s,%s|%i)", ms, vs, this->count);
+ PyObject * ret = PyString_FromFormat("gaussian(%s,%s|%f)", ms, vs, this->count);
  
  PyMem_Free(ms);
  PyMem_Free(vs);
@@ -495,7 +503,7 @@ const SummaryType GaussianSummary =
 {
  'G',
  "Gaussian",
- "Expects continuous valued values, which it models with a Gaussian distribution. For output it dumps a dictionary - indexed by 'count' for the number of samples that went into the calculation, 'mean' for the mean and 'var' for the variance. For a single sample these will go to standard python floats, for an array evaluation to numpy arrays. When returning errors it returns the absolute difference between the mean and actual value.",
+ "Expects continuous valued values, which it models with a Gaussian distribution. For output it dumps a dictionary - indexed by 'count' for the number of samples that went into the calculation (float as weighted), 'mean' for the mean and 'var' for the variance. For a single sample these will go to standard python floats, for an array evaluation to numpy arrays. When returning errors it returns the absolute difference between the mean and actual value, weighted",
  Gaussian_init_size,
  Gaussian_init,
  Gaussian_error,
@@ -513,7 +521,7 @@ typedef struct BiGaussian BiGaussian;
 
 struct BiGaussian
 {
- int count; // # Of samples that went into the distribution - has its uses.
+ float count; // # Of samples that went into the distribution - has its uses.
  float mean[2];
  float var[2];
  float covar;
@@ -531,7 +539,7 @@ static void BiGaussian_init(Summary self, DataMatrix * dm, IndexView * view, int
  
  int i, k;
  
- this->count = 0;
+ this->count = 0.0;
  for (k=0; k<2; k++)
  {
   this->mean[k] = 0.0;
@@ -546,21 +554,24 @@ static void BiGaussian_init(Summary self, DataMatrix * dm, IndexView * view, int
   
   value[0] = DataMatrix_GetContinuous(dm, exemplar, feature);
   value[1] = DataMatrix_GetContinuous(dm, exemplar, feature+1);
+  float w = DataMatrix_GetWeight(dm, exemplar);
   
-  this->count += 1;
+  float new_count = this->count + w;
   float delta[2];
   
   for (k=0; k<2; k++)
   {
    delta[k] = value[k] - this->mean[k];
-   this->mean[k] += delta[k] / this->count;
-   this->var[k] += delta[k] * (value[k] - this->mean[k]);
+   float offset = (delta[k] * w) / new_count;
+   this->mean[k] += offset;
+   this->var[k] += this->count * delta[k] * offset;
   }
   
-  this->covar += delta[0] * (value[1] - this->mean[1]);
+  this->covar += w * delta[0] * (value[1] - this->mean[1]);
+  this->count = new_count;
  }
  
- if (this->count!=0)
+ if (this->count>1e-6)
  {
   for (k=0; k<2; k++)
   {
@@ -577,17 +588,23 @@ static float BiGaussian_error(int trees, Summary * sums, SummaryMagic magic, int
  
  // Calculate the mean of all the trees...
   float mean[2] = {0.0, 0.0};
-  float count = 0.0;
+  float weight[2] = {0.0, 0.0};
   
   int i;
   for (i=0; i<trees; i++)
   {
    BiGaussian * targ = (BiGaussian*)sums[i];
    if (magic!=NULL) targ = (BiGaussian*)magic(targ, extra);
-   
-   count += targ->count;
-   mean[0] += (targ->mean[0] - mean[0]) * targ->count / count;
-   mean[1] += (targ->mean[1] - mean[1]) * targ->count / count;
+
+   int k;
+   for (k=0; k<2; k++)
+   {
+    float w = 1.0 / targ->var[k];
+    if (w>1e6) w = 1e6;
+    
+    weight[k] += w;
+    mean[k] += (targ->mean[k] - mean[k]) * w / weight[k];
+   }
   }
  
  // Return the absolute difference between the provided value and the mean...
@@ -597,7 +614,7 @@ static float BiGaussian_error(int trees, Summary * sums, SummaryMagic magic, int
   delta0 -= mean[0];
   delta1 -= mean[1];
   
-  return sqrt(delta0*delta0 + delta1*delta1);
+  return sqrt(delta0*delta0 + delta1*delta1) * DataMatrix_GetWeight(dm, exemplar);
 }
 
 
@@ -608,7 +625,7 @@ static PyObject * BiGaussian_merge_py(int trees, Summary * sums, SummaryMagic ma
  // Create the output variables...
   npy_intp dims[2] = {2, 2};
   
-  int count = 0;
+  float count = 0.0;
   PyArrayObject * mean_arr = (PyArrayObject*)PyArray_SimpleNew(1, dims, NPY_FLOAT32);
   PyArrayObject * covar_arr = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
   
@@ -634,23 +651,23 @@ static PyObject * BiGaussian_merge_py(int trees, Summary * sums, SummaryMagic ma
    BiGaussian * targ = (BiGaussian*)sums[i];
    if (magic!=NULL) targ = (BiGaussian*)magic(targ, extra);
    
-   int new_count = count + targ->count;
+   float new_count = count + targ->count;
    float delta[2];
    
    for (k=0; k<2; k++)
    {
     delta[k] = targ->mean[k] - (*mean[k]);
-    float offset = delta[k] * targ->count / (float)new_count;
+    float offset = delta[k] * targ->count / new_count;
     *mean[k] += offset;
     *var[k] += (targ->var[k] * targ->count) + offset * count * delta[k];
    }
    
-   *covar += (targ->covar * targ->count) + delta[0] * delta[1] * count * targ->count / (float)new_count;
+   *covar += (targ->covar * targ->count) + delta[0] * delta[1] * count * targ->count / new_count;
    
    count = new_count;
   }
   
-  if (count!=0)
+  if (count>1e-6)
   {
    *var[0] /= count;
    *var[1] /= count;
@@ -659,7 +676,7 @@ static PyObject * BiGaussian_merge_py(int trees, Summary * sums, SummaryMagic ma
   *(float*)PyArray_GETPTR2(covar_arr, 1, 0) = *covar;
   
  // Build and return a dictionary containing the required values...
-  return Py_BuildValue("{sisNsN}", "count", count, "mean", mean_arr, "covar", covar_arr);
+  return Py_BuildValue("{sfsNsN}", "count", count, "mean", mean_arr, "covar", covar_arr);
 }
 
 static PyObject * BiGaussian_merge_many_py(int exemplars, int trees, Summary * sums, SummaryMagic magic, int extra)
@@ -669,7 +686,7 @@ static PyObject * BiGaussian_merge_many_py(int exemplars, int trees, Summary * s
  // Create the output variables...
   npy_intp dims[3] = {exemplars, 2, 2};
   
-  PyArrayObject * count_arr = (PyArrayObject*)PyArray_SimpleNew(1, dims, NPY_INT32);
+  PyArrayObject * count_arr = (PyArrayObject*)PyArray_SimpleNew(1, dims, NPY_FLOAT32);
   PyArrayObject * mean_arr = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
   PyArrayObject * covar_arr = (PyArrayObject*)PyArray_SimpleNew(3, dims, NPY_FLOAT32);
   
@@ -677,7 +694,7 @@ static PyObject * BiGaussian_merge_many_py(int exemplars, int trees, Summary * s
   for (j=0; j<exemplars; j++)
   {
    // Get pointers to all the output variables...
-    int * count = (int*)PyArray_GETPTR1(count_arr, j);
+    float * count = (float*)PyArray_GETPTR1(count_arr, j);
     float * mean[2];
     float * var[2];
     float * covar;
@@ -700,23 +717,23 @@ static PyObject * BiGaussian_merge_many_py(int exemplars, int trees, Summary * s
      BiGaussian * targ = (BiGaussian*)sums[j*trees+i];
      if (magic!=NULL) targ = (BiGaussian*)magic(targ, extra);
    
-     int new_count = *count + targ->count;
+     float new_count = *count + targ->count;
      float delta[2];
    
      for (k=0; k<2; k++)
      {
       delta[k] = targ->mean[k] - (*mean[k]);
-      float offset = delta[k] * targ->count / (float)new_count;
+      float offset = delta[k] * targ->count / new_count;
       *mean[k] += offset;
       *var[k] += (targ->var[k] * targ->count) + offset * (*count) * delta[k];
      }
    
-     *covar += (targ->covar * targ->count) + delta[0] * delta[1] * (*count) * targ->count / (float)new_count;
+     *covar += (targ->covar * targ->count) + delta[0] * delta[1] * (*count) * targ->count / new_count;
    
      *count = new_count;
     }
   
-    if (*count!=0)
+    if (*count>1e-6)
     {
      *var[0] /= *count;
      *var[1] /= *count;
@@ -746,7 +763,7 @@ static PyObject * BiGaussian_string(Summary self)
  
  char * cvs = PyOS_double_to_string(this->covar, 'f', 3, 0, NULL);
  
- PyObject * ret = PyString_FromFormat("gaussian([%s,%s],[[%s,%s],[%s,%s]]|%i)", m0s, m1s, v0s, cvs, cvs, v1s, this->count);
+ PyObject * ret = PyString_FromFormat("gaussian([%s,%s],[[%s,%s],[%s,%s]]|%f)", m0s, m1s, v0s, cvs, cvs, v1s, this->count);
  
  PyMem_Free(m0s);
  PyMem_Free(m1s);
