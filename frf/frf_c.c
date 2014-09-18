@@ -112,10 +112,37 @@ static PyObject * TreeBuffer_nodes_py(TreeBuffer * self, PyObject * args)
  return Py_BuildValue("i", nodes);
 }
 
+static PyObject * TreeBuffer_trained_py(TreeBuffer * self, PyObject * args)
+{
+ return Py_BuildValue("i", self->tree->trained);
+}
+
 
 static PyObject * TreeBuffer_human_py(TreeBuffer * self, PyObject * args)
 {
  return Tree_human(self->tree);
+}
+
+
+static PyObject * TreeBuffer_importance_py(TreeBuffer * self, PyObject * args)
+{
+ // Get the data...
+  int length;
+  const float * importance = Tree_importance(self->tree, &length);
+ 
+ // Create a numpy array...
+  npy_intp dim = length;
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &dim, NPY_FLOAT32);
+
+ // Fill it in...
+  int i;
+  for (i=0; i<length; i++)
+  {
+   *(float*)PyArray_GETPTR1(ret, i) = importance[i];
+  }
+  
+ // Return...
+  return (PyObject*)ret;
 }
 
 
@@ -175,7 +202,9 @@ static PyMethodDef TreeBuffer_methods[] =
  {"head_size", (PyCFunction)TreeBuffer_head_size_py, METH_NOARGS | METH_STATIC, "Returns how many bytes are in the header of a Tree, so you can read the entire header from a stream."},
  {"size_from_head", (PyCFunction)TreeBuffer_size_from_head_py, METH_VARARGS | METH_STATIC, "Given the head, as a read-only buffer compatible object (string, return value of read(), numpy array.) this returns the size of the associated tree, or throws an error if there is something wrong."},
  {"nodes", (PyCFunction)TreeBuffer_nodes_py, METH_NOARGS, "Returns how many nodes are in the tree."},
+ {"trained", (PyCFunction)TreeBuffer_trained_py, METH_NOARGS, "Returns how many exemplars were used to train this tree."},
  {"human", (PyCFunction)TreeBuffer_human_py, METH_NOARGS, "Returns a human understandable representation of the tree - horribly inefficient data structure and of no use beyond human consumption, so for testing/diagnostics/curiosity only. Each leaf node is represented by a string giving the distributions assigned to the output variables, each test by a string. Non-leaf nodes are then represented by dictionaries, containing 'test', 'pass' and 'fail'."},
+ {"importance", (PyCFunction)TreeBuffer_importance_py, METH_NOARGS, "Returns a new numpy vector of the importance of each feature as inferred from the trainning of this tree. The vector contains the sum from each split of how much information gain the feature of the split provided, multiplied by the number of training exemplars that went through the split."},
  {NULL}
 };
 
@@ -1353,6 +1382,45 @@ static PyObject * Forest_error_py(Forest * self, PyObject * args)
 
 
 
+static PyObject * Forest_importance_py(Forest * self, PyObject * args)
+{
+ // Check the user is not making silly requests...
+  if (self->trees==0)
+  {
+   PyErr_SetString(PyExc_ValueError, "You need trees to query feature importance - go plant some.");
+   return NULL; 
+  }
+ 
+ // Create the return array...
+  npy_intp dim = self->x_feat;
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &dim, NPY_FLOAT32);
+ 
+ // Zero it out...
+  int f;
+  for (f=0; f<self->x_feat; f++)
+  {
+   *(float*)PyArray_GETPTR1(ret, f) = 0.0;
+  }
+  
+ // Fill it up...
+  int t;
+  for (t=0; t<self->trees; t++)
+  {
+   const float * importance = Tree_importance(self->tree[t]->tree, NULL);
+   
+   float div = self->tree[t]->tree->trained * self->trees;
+   for (f=0; f<self->x_feat; f++)
+   {
+    *(float*)PyArray_GETPTR1(ret, f) += importance[f] / div;
+   }
+  }
+ 
+ // Return...
+  return (PyObject*)ret;
+}
+
+
+
 static Py_ssize_t Forest_Length(Forest * self)
 {
  return self->trees; 
@@ -1484,7 +1552,7 @@ static PyMethodDef Forest_methods[] =
  {"load", (PyCFunction)Forest_load_py, METH_VARARGS, "Given an entire header (See initial_size and size_from_initial for how to do this) as a read-only buffer compatible object this initialises this object to those settings. If there are any trees they will be terminated. Can raise a whole litany of errors. Returns how many trees follow the header - it is upto the user to then load them from whatever stream is providing the information."},
  
  {"configure", (PyCFunction)Forest_configure_py, METH_VARARGS, "Configures the object - must be called before any learning, unless load is used instead. Takes three tag strings - first for summary, next for info, final for learn. Summary and info must have the same length, being the number of output features in length, whilst learn is the length of the number of input features. See the various _list static methods for lists of possible codes. Will throw an error if any are wrong. It can optionally have two further parameters - an array of category counts for x/input and an array of category counts for y/output - these are used when building categorical distributions over a feature to decide on the range, which will be [0,cateogory). Values outside the range will be treated as unknown. Negative values in these arrays are ignored, and the system reverts to calculating them automatically."},
- {"set_ratios", (PyCFunction)Forest_set_ratios_py, METH_VARARGS, "Sets the ratios to use when balancing the priority of learning each output feature - must be a 2D numpy array with the first dimension indexed by depth, the second indexed by output feature. The depth is indexed modulus its size, so you can have a repeating structure. Can only be called on a ready Forest, and keeps a pointer to the array, so you can change its values afterwards if you want."},
+ {"set_ratios", (PyCFunction)Forest_set_ratios_py, METH_VARARGS, "Sets the ratios to use when balancing the priority of learning each output feature - must be a 2D numpy array with the first dimension indexed by depth, the second indexed by output feature. The depth is indexed modulus its size, so you can have a repeating structure. Can only be called on a ready Forest, and keeps a pointer to the array, so you can change its values afterwards if you want. Note that the ratios effect the feature importance measure - if you are using that its probably wise to normalise each set of depth ratios, so the contributions from each level are comparable."},
  
  {"save", (PyCFunction)Forest_save_py, METH_NOARGS, "Returns the header for this Forest, such that it can be saved to disk/stream etc. and later loaded. Return value is a bytearray"},
  {"clone", (PyCFunction)Forest_clone_py, METH_NOARGS, "Returns a new Forest with the exact same setup as this one, but no trees. Be warned that it also duplicates the key for the random number generator, so any new trees trained with the same data in both will be identical - may want to change the key after cloning."},
@@ -1499,6 +1567,8 @@ static PyMethodDef Forest_methods[] =
  
  {"predict", (PyCFunction)Forest_predict_py, METH_VARARGS, "Given an x/input data matrix (With support for a tuple of matrices identical to train.) returns what it knows about the output data matrix. Return will be a list indexed by feature, with the contents defined by the summary codes (Typically a dictionary of arrays, often of things like 'prob' or 'mean'). You can provide a second parameter as in exemplar index if you want to just do one item from the data matrix, but note that this is very inefficient compared to doing everything at once in a single data matrix (Or several large data matrices if that is unreasonable)."},
  {"error", (PyCFunction)Forest_error_py, METH_VARARGS, "Given a x/input data matrix and a y/output data matrix of true answers (Same as train) this returns an array, indexed by output feature, of how much error exists in that channel. Same as the oob calculation, but using all trees and therefore for a hold out set etc. If you want a weighted output then it should be provided in the y data matrix - any weights in x will be ignored."},
+ 
+ {"importance", (PyCFunction)Forest_importance_py, METH_NOARGS, "Returns the importance of each feature as calculated during trainning for every tree currently in the forest. This is a new numpy vector indexed by feature that gives the information gain obtained from splits on that feature, weighted by the number of trainning exemplars that went through that split. Note that this is different from the tree version of this method, as it divided through by the number of exemplars, so the weighting is one only for the very first split, and then averages the vectors provided by all of the trees. This gives a metric which is average information gain (in nats, or whatever the training objective uses) provided by the feature per exemplar, though most people then normalise the entire vector to get a relative feature weighting."},
  
  {NULL}
 };

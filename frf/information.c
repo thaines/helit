@@ -739,6 +739,44 @@ float InfoSet_entropy(InfoSet * this, int depth)
  return ret;
 }
 
+float InfoSet_view_entropy(InfoSet * this, IndexView * iv, int depth)
+{
+ // Reset the fail half...
+  int i;
+  for (i=0; i<this->features; i++)
+  {
+   Info_reset(this->pair[i].fail);
+  }
+  
+ // Add everything to the fail half...
+  int j;
+  for (j=0; j<iv->size; j++)
+  {
+   for (i=0; i<this->features; i++)
+   {
+    Info_add(this->pair[i].fail, iv->vals[j]);
+   }
+  }
+  
+ // Calculate and return its entropy...
+  float ret = 0.0;
+  for (i=0; i<this->features; i++)
+  {
+   float ratio = 1.0;
+   if (this->ratios!=NULL)
+   {
+    ratio = this->rat_func(PyArray_GETPTR2(this->ratios, depth % PyArray_DIMS(this->ratios)[0], i));
+   }
+
+   if (ratio>1e-6)
+   {
+    ret += ratio * Info_entropy(this->pair[i].fail);
+   }
+  }
+   
+ return ret;
+}
+
 
 
 void Setup_Information(void)

@@ -9,6 +9,7 @@
 
 
 #include "learner.h"
+#include "information.h"
 
 #include "tree.h"
 
@@ -26,6 +27,16 @@ struct Node
  // The test to decide which direction to go - code stored here, with the actual test data stored immediatly afterwards...
   char code;
   char test[0];
+};
+
+
+// Define the Importance object, which gives the importance of each feature...
+typedef struct Importance Importance;
+
+struct Importance
+{
+ int features;
+ float gain[0];
 };
 
 
@@ -144,13 +155,30 @@ size_t Tree_type_size(int count)
 
 
 // The learn method and supporting function - fairly involved due to the insane packing requirements. Learning is done recursivly using a general array of pointers structure above, so it can all be packed at the end...
-void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, IndexView * view, ReportSummarisation rs, void * rs_ptr)
+void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, IndexView * view, ReportSummarisation rs, void * rs_ptr, float * importance)
 {
+ // Calculate the entropy of the data set we have...
+  float entropy = InfoSet_view_entropy(param->is, view, depth);
+  
  // Attempt to learn a split, unless we have already reached some split-preventing limit...
   int do_node = 0;
+  float info_gain = 0.0;
   if (depth<param->max_splits)
   {
    do_node = LearnerSet_optimise(param->ls, param->is, view, param->opt_features, depth, param->key);
+   
+   if (do_node!=0)
+   {
+    float split_entropy = LearnerSet_entropy(param->ls);
+    if (split_entropy>=entropy)
+    {
+     do_node = 0; // Its not an improvement - cancel. 
+    }
+    else
+    {
+     info_gain = entropy - split_entropy;
+    }
+   }
   }
   
  // If we have found a split create the node...
@@ -192,17 +220,24 @@ void Node_learn(PtrArray * store, int index, int depth, TreeParam * param, Index
    PtrArray_set(store, index, 'S', (void*)ss);
    if (rs!=NULL) rs(view->size, rs_ptr);
   }
+  
+ // If a split has occured record the information gain against the selected feature, for calculating feature importance...
+  if (node!=NULL)
+  {
+   int f = LearnerSet_feature(param->ls);
+   importance[f] += info_gain * view->size;
+  }
  
  // If its a node then we need to recurse...
   if (node!=NULL)
   {
    // First do the fail half...
     node->fail = store->count;
-    Node_learn(store, node->fail, depth+1, param, &fail, rs, rs_ptr);
+    Node_learn(store, node->fail, depth+1, param, &fail, rs, rs_ptr, importance);
     
    // Then do the pass half...
     node->pass = store->count;
-    Node_learn(store, node->pass, depth+1, param, &pass, rs, rs_ptr);
+    Node_learn(store, node->pass, depth+1, param, &pass, rs, rs_ptr, importance);
   }
 }
 
@@ -212,11 +247,24 @@ Tree * Tree_learn(TreeParam * param, IndexSet * indices, ReportSummarisation rs,
  // Create the temporary storage of all the blocks...
   PtrArray * store = PtrArray_new();
   
+ // Create the storage for the feature importance calculation...
+  int importance_size = sizeof(Importance) + param->x->features * sizeof(float);
+  Importance * importance = (Importance*)malloc(importance_size);
+  importance->features = param->x->features;
+  
+  int i;
+  for (i=0; i<importance->features; i++)
+  {
+   importance->gain[i] = 0.0;
+  }
+  
  // Start from the top and learn the tree with a recursive function...
   IndexView view;
   IndexView_init(&view, indices);
   
-  Node_learn(store, 1, 0, param, &view, rs, rs_ptr);
+  Node_learn(store, 1, 0, param, &view, rs, rs_ptr, importance->gain);
+  
+  PtrArray_set(store, store->count, 'I', (void*)importance); // Store importance at the end so it gets stored in the next bit.
  
  // Build memory block zero - the block type codes; count how many bytes all the blocks consume at the same time...
   size_t type_size = Tree_type_size(store->count);
@@ -225,8 +273,7 @@ Tree * Tree_learn(TreeParam * param, IndexSet * indices, ReportSummarisation rs,
   PtrArray_set(store, 0, 'T', (void*)types);
   types[0] = 'T';
   
-  int i;
-  size_t total_size = type_size;
+  size_t total_size = type_size + importance_size;
   for (i=1; i<store->count; i++)
   {
    void * block = PtrArray_get(store, i, types + i);
@@ -236,9 +283,12 @@ Tree * Tree_learn(TreeParam * param, IndexSet * indices, ReportSummarisation rs,
     Node * targ = (Node*)block;
     total_size += sizeof(Node) + Test_size(targ->code, (void*)targ->test);
    }
-   else // types[i] = 'S'
+   else
    {
-    total_size += SummarySet_size((SummarySet*)block);
+    if (types[i]=='S')
+    {
+     total_size += SummarySet_size((SummarySet*)block);
+    } // types[i]=='I' already factored in
    }
   }
  
@@ -251,8 +301,9 @@ Tree * Tree_learn(TreeParam * param, IndexSet * indices, ReportSummarisation rs,
   this->magic[1] = 'R';
   this->magic[2] = 'F';
   this->magic[3] = 'T';
-  this->revision = 1;
+  this->revision = FRF_REVISION;
   this->size = tree_size + total_size;
+  this->trained = view.size;
   this->index = NULL;
   
   this->objects = store->count;
@@ -271,9 +322,16 @@ Tree * Tree_learn(TreeParam * param, IndexSet * indices, ReportSummarisation rs,
       Node * targ = (Node*)block;
       size = sizeof(Node) + Test_size(targ->code, (void*)targ->test);
      }
-     else // types[i] = 'S'
+     else
      {
-      size = SummarySet_size((SummarySet*)block);
+      if (types[i]=='S')
+      {
+       size = SummarySet_size((SummarySet*)block);
+      }
+      else // types[i]=='I'
+      {
+       size = importance_size;
+      }
      }
     }
    
@@ -297,7 +355,7 @@ Tree * Tree_learn(TreeParam * param, IndexSet * indices, ReportSummarisation rs,
 // The rest of the Tree methods...
 int Tree_safe(Tree * this)
 {
- if ((this->magic[0]!='F')||(this->magic[1]!='R')||(this->magic[2]!='F')||(this->magic[3]!='T')||(this->revision!=1))
+ if ((this->magic[0]!='F')||(this->magic[1]!='R')||(this->magic[2]!='F')||(this->magic[3]!='T')||(this->revision!=FRF_REVISION))
  {
   // Not a tree...
    PyErr_SetString(PyExc_ValueError, "Tree has bad header");
@@ -321,7 +379,8 @@ int Tree_init(Tree * this)
  for (i=1; i<this->objects; i++)
  {
   this->index[i] = (char*)this + offset;
-  if ('N'==((char*)this->index[0])[i])
+  char code = ((char*)this->index[0])[i];
+  if ('N'==code)
   {
    // Node...
     Node * targ = (Node*)this->index[i];
@@ -329,8 +388,15 @@ int Tree_init(Tree * this)
   }
   else
   {
-   // Summary...
-    offset += SummarySet_size((SummarySet*)this->index[i]);
+   if ('S'==code)
+   {
+    // Summary...
+     offset += SummarySet_size((SummarySet*)this->index[i]);
+   }
+   else // 'I'==code
+   {
+    offset += sizeof(int) + sizeof(float) * ((Importance*)this->index[i])->features;
+   }
   }
   
   if (offset>this->size)
@@ -470,6 +536,14 @@ PyObject * Tree_human_rec(Tree * this, int object)
 PyObject * Tree_human(Tree * this)
 {
  return Tree_human_rec(this, 1); 
+}
+
+const float * Tree_importance(Tree * this, int * length)
+{
+ Importance * imp = (Importance*)this->index[this->objects-1];
+ 
+ if (length!=NULL) *length = imp->features;
+ return imp->gain;
 }
 
 

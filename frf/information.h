@@ -20,6 +20,7 @@
 #include <numpy/arrayobject.h>
 
 #include "data_matrix.h"
+#include "index_set.h"
 
 
 
@@ -141,8 +142,12 @@ void InfoSet_pass_remove(InfoSet * this, int exemplar);
 void InfoSet_fail_add(InfoSet * this, int exemplar);
 void InfoSet_fail_remove(InfoSet * this, int exemplar);
 
+
 // Returns the entropy of the current split, weighted by the number of samples in each half. If ratios is provided then depth is used to index and weight the outputed entropy...
 float InfoSet_entropy(InfoSet * this, int depth);
+
+// Returns the entropy of the given index view - a kind of helper function in a sense as you can do this by adding the entire index view to one half and leaving the other empty, but this is more efficient. Will leave the InfoSet in state where you will want to reset it before next use. Depth provides ratios for the level...
+float InfoSet_view_entropy(InfoSet * this, IndexView * iv, int depth);
 
 
 

@@ -517,6 +517,11 @@ int LearnerSet_optimise(LearnerSet * this, InfoSet * info, IndexView * view, int
                 else return 0;
 }
 
+int LearnerSet_feature(LearnerSet * this)
+{
+ return this->best; 
+}
+
 float LearnerSet_entropy(LearnerSet * this)
 {
  return Learner_entropy(this->learn[this->best]); 

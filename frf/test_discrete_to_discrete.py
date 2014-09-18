@@ -133,3 +133,12 @@ for i in xrange(human_test):
     human_success += 1
 
 print 'Of %i humans %i (%.1f%%) were correctly detected.'%(human_test, human_success, 100.0*human_success/float(human_test))
+print
+
+
+# Vomit out feature importance...
+print 'Feature importance:'
+for t, tree in enumerate(forest):
+  print 'Tree  %i:'%t, '[', ' '.join(['%6.3f'%f for f in tree.importance()]), ']  (trained with %i exemplars)'%tree.trained()
+
+print 'Overall:', '[', ' '.join(['%6.3f'%f for f in forest.importance()]), ']'

@@ -21,18 +21,13 @@
 
 
 
-// To be incrimented each time the previous file format no longer works and I am too lazy to add conversion capabilities...
-#define FRF_REVISION 2
-
-
-
 // Define struct used for Forest I/O...
 typedef struct ForestHeader ForestHeader;
 
 struct ForestHeader
 {
  char magic[4]; // 'FRFF'
- int revision; // Whatever FRF_REVISION is defined as.
+ int revision; // Whatever FRF_REVISION is defined as (in tree.h).
  long long size; // Total size of just the header, ignoring trees.
  
  int trees; // Number of trees that follow this header. Can be ignored if appropriate.

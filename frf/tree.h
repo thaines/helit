@@ -18,6 +18,11 @@
 
 
 
+// To be incrimented each time the previous file format no longer works and I am too lazy to add conversion capabilities...
+#define FRF_REVISION 3
+
+
+
 // 'Simple' structure of stuff to pass into a tree - makes life easier...
 typedef struct TreeParam TreeParam;
 
@@ -45,12 +50,12 @@ typedef struct Tree Tree;
 struct Tree
 {
  char magic[4]; // Magic number 'FRFT'
- int revision; // Incase there are ever multiple formats - currently 1.
+ int revision; // Incase there are ever multiple formats - FRF_REVISION.
  long long size; // How big entire tree blob is - assuming long long is 64 bits.
   
+ int trained; // How many exemplars were used to train this tree.
  int objects; // Number of entities.
- int dummy; // So the below is definitly on the 8 byte boundary - compiler would probably put it there anyway.
- void ** index; // Index - gets you a pointer to each object. Has to be rebuilt after reloading. Note - first object is an int aligned array of chars, giving types for the rest of the objects. 'N' for node, 'S' for summary.
+ void ** index; // Index - gets you a pointer to each object. Has to be rebuilt after reloading. Note - first object (position 0) is an int aligned array of chars, giving types for the rest of the objects. 'N' for node, 'S' for summary. The root of the tree is always at position 1. The final object can be of type 'I', and contain feature importance, as sum of information gain multiplied by training exemplars that went through split.
 };
 
 
@@ -91,6 +96,8 @@ void Tree_run_many(Tree * this, DataMatrix * x, IndexSet * is, SummarySet ** out
 // Converts the Tree into a Python object suitable for human consumption - tests and summaries (leaf nodes) are represented as strings, whilst non-leaf nodes are represented with dictionaries, containing 'test', 'pass' and 'fail'...
 PyObject * Tree_human(Tree * this);
 
+// Returns a pointer to the feature importance vector that was calculated on tree creation, optionally outputting the feature count into the pointer. Feature importance is calculated by summing into this vector for each learnt split the number of nodes the split was over multiplied by the information gain of the split, for the relevant feature...
+const float * Tree_importance(Tree * this, int * length);
 
 
 // Setup this module - for internal use only...
