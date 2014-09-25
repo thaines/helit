@@ -37,6 +37,9 @@ class TileImage(Layer):
     
     # A tint, so we can fade the image out to put content over the top of it...
     self.tint = 0.0
+    
+    # So we can hide it...
+    self.visible = True
 
   def load(self, fn):
     """Replaces the current image with a new one. You can provide none to get a default image, as standin until you load a real image."""
@@ -164,6 +167,8 @@ class TileImage(Layer):
   
   def draw(self, ctx, vp):
     """Draws the image into the provided context, matching the provided viewport."""
+    if not self.visible:
+      return
     
     # Calculate the scale, base coordinates and number of tiles in each dimension...
     scale = vp.width / float(vp.end_x - vp.start_x)
