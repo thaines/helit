@@ -74,12 +74,12 @@ float mult_area_gaussian(int dims, int terms, const float ** fv, const float ** 
 
 
 // As above, but for the Fisher distribution - can also be done analytically basically, but with extra nasty normalisation terms...
-float mult_area_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache);
+float mult_area_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache, int force_approximate);
 
 
 
 // As above, but for the mirrored Fisher distribution - kinda nasty as the amount of computation is exponential in the number of terms, but it remains analytic...
-float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache);
+float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache, int force_approximate);
 
 
 

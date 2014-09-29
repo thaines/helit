@@ -184,7 +184,7 @@ float mult_area_gaussian(int dims, int terms, const float ** fv, const float ** 
 
 
 
-float mult_area_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float mult_area_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache, int force_approximate)
 {
  MultCache_ensure(cache, dims, terms);
  
@@ -206,36 +206,68 @@ float mult_area_fisher(float conc, float log_norm, int dims, int terms, const fl
   
   for (i=0; i<dims; i++) dir[i] /= mult_conc;
   
- // Choose a point - the mode of the multiplied distributions (dir) is safe - and work out the ratio between the area one value and multiplication value, as this gives us the area under the multiplication of the distributions...
-  float exp_me = 0.0;
-  
-  // Put in the value of the normalised distribution...
-   exp_me -= mult_conc;
-   exp_me -= (0.5 * dims - 1) * log(mult_conc);
-   exp_me += (0.5 * dims) * log(2 * M_PI);
-   exp_me += LogModBesselFirst(dims-2, mult_conc, 1e-6, 1024);
-   
-  // Loop through and divide by each Fisher in turn...
-   for (j=0; j<terms; j++)
+ // Choose a point - the mode of the multiplied distributions (dir) is safe - and work out the ratio between the area one value and multiplication value, as this gives us the area under the multiplication of the distributions. Either approximate with Gaussians or done properly...
+  if ((mult_conc>CONC_SWITCH)||(force_approximate))
+  {
+   if (!force_approximate)
    {
-    float dot = 0.0;
-    for (i=0; i<dims; i++) dot += dir[i] * fv[j][i];
-    exp_me += conc * dot + log_norm;
+    // log_norm contains the correct normaliser, not the one used with the Gaussian approximation - fix that...
+     log_norm = (-0.5*(dims-1)) * log(2 * M_PI / conc);
    }
- 
- return exp(exp_me);
+   
+   float exp_me = 0.0;
+   
+   // Put in the value of the normalised distribution...
+    exp_me -= (-0.5*(dims-1)) * log(2 * M_PI / mult_conc);
+   
+   // Loop through and divide by each Fisher in turn...
+    for (j=0; j<terms; j++)
+    {
+     float dot = 0.0;
+     for (i=0; i<dims; i++) dot += dir[i] * fv[j][i];
+     
+     exp_me += -0.5 * conc * (1.0 - dot*dot) + log_norm;
+    }
+   
+   // Return the calculated ratio, which matches the area as we started with a volume of one by defintion of them being PDFs...
+    return exp(exp_me);
+  }
+  else
+  {
+   float exp_me = 0.0;
+  
+   // Put in the value of the normalised distribution...
+    exp_me -= mult_conc;
+    exp_me -= (0.5 * dims - 1) * log(mult_conc);
+    exp_me += (0.5 * dims) * log(2 * M_PI);
+    exp_me += LogModBesselFirst(dims-2, mult_conc, 1e-6, 1024);
+   
+   // Loop through and divide by each Fisher in turn...
+    for (j=0; j<terms; j++)
+    {
+     float dot = 0.0;
+     for (i=0; i<dims; i++) dot += dir[i] * fv[j][i];
+     exp_me += conc * dot + log_norm;
+    }
+   
+   // Return the calculated ratio, which matches the area as we started with a volume of one by defintion of them being PDFs...
+    return exp(exp_me);
+  }
 }
 
 
 
-float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache, int force_approximate)
 {
  MultCache_ensure(cache, dims, terms);
 
- // Loop and calculate the ratio for each of the parts, where each part isa multiplication of different halves from each distrubution in the multiplicand - use the mirroring to halve the number, but this remains very brute force...
+ // Loop and calculate the ratio for each of the parts, where each part is a multiplication of different halves from each distrubution in the multiplicand - use the mirroring to halve the number, but this remains very brute force...
   float ret = 0.0;
   int parts = 1 << (terms-1);
   float * dir = cache->temp_dims1;
+  
+  int approx_setup = 0;
+  float log_norm_approx = 0.0;
   
   int i, j, p;
   for (p=0; p<parts; p++)
@@ -259,23 +291,50 @@ float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, c
     
    // Calculate the area under the multiplied distribution using the single point ratio trick, and sum it into the return value...
     float exp_me = 0.0;
-  
-    // Value of the normalised distribution...
-     exp_me -= mult_conc;
-     exp_me -= (0.5 * dims - 1) * log(mult_conc);
-     exp_me += (0.5 * dims) * log(2 * M_PI);
-     exp_me += LogModBesselFirst(dims-2, mult_conc, 1e-6, 1024);
+    
+    if ((mult_conc>CONC_SWITCH)||(force_approximate))
+    {
+     if (approx_setup==0)
+     {
+      approx_setup = 1;
+      if (force_approximate) log_norm_approx = log_norm;
+      else
+      {
+       log_norm_approx = (-0.5*(dims-1)) * log(2 * M_PI / conc);
+      }
+     }
+     
+    // Put in the value of the normalised distribution...
+     exp_me -= (-0.5*(dims-1)) * log(2 * M_PI / mult_conc);
    
-    // Divide by each Fisher in turn...
+    // Loop through and divide by each Fisher in turn...
      for (j=0; j<terms; j++)
      {
-      int sign = 1;
-      if (((p<<1)>>j)&1) sign = -1;
-       
       float dot = 0.0;
-      for (i=0; i<dims; i++) dot += sign * dir[i] * fv[j][i];
-      exp_me += conc * dot + log_norm;
+      for (i=0; i<dims; i++) dot += dir[i] * fv[j][i];
+     
+      exp_me += -0.5 * conc * (1.0 - dot*dot) + log_norm_approx;
      }
+    }
+    else
+    {
+     // Value of the normalised distribution...
+      exp_me -= mult_conc;
+      exp_me -= (0.5 * dims - 1) * log(mult_conc);
+      exp_me += (0.5 * dims) * log(2 * M_PI);
+      exp_me += LogModBesselFirst(dims-2, mult_conc, 1e-6, 1024);
+   
+     // Divide by each Fisher in turn...
+      for (j=0; j<terms; j++)
+      {
+       int sign = 1;
+       if (((p<<1)>>j)&1) sign = -1;
+       
+       float dot = 0.0;
+       for (i=0; i<dims; i++) dot += sign * dir[i] * fv[j][i];
+       exp_me += conc * dot + log_norm;
+      }
+    }
  
    ret += exp(exp_me);
   }

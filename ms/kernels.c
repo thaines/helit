@@ -775,77 +775,101 @@ KernelConfig Fisher_config_new(int dims, const char * config)
   ret->ref_count = 1;
   ret->alpha = atof(config+1); // +1 to skip the '('.
   
+  int approximate = ret->alpha > CONC_SWITCH; // Should add override option; will require updating verify method. ************************************************
+  
  // Record the log of the normalising constant - we return normalised values for this distribution for reasons of numerical stability...
-  float bessel = LogModBesselFirst(dims-2, ret->alpha, epsilon, 1024);
+  const float log_2PI = log(2 * M_PI);
   
-  ret->log_norm  = (0.5 * dims - 1) * log(ret->alpha);
-  ret->log_norm -= (0.5 * dims) * log(2 * M_PI);
-  ret->log_norm -= bessel;
+  float bessel = 0.0;
+  if (approximate)
+  {
+   ret->log_norm = (-0.5*(dims-1)) * (log_2PI - log(ret->alpha));
+  }
+  else
+  {
+   bessel = LogModBesselFirst(dims-2, ret->alpha, epsilon, 1024);
+  
+   ret->log_norm  = (0.5 * dims - 1) * log(ret->alpha);
+   ret->log_norm -= (0.5 * dims) * log_2PI;
+   ret->log_norm -= bessel;
+  }
  
- // For the below we need the marginal over the dot product between directions...
-  float log_base = (0.5 * dims - 1) * (log(ret->alpha) - log(2));
-  log_base -= LogGamma(dims - 2);
-  log_base -= 0.5 * log(M_PI);  
-  log_base -= bessel;
-  
-  const int size = 4*1024;
-  const int size_big = 32 * size;
-  float * culm = (float*)malloc(size_big * sizeof(float));
-  
+ // Only create the inverse culm array if we are being accurate - its not required in approximate mode...
   int i;
-  for (i=0;i<size_big; i++)
+  if (approximate)
   {
-   float dot = ((float)(2*i)) / (size_big-1) - 1.0;
-   if (dot<(-1+epsilon)) dot = -1 + epsilon; // To avoid infinities
-   if (dot>(1-epsilon))  dot =  1 - epsilon; // "
+   ret->inv_culm_size = 0;
+   ret->inv_culm = NULL;
+  }
+  else
+  {
+   // For the below we need the marginal over the dot product between directions...
+    float log_base = (0.5 * dims - 1) * (log(ret->alpha) - log(2));
+    log_base -= LogGamma(dims - 2);
+    log_base -= 0.5 * log(M_PI);  
+    log_base -= bessel;
+  
+    const int size = 4*1024;
+    const int size_big = 32 * size;
+    float * culm = (float*)malloc(size_big * sizeof(float));
+    
+    for (i=0;i<size_big; i++)
+    {
+     float dot = ((float)(2*i)) / (size_big-1) - 1.0;
+     if (dot<(-1+epsilon)) dot = -1 + epsilon; // To avoid infinities
+     if (dot>(1-epsilon))  dot =  1 - epsilon; // "
      
-   culm[i] = ret->alpha * dot + log_base;
-   if (dims!=3) culm[i] += (0.5 * (dims - 3)) * log(1.0 - dot*dot);
-   culm[i] = exp(culm[i]);
-  }
+     culm[i] = ret->alpha * dot + log_base;
+     if (dims!=3) culm[i] += (0.5 * (dims - 3)) * log(1.0 - dot*dot);
+     culm[i] = exp(culm[i]);
+    }
   
- // Make the marginal culumative...
-  float spacing = 2.0 / (size_big-1);
-  float prev = culm[0];
-  culm[0] = 0.0;
+   // Make the marginal culumative...
+    float spacing = 2.0 / (size_big-1);
+    float prev = culm[0];
+    culm[0] = 0.0;
   
-  for (i=1;i<size_big; i++)
-  {
-   float temp = culm[i];
-   culm[i] = culm[i-1] + (prev + culm[i]) * 0.5 * spacing;
-   prev = temp;
-  }
+    for (i=1;i<size_big; i++)
+    {
+     float temp = culm[i];
+     culm[i] = culm[i-1] + (prev + culm[i]) * 0.5 * spacing;
+     prev = temp;
+    }
   
- // It should sum to 1, but numerical error is best corrected for - normalise...
-  for (i=0;i<size_big-1; i++)
-  {
-   culm[i] /= culm[size_big-1];
-  }
-  culm[size_big-1] = 1.0;
+   // It should sum to 1, but numerical error is best corrected for - normalise...
+    for (i=0;i<size_big-1; i++)
+    {
+     culm[i] /= culm[size_big-1];
+    }
+    culm[size_big-1] = 1.0;
   
- // Calculate and store the inverse culumative distribution over the dot product of the directions - this allows us to efficiently draw from the distribution...
-  ret->inv_culm_size = size;
-  ret->inv_culm = (float*)malloc(size * sizeof(float));
+   // Calculate and store the inverse culumative distribution over the dot product of the directions - this allows us to efficiently draw from the distribution...
+    ret->inv_culm_size = size;
+    ret->inv_culm = (float*)malloc(size * sizeof(float));
   
-  int j = 1;
+    int j = 1;
   
-  ret->inv_culm[0] = -1.0;
-  for (i=1; i<size-1; i++)
-  {
-   // Set j to be one above the value...
-    float pos = ((float)i) / (size-1);
-    while (culm[j]<pos) j += 1;
+    ret->inv_culm[0] = -1.0;
+    for (i=1; i<size-1; i++)
+    {
+     // Set j to be one above the value...
+      float pos = ((float)i) / (size-1);
+      while (culm[j]<pos) j += 1;
     
-   // Interpolate to fill in the relevant inverse value...
-    float div = culm[j] - culm[j-1];
-    if (div<epsilon) div = epsilon;
-    float t = (pos - culm[j-1]) / div;
-    float low = ((float)(2*(j-1))) / (size_big-1) - 1.0;
-    float high = ((float)(2*j)) / (size_big-1) - 1.0;
+     // Interpolate to fill in the relevant inverse value...
+      float div = culm[j] - culm[j-1];
+      if (div<epsilon) div = epsilon;
+      float t = (pos - culm[j-1]) / div;
+      float low = ((float)(2*(j-1))) / (size_big-1) - 1.0;
+      float high = ((float)(2*j)) / (size_big-1) - 1.0;
     
-    ret->inv_culm[i] = (1.0-t) * low + t * high;
+      ret->inv_culm[i] = (1.0-t) * low + t * high;
+    }
+    ret->inv_culm[size-1] = 1.0;
+   
+   // Clean up...
+    free(culm);
   }
-  ret->inv_culm[size-1] = 1.0;
   
  // Create the order array, for use when drawing...
   ret->order = (int*)malloc(dims*sizeof(int));
@@ -854,10 +878,8 @@ KernelConfig Fisher_config_new(int dims, const char * config)
    ret->order[i] = i;
   }
   
- // Clean up and return...
-  free(culm);
- 
- return (KernelConfig)ret;
+ // Return...
+  return (KernelConfig)ret;
 }
 
 const char * Fisher_config_verify(int dims, const char * config, int * length)
@@ -899,7 +921,7 @@ void Fisher_config_release(KernelConfig config)
  {
   free(self->order);
   free(self->inv_culm);
-  free(self); 
+  free(self);
  }
 }
 
@@ -909,13 +931,31 @@ float Fisher_weight(int dims, KernelConfig config, float * offset)
 {
  FisherConfig * self = (FisherConfig*)config;
  
- int i;
- float d_sqr = 0.0;
- for (i=0; i<dims; i++) d_sqr += offset[i] * offset[i];
+ // Convert the offset to a dot product...
+  int i;
+  float d_sqr = 0.0;
+  for (i=0; i<dims; i++) d_sqr += offset[i] * offset[i];
  
- float cos_ang = 1.0 - 0.5*d_sqr; // Uses the law of cosines - how to calculate the dot product of unit vectors given their difference.
+  float cos_ang = 1.0 - 0.5*d_sqr; // Uses the law of cosines - how to calculate the dot product of unit vectors given their difference.
  
- return exp(self->alpha * cos_ang + self->log_norm);
+ // Behaviour depends on if we are being approximate or not...
+  if (self->inv_culm==NULL)
+  {
+   // Use the Gaussian approximation, by halucinating that it is a vector of the form [a, b, 0...] and the direction of the distribution is [1, 0...] - this allows all the terms of the Gaussian to be calculated and a probability generated...
+    if (cos_ang>0.0)
+    {
+     return exp(-0.5 * self->alpha * (1.0 - cos_ang*cos_ang) + self->log_norm);
+    }
+    else
+    {
+     return 0.0; // Actually the correct value for this approximation!
+    }
+  }
+  else
+  {
+   // Correct version...
+    return exp(self->alpha * cos_ang + self->log_norm);
+  }
 }
 
 float Fisher_norm(int dims, KernelConfig config)
@@ -927,9 +967,17 @@ float Fisher_range(int dims, KernelConfig config, float quality)
 {
  FisherConfig * self = (FisherConfig*)config;
  
- float prob = 0.7 + 0.3 * quality; // Lowest quality is 70% of probability mass, highest 100% - roughly matches with Gaussian 1 to 3 standard deviations.
- float dot = self->inv_culm[(int)(self->inv_culm_size * (1.0-prob))];
- return sqrt(2.0 - 2.0 * dot);
+ if (self->inv_culm==NULL)
+ {
+  float sd = 1.0 + 2.0 * quality;
+  return sd / sqrt(self->alpha);
+ }
+ else
+ {
+  float prob = 0.7 + 0.3 * quality; // Lowest quality is 70% of probability mass, highest 100% - roughly matches with Gaussian 1 to 3 standard deviations.
+  float dot = self->inv_culm[(int)(self->inv_culm_size * (1.0-prob))];
+  return sqrt(2.0 - 2.0 * dot);
+ }
 }
 
 float Fisher_offset(int dims, KernelConfig config, float * fv, const float * offset)
@@ -975,17 +1023,38 @@ void Fisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * c
     if (second!=NULL) radius += out[i+1] * out[i+1];
   }
   
- // Draw the value of the dot product between the output vector and the kernel direction (1, 0, 0, ...), putting it into out[0]...
-  float t = PhiloxRNG_uniform(rng) * (self->inv_culm_size-1);
-  int low = (int)t;
-  if ((low+1)==self->inv_culm_size) low -= 1;
-  t -= low;
+ // Two approaches, depending on if we are being apprxoimate or not...
+  if (self->inv_culm==NULL)
+  {
+   // Put 1 into the first entry, and scale the rest to obey the Gaussian approximation...
+    out[0] = 1.0;
+    
+    float div = sqrt(self->alpha);
+    for (i=1; i<dims; i++)
+    {
+     out[i] /= div;
+    }
+    
+   // Normalise to length 1...
+    radius /= self->alpha;
+    radius += 1.0;
+   
+    for (i=0; i<dims; i++) out[i] /= radius;
+  }
+  else
+  {
+   // Draw the value of the dot product between the output vector and the kernel direction (1, 0, 0, ...), putting it into out[0]...
+    float t = PhiloxRNG_uniform(rng) * (self->inv_culm_size-1);
+    int low = (int)t;
+    if ((low+1)==self->inv_culm_size) low -= 1;
+    t -= low;
 
-  out[0] = (1.0-t) * self->inv_culm[low] + t * self->inv_culm[low+1];
+    out[0] = (1.0-t) * self->inv_culm[low] + t * self->inv_culm[low+1];
 
- // Blend the first row of the basis with the random draw to obtain the drawn dot product - i.e. scale the uniform draw so that with the first element set to the drawn dot product the entire vector is of length 1...
-  radius = sqrt(1.0 - out[0]*out[0]) / sqrt(radius);
-  for (i=1; i<dims; i++) out[i] *= radius;
+   // Blend the first row of the basis with the random draw to obtain the drawn dot product - i.e. scale the uniform draw so that with the first element set to the drawn dot product the entire vector is of length 1...
+    radius = sqrt(1.0 - out[0]*out[0]) / sqrt(radius);
+    for (i=1; i<dims; i++) out[i] *= radius;
+  }
   
  // Find the order of the indices, in self->order, such that center goes from highest absolute value to lowest - needed for numerical stability in the next bit. Use insertion sort as the indices count is typically very low, making quick sort a bad choice (Note that we start from the previous order, as draw is often called repeatedly for the same centre value - fast escape)...
   for (i=0;i<dims-1; i++)
@@ -1053,11 +1122,10 @@ void Fisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * c
 }
 
 
-
 float Fisher_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  FisherConfig * self = (FisherConfig*)config;
- return mult_area_fisher(self->alpha, self->log_norm, dims, terms, fv, scale, cache);
+ return mult_area_fisher(self->alpha, self->log_norm, dims, terms, fv, scale, cache, self->inv_culm==NULL);
 }
 
 void Fisher_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
@@ -1070,7 +1138,7 @@ void Fisher_mult_draw(int dims, KernelConfig config, int terms, const float ** f
 const Kernel Fisher =
 {
  "fisher",
- "A kernel for dealing with directional data, using the von-Mises Fisher distribution as a kernel (Fisher is technically 3 dimensions only, but I like short names! - this will do anything from 2 dimensions upwards). Requires that all feature vectors be on the unit-hypersphere, plus it uses the alpha parameter provided to the kernel as the concentration parameter of the distribution. Be careful with the merge_range parameter when using this kernel - unlike the other kernels it won't default to anything sensible, and will have to be manually set.",
+ "A kernel for dealing with directional data, using the von-Mises Fisher distribution as a kernel (Fisher is technically 3 dimensions only, but I like short names! - this will do anything from 2 dimensions upwards). Requires that all feature vectors be on the unit-hypersphere, plus it uses the alpha parameter provided to the kernel as the concentration parameter of the distribution. Be careful with the merge_range parameter when using this kernel - unlike the other kernels it won't default to anything sensible, and will have to be manually set. Suffers from the problem that you must use the same kernel for multiplication, so you can only multiply distributions with the same concentration value.",
  "Specified as fisher(alpha), e.g. fisher(10), where alpha is the concentration parameter",
  Fisher_config_new,
  Fisher_config_verify,
@@ -1088,8 +1156,6 @@ const Kernel Fisher =
  Kernel_next,
 };
 
-
-
 // The mirrored von-Mises Fisher kernel - reuse the data structure from the non-mirrored version...
 float MirrorFisher_weight(int dims, KernelConfig config, float * offset)
 {
@@ -1101,7 +1167,15 @@ float MirrorFisher_weight(int dims, KernelConfig config, float * offset)
  
  float cos_ang = 1.0 - 0.5*d_sqr; // Uses the law of cosines - how to calculate the dot product of unit vectors given their difference.
  
- return 0.5 * exp(self->alpha * cos_ang + self->log_norm) + 0.5 * exp(-self->alpha * cos_ang + self->log_norm);
+ if (self->inv_culm==NULL)
+ {
+  // Ammusingly the approximation is actually marginally simpler in the mirrored case!..
+  return exp(-0.5 * self->alpha * (1.0 - cos_ang*cos_ang) + self->log_norm); 
+ }
+ else
+ {
+  return 0.5 * exp(self->alpha * cos_ang + self->log_norm) + 0.5 * exp(-self->alpha * cos_ang + self->log_norm);
+ }
 }
 
 float MirrorFisher_range(int dims, KernelConfig config, float quality)
@@ -1146,7 +1220,7 @@ void MirrorFisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const flo
 float MirrorFisher_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  FisherConfig * self = (FisherConfig*)config;
- return mult_area_mirror_fisher(self->alpha, self->log_norm, dims, terms, fv, scale, cache);
+ return mult_area_mirror_fisher(self->alpha, self->log_norm, dims, terms, fv, scale, cache, self->inv_culm==NULL);
 }
 
 void MirrorFisher_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
@@ -1175,7 +1249,7 @@ void MirrorFisher_next(int dims, KernelConfig config, int state, float * fv)
 const Kernel MirrorFisher =
 {
  "mirror_fisher",
- "A kernel for dealing with directional data where a 180 degree rotation is meaningless; one specific use case is for rotations expressed with unit quaternions. It wraps the Fisher distribution such that it is an even mixture of two of them - one with the correct unit vector, one with its negation. All other behaviours and requirements are basically the same as a Fisher distribution however.",
+ "A kernel for dealing with directional data where a 180 degree rotation is meaningless; one specific use case is for rotations expressed with unit quaternions. It wraps the Fisher distribution such that it is an even mixture of two of them - one with the correct unit vector, one with its negation. All other behaviours and requirements are basically the same as a Fisher distribution however. Suffers from the problem that you must use the same kernel for multiplication, so you can only multiply distributions with the same concentration value.",
  "Specified as mirror_fisher(alpha), e.g. mirror_fisher(10), where alpha is the concentration parameter used for both of the von-Mises Fisher distributions.",
  Fisher_config_new,
  Fisher_config_verify,
