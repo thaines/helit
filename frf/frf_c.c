@@ -1158,7 +1158,7 @@ static PyObject * Forest_train_py(Forest * self, PyObject * args)
     for (i=0; i<self->y_feat; i++) out[i] = 0.0;
 
    // Iterate the exemplars and sum their error into the output...
-    int total = 0;
+    float total = 0.0;
     for (i=0; i<tp.y->exemplars; i++)
     {
      SummarySet ** base = self->ss + create*i;
@@ -1177,7 +1177,7 @@ static PyObject * Forest_train_py(Forest * self, PyObject * args)
      if (count!=0)
      {
       SummarySet_error(count, base, tp.y, i, out);
-      total += 1;
+      total += DataMatrix_GetWeight(tp.y, i);
      }
     }
     

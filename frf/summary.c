@@ -198,7 +198,7 @@ static float Categorical_error(int trees, Summary * sums, SummaryMagic magic, in
    }
   }
  
- // Return 0 if its a match, 1 if its a mismatch...
+ // Return 0 if its a match, weight if its a mismatch...
   int v = DataMatrix_GetDiscrete(dm, exemplar, feature);
   if (best!=v) return DataMatrix_GetWeight(dm, exemplar);
           else return 0.0;
