@@ -109,6 +109,14 @@ static PyObject * MeanShift_get_kernel_py(MeanShift * self, PyObject * args)
 }
 
 
+static PyObject * MeanShift_get_range_py(MeanShift * self, PyObject * args)
+{
+ int dims = DataMatrix_features(&self->dm);
+ float range = self->kernel->range(dims, self->config, self->quality);
+ return Py_BuildValue("f", range);
+}
+
+
 static PyObject * MeanShift_set_kernel_py(MeanShift * self, PyObject * args)
 {
  // Parse the parameters...
@@ -768,6 +776,39 @@ static PyObject * MeanShift_get_weight_scale_py(MeanShift * self, PyObject * arg
 }
 
 
+static PyObject * MeanShift_copy_scale_py(MeanShift * self, PyObject * args)
+{
+ // Get the parameters - another mean shift object...
+  MeanShift * other;
+  if (!PyArg_ParseTuple(args, "O!", &MeanShiftType, &other)) return NULL;
+
+ // Copy over the scale...  
+  DataMatrix_set_scale(&self->dm, other->dm.mult, other->dm.weight_scale);
+  
+ // Trash the spatial - changing either of the above invalidates it...
+  if (self->spatial!=NULL)
+  {
+   Spatial_delete(self->spatial);
+   self->spatial = NULL; 
+  }
+  
+ // Trash the cluster centers...
+  if (self->balls!=NULL)
+  {
+   Balls_delete(self->balls);
+   self->balls = NULL;
+  }
+  
+ // Trash the weight record...
+  self->weight = -1.0;
+  self->norm = -1.0;
+
+ // Return None...
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
 
 static PyObject * MeanShift_exemplars_py(MeanShift * self, PyObject * args)
 {
@@ -889,6 +930,7 @@ static PyObject * MeanShift_scale_silverman_py(MeanShift * self, PyObject * args
    for (i=0; i<features; i++)
    {
     sd[i] = sqrt(sd[i] / weight);
+    if (sd[i]<1e-6) sd[i] = 1e-6;
    }
   
   // Convert standard deviations into a bandwidth via applying the rule...
@@ -968,6 +1010,7 @@ static PyObject * MeanShift_scale_scott_py(MeanShift * self, PyObject * args)
    for (i=0; i<features; i++)
    {
     sd[i] = sqrt(sd[i] / weight);
+    if (sd[i]<1e-6) sd[i] = 1e-6;
    }
   
   // Convert standard deviations into a bandwidth via applying the rule...
@@ -2155,8 +2198,11 @@ static PyMethodDef MeanShift_methods[] =
 {
  {"kernels", (PyCFunction)MeanShift_kernels_py, METH_NOARGS | METH_STATIC, "A static method that returns a list of kernel types, as strings."},
  {"get_kernel", (PyCFunction)MeanShift_get_kernel_py, METH_NOARGS, "Returns the string that identifies the current kernel; for complex kernels this may be a complex string containing parameters etc."},
+ {"get_range", (PyCFunction)MeanShift_get_range_py, METH_NOARGS, "Returns the range of the current kernel, taking into account the current quality value - this is how far out it searches for relevant exemplars from a point in space, eucledian distance. Note that the range is the raw internal value - you need to divide by the scale vector to get the true scale for each dimension. Provided for diagnostic purposes."},
  {"set_kernel", (PyCFunction)MeanShift_set_kernel_py, METH_VARARGS, "Sets the current kernel, as identified by a string. For complex kernels this will probably need to include extra information - e.g. the fisher kernel is given as fisher(alpha) where alpha is a floating point concentration parameter. Note that some kernels (e.g. fisher) take into account the number of features in the data when set - in such cases you must set the kernel type after calling set_data."},
  {"copy_kernel", (PyCFunction)MeanShift_copy_kernel_py, METH_VARARGS, "Given another MeanShift object this copies the settings from it. This is highly recomended when speed matters and you have lots of kernels, as it copies pointers to the internal configuration object and reference counts - for objects with complex configurations this can be an order of magnitude faster. It can also save a lot of memory, via shared caches."},
+ 
+ 
  {"link_rng", (PyCFunction)MeanShift_link_rng_py, METH_VARARGS, "Links this MeanShift object to use the same random number generator as the given MeanShift object, or unlinks the RNG if no argument given. Will do path shortening if you attempt to chain a bunch together. Will ignore attempts to create loops. The other MeanShift does not even have to be initialised - they don't need to share any common characteristics. Setting the rng* values of a linked MeanShift object acheives nothing."},
  
  {"spatials", (PyCFunction)MeanShift_spatials_py, METH_NOARGS | METH_STATIC, "A static method that returns a list of spatial indexing structures you can use, as strings."},
@@ -2184,6 +2230,7 @@ static PyMethodDef MeanShift_methods[] =
  {"set_scale", (PyCFunction)MeanShift_set_scale_py, METH_VARARGS, "Given two parameters. First is an array indexed by feature to get a multiplier that is applied before the kernel (Which is always of radius 1, or some approximation of.) is considered - effectivly an inverse bandwidth in kernel density estimation terms or the inverse standard deviation if you are using the Gaussian kernel. Second is an optional scale for the weight assigned to each feature vector via the set_data method (In the event that no weight is assigned this parameter is the weight of each feature vector, as the default is 1)."},
  {"get_scale", (PyCFunction)MeanShift_get_scale_py, METH_NOARGS, "Returns a copy of the scale array (Inverse bandwidth)."},
  {"get_weight_scale", (PyCFunction)MeanShift_get_weight_scale_py, METH_NOARGS, "Returns the scalar for the weight of each sample - typically left as 1."},
+ {"copy_scale", (PyCFunction)MeanShift_copy_scale_py, METH_VARARGS, "Given anotehr MeanShift object this copies its scale parameters - a touch faster than using get then set as it avoids an intermediate matrix."},
  
  {"exemplars", (PyCFunction)MeanShift_exemplars_py, METH_NOARGS, "Returns how many exemplars are in the hallucinated data matrix."},
  {"features", (PyCFunction)MeanShift_features_py, METH_NOARGS, "Returns how many features are in the hallucinated data matrix."},
@@ -2198,8 +2245,8 @@ static PyMethodDef MeanShift_methods[] =
  {"probs", (PyCFunction)MeanShift_probs_py, METH_VARARGS, "Given a data matrix returns an array (1D) containing the probability of each feature, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},
  
  {"draw", (PyCFunction)MeanShift_draw_py, METH_NOARGS, "Allows you to draw from the distribution represented by the kernel density estimate. Returns a vector and makes use of the internal RNG."},
- {"draws", (PyCFunction)MeanShift_draws_py, METH_VARARGS, "Allows you to draw from the distribution represented by the kernel density estimate. Same as draw except it returns a matrix - you provide a single argument of how many draws to make. Returns an array, <# draws>X<# exemplars> and makes use of the internal RNG."},
- {"bootstrap", (PyCFunction)MeanShift_bootstrap_py, METH_VARARGS, "Does a bootstrap draw from the samples - essentially the same as draws but assuming a Dirac delta function for the kernel. You provide the number of draws; it returns an array, <# draws>X<# exemplars>. Makes use of the contained Philox RNG."},
+ {"draws", (PyCFunction)MeanShift_draws_py, METH_VARARGS, "Allows you to draw from the distribution represented by the kernel density estimate. Same as draw except it returns a matrix - you provide a single argument of how many draws to make. Returns an array, <# draws>X<# features> and makes use of the internal RNG."},
+ {"bootstrap", (PyCFunction)MeanShift_bootstrap_py, METH_VARARGS, "Does a bootstrap draw from the samples - essentially the same as draws but assuming a Dirac delta function for the kernel. You provide the number of draws; it returns an array, <# draws>X<# features>. Makes use of the contained Philox RNG."},
  
  {"mode", (PyCFunction)MeanShift_mode_py, METH_VARARGS, "Given a feature vector returns its mode as calculated using mean shift - essentially the maxima in the kernel density estimate to which you converge by climbing the gradient."},
  {"modes", (PyCFunction)MeanShift_modes_py, METH_VARARGS, "Given a data matrix [exemplar, feature] returns a matrix of the same size, where each feature has been replaced by its mode, as calculated using mean shift."},

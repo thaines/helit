@@ -65,9 +65,8 @@ float prob(Spatial spatial, const Kernel * kernel, KernelConfig config, const fl
    
    float w;
    float * loc = DataMatrix_fv(dm, targ, &w);
-   
-   int i;
-   for (i=0; i<feats; i++) loc[i] -= fv[i];
+
+   kernel->to_offset(feats, config, loc, fv);
    w *= kernel->weight(feats, config, loc);
    
    w *= norm;
@@ -133,8 +132,8 @@ float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float
    
      float w;
      float * fv = DataMatrix_fv(dm, targ, &w);
-   
-     for (j=0; j<features; j++) fv[j] -= fvi[j];
+
+     kernel->to_offset(features, config, fv, fvi);
      w *= kernel->weight(features, config, fv);
    
      w *= norm;

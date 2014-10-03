@@ -450,7 +450,7 @@ float Cosine_norm(int dims, KernelConfig config)
  float mult = Uniform_norm(dims, NULL) / dims;
  
  int i;
- for (i=2; i<dims; i++) mult /= i; 
+ for (i=2; i<dims; i++) mult /= i;
  
  int k;
  float sum = 0.0;
@@ -460,9 +460,17 @@ float Cosine_norm(int dims, KernelConfig config)
   float fact = 1.0;
   for (i=2; i<(dims-2*k); i++) fact *= i;
   
-  sum += dir * pow(0.5*M_PI, 1+2*k) / fact; 
+  sum += dir * pow(0.5*M_PI, -(1+2*k)) / fact; 
   
   dir *= -1;
+ }
+ 
+ if ((dims>=2)&&((dims&1)==0)) // The extra term that appears because 0^0==1, but only when dims is even and 2 or greater.
+ {
+  if (((dims-2)/2)&1) dir = -1;
+                 else dir =  1;
+  
+  sum -= dir * pow(0.5*M_PI, -dims);
  }
 
  return mult / sum;
@@ -649,16 +657,17 @@ float Cauchy_norm(int dims, KernelConfig config)
 {
  float ret = 0.0;
  
- // Can't integrate out analytically, so numerical integration it is...
+ // Can't integrate out analytically, so numerical integration it is (match the range of high quality)...
   int i;
   const int samples = 1024;
+  const float step = 6.0 / samples;
   for (i=0; i<samples; i++)
   {
-   float r = (i+0.5) / samples;
-   ret += pow(r, dims-1) / ((1.0+r*r) * samples);
+   float r = (i+0.5) * step;
+   ret += pow(r, dims-1) * step / (1.0+r*r);
   }
  
- return ret * Uniform_norm(dims, NULL) / dims;
+ return Uniform_norm(dims, NULL) / (dims * ret);
 }
 
 float Cauchy_range(int dims, KernelConfig config, float quality)
@@ -773,9 +782,15 @@ KernelConfig Fisher_config_new(int dims, const char * config)
  
  // Basic value storage...
   ret->ref_count = 1;
-  ret->alpha = atof(config+1); // +1 to skip the '('.
-  
-  int approximate = ret->alpha > CONC_SWITCH; // Should add override option; will require updating verify method. ************************************************
+  char * end;
+  ret->alpha = strtof(config+1, &end); // +1 to skip the '('.
+
+  int approximate = ret->alpha > CONC_SWITCH;
+  if (end!=NULL)
+  {
+   if (*end=='c') approximate = 0;
+   if (*end=='a') approximate = 1;
+  }
   
  // Record the log of the normalising constant - we return normalised values for this distribution for reasons of numerical stability...
   const float log_2PI = log(2 * M_PI);
@@ -892,6 +907,11 @@ const char * Fisher_config_verify(int dims, const char * config, int * length)
  if (end==config) return "No concentration parameter given to von-Mises Fisher distribution.";
  if (conc<0.0) return "Negative concentration parameter given to von-Mises Fisher distribution.";
  
+ if ((end!=NULL)&&((*end=='a')||(*end=='c')))
+ {
+  ++end; // Skip a mode forcer.
+ }
+ 
  if ((end==NULL)||(*end!=')')) return "von-Mises Fisher configuration did not end with a ).";
  
  if (length!=NULL)
@@ -966,6 +986,8 @@ float Fisher_norm(int dims, KernelConfig config)
 float Fisher_range(int dims, KernelConfig config, float quality)
 {
  FisherConfig * self = (FisherConfig*)config;
+ 
+ return 2.0; // ******************************************************
  
  if (self->inv_culm==NULL)
  {
@@ -1138,8 +1160,8 @@ void Fisher_mult_draw(int dims, KernelConfig config, int terms, const float ** f
 const Kernel Fisher =
 {
  "fisher",
- "A kernel for dealing with directional data, using the von-Mises Fisher distribution as a kernel (Fisher is technically 3 dimensions only, but I like short names! - this will do anything from 2 dimensions upwards). Requires that all feature vectors be on the unit-hypersphere, plus it uses the alpha parameter provided to the kernel as the concentration parameter of the distribution. Be careful with the merge_range parameter when using this kernel - unlike the other kernels it won't default to anything sensible, and will have to be manually set. Suffers from the problem that you must use the same kernel for multiplication, so you can only multiply distributions with the same concentration value.",
- "Specified as fisher(alpha), e.g. fisher(10), where alpha is the concentration parameter",
+ "A kernel for dealing with directional data, using the von-Mises Fisher distribution as a kernel (Fisher is technically 3 dimensions only, but I like short names! - this will do anything from 2 dimensions upwards. Dimensions is the embeding space, as in the length of the unit vector, to match the rest of the system - the degrees of freedom is one less.). Requires that all feature vectors be on the unit-hypersphere (does not check this - gigo), plus it uses the alpha parameter provided to the kernel as the concentration parameter of the distribution. Be careful with the merge_range parameter when using this kernel - unlike the other kernels it won't default to anything sensible, and will have to be manually set. Suffers from the problem that you must use the same kernel for multiplication, so you can only multiply distributions with the same concentration value.",
+ "Specified as fisher(alpha), e.g. fisher(10), where alpha is the concentration parameter. Can optionally include a letter immediatly after the alpha value - either 'a' to force approximate mode or 'c' to force correct mode, e.g. 'fisher(64.0a)'. Note that this is generally not a good idea - the approximation breaks down for low concentration and the correct approach numerically explodes for high concentration - the default behaviour automatically takes this into account and selects the right one.",
  Fisher_config_new,
  Fisher_config_verify,
  Fisher_config_acquire,
@@ -1170,7 +1192,7 @@ float MirrorFisher_weight(int dims, KernelConfig config, float * offset)
  if (self->inv_culm==NULL)
  {
   // Ammusingly the approximation is actually marginally simpler in the mirrored case!..
-  return exp(-0.5 * self->alpha * (1.0 - cos_ang*cos_ang) + self->log_norm); 
+  return 0.5 * exp(-0.5 * self->alpha * (1.0 - cos_ang*cos_ang) + self->log_norm); 
  }
  else
  {
@@ -1250,7 +1272,7 @@ const Kernel MirrorFisher =
 {
  "mirror_fisher",
  "A kernel for dealing with directional data where a 180 degree rotation is meaningless; one specific use case is for rotations expressed with unit quaternions. It wraps the Fisher distribution such that it is an even mixture of two of them - one with the correct unit vector, one with its negation. All other behaviours and requirements are basically the same as a Fisher distribution however. Suffers from the problem that you must use the same kernel for multiplication, so you can only multiply distributions with the same concentration value.",
- "Specified as mirror_fisher(alpha), e.g. mirror_fisher(10), where alpha is the concentration parameter used for both of the von-Mises Fisher distributions.",
+ "Specified as mirror_fisher(alpha), e.g. mirror_fisher(10), where alpha is the concentration parameter used for both of the von-Mises Fisher distributions. Same as fisher you can immediatly postcede the concentration with 'a' to force it to be approximate or 'c' to force it to be correct.",
  Fisher_config_new,
  Fisher_config_verify,
  Fisher_config_acquire,

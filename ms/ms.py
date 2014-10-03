@@ -35,6 +35,7 @@ class MeanShift(MeanShiftC):
     # Select values for low and high as needed...
     if isinstance(low, float) or isinstance(high, float):
       _, silverman = self.stats()
+      silverman[silverman<1e-6] = 1e-6
       silverman = 1.0 / (silverman * (self.weight() * (silverman.shape[0] + 2.0) / 4.0) ** (-1.0 / (silverman.shape[0] + 4.0)))
       
       if isinstance(low, float):
@@ -70,12 +71,40 @@ class MeanShift(MeanShiftC):
     return best_score
   
   
+  def scale_loo_nll_array(self, choices, callback = None):
+    """Given an array of MS objects this copies in the configuration of each object in turn into this object and finds the one that minimises the leave one out error. Quite simple really - mostly for use in cases when the kernel type doesn't support scale in the usual way, i.e. the directional kernels. For copying across it uses a call to copy_all and a call to copy_scale, the last only if it actually has a scale (data is set!), which between them get near as everything."""
+    best_choice = None
+    best_score = None
+    
+    for i, choice in enumerate(choices):
+      if callback!=None:
+        callback(i, len(choices))
+      
+      self.copy_all(choice)
+      if choice.get_dm()!=None:
+        self.copy_scale(choice)
+      
+      score = self.loo_nll()
+      
+      print choice.get_kernel(), score #####################################
+      
+      if best_score==None or score < best_score:
+        best_choice = choice
+        best_score = score
+    
+    self.copy_all(best_choice)
+    if best_choice.get_dm()!=None:
+      self.copy_scale(best_choice)
+    return best_score
+
+
   def hierarchy(self, low = 1.0, high = 512.0, steps = 64, callback = None):
     """Does a sweep of scale, exactly like scale_loo_nll (same behaviour for low and high with vector vs single value), except it clusters the data at each level and builds a hierarchy of clusters, noting which cluster at a lower level ends up in which cluster at the next level. Note that low and high are inverted before use so that they equate to the typical mean shift parameters. Return is a list indexed by level, with index 0 representing the original data (where every data point is its own segment). Each level is represented by a tuple: (modes - array of [segment, feature], parents - array of [segment], giving the index of its parent segment in the next level. None in the highest level, sizes - array of [segment] giving the total weight of all exemplars in that segment.)"""
     
     # Select values for low and high as needed...
     if isinstance(low, float) or isinstance(high, float):
       _, silverman = self.stats()
+      silverman[silverman<1e-6] = 1e-6
       silverman = 1.0 / (silverman * (self.weight() * (silverman.shape[0] + 2.0) / 4.0) ** (-1.0 / (silverman.shape[0] + 4.0)))
       
       if isinstance(low, float):
