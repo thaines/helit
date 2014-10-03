@@ -83,6 +83,7 @@ class TileValue(Layer):
   
   def get_size(self):
     """Returns the tuple (height, width) for the original size."""
+    if len(self.values)==0: return (480, 640)
     return (self.values[0].get_height(), self.values[0].get_width())
   
   
