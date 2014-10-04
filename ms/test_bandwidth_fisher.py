@@ -53,7 +53,7 @@ def visualise(fn, ms):
 
 
 # Generate a data set...
-samples = 128
+samples = 1024
 data = numpy.empty((samples, 3), dtype=numpy.float32)
 
 data[:,1] = 0.1 * numpy.random.random(samples) + 0.6
@@ -72,6 +72,7 @@ data[:,2] *= norm
 def ms_by_conc(power, code=''):
   ms = MeanShift()
   ms.quality = 0.5
+  ms.set_data(numpy.array([1, 0, 0], dtype=numpy.float32), 'f')
   ms.set_kernel('fisher(%.1f%s)' % (2**power, code))
   ms.set_spatial('kd_tree')
   
@@ -99,7 +100,7 @@ visualise('bandwidth_fisher.png', ms)
 
 
 
-# Also visualise all the rest, for sanity checking...
+# Also visualise correct vs approximate, for sanity checking...
 for option in [ms_by_conc(8,'c'), ms_by_conc(8,'a')]: #options:
   ms.copy_all(option)
   visualise('bandwidth_fisher_%s.png' % option.get_kernel(), ms)

@@ -803,7 +803,7 @@ KernelConfig Fisher_config_new(int dims, const char * config)
   else
   {
    bessel = LogModBesselFirst(dims-2, ret->alpha, epsilon, 1024);
-  
+   
    ret->log_norm  = (0.5 * dims - 1) * log(ret->alpha);
    ret->log_norm -= (0.5 * dims) * log_2PI;
    ret->log_norm -= bessel;
@@ -899,6 +899,8 @@ KernelConfig Fisher_config_new(int dims, const char * config)
 
 const char * Fisher_config_verify(int dims, const char * config, int * length)
 {
+ if (dims==0) return "The data must be set before initialising a von-Mises Fisher kernel, so it knows the dimension count.";
+
  if (config[0]!='(') return "von-Mises Fisher configuration did not start with a (.";
    
  char * end;
@@ -949,7 +951,7 @@ void Fisher_config_release(KernelConfig config)
 
 float Fisher_weight(int dims, KernelConfig config, float * offset)
 {
- FisherConfig * self = (FisherConfig*)config;
+ FisherConfig * self = (FisherConfig*)config; 
  
  // Convert the offset to a dot product...
   int i;
@@ -957,7 +959,7 @@ float Fisher_weight(int dims, KernelConfig config, float * offset)
   for (i=0; i<dims; i++) d_sqr += offset[i] * offset[i];
  
   float cos_ang = 1.0 - 0.5*d_sqr; // Uses the law of cosines - how to calculate the dot product of unit vectors given their difference.
- 
+    
  // Behaviour depends on if we are being approximate or not...
   if (self->inv_culm==NULL)
   {
@@ -986,8 +988,6 @@ float Fisher_norm(int dims, KernelConfig config)
 float Fisher_range(int dims, KernelConfig config, float quality)
 {
  FisherConfig * self = (FisherConfig*)config;
- 
- return 2.0; // ******************************************************
  
  if (self->inv_culm==NULL)
  {

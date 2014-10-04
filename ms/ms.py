@@ -72,7 +72,7 @@ class MeanShift(MeanShiftC):
   
   
   def scale_loo_nll_array(self, choices, callback = None):
-    """Given an array of MS objects this copies in the configuration of each object in turn into this object and finds the one that minimises the leave one out error. Quite simple really - mostly for use in cases when the kernel type doesn't support scale in the usual way, i.e. the directional kernels. For copying across it uses a call to copy_all and a call to copy_scale, the last only if it actually has a scale (data is set!), which between them get near as everything."""
+    """Given an array of MS objects this copies in the configuration of each object in turn into this object and finds the one that minimises the leave one out error. Quite simple really - mostly for use in cases when the kernel type doesn't support scale in the usual way, i.e. the directional kernels. For copying across it uses a call to copy_all and a call to copy_scale, which between them get near as everything. Note that the array of choices will need some dummy data set, so the system knows the number of dimensions."""
     best_choice = None
     best_score = None
     
@@ -81,8 +81,7 @@ class MeanShift(MeanShiftC):
         callback(i, len(choices))
       
       self.copy_all(choice)
-      if choice.get_dm()!=None:
-        self.copy_scale(choice)
+      self.copy_scale(choice)
       
       score = self.loo_nll()
       
@@ -93,8 +92,7 @@ class MeanShift(MeanShiftC):
         best_score = score
     
     self.copy_all(best_choice)
-    if best_choice.get_dm()!=None:
-      self.copy_scale(best_choice)
+    self.copy_scale(best_choice)
     return best_score
 
 

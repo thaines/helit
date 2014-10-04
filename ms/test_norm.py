@@ -57,8 +57,10 @@ for kernel in ['fisher', 'mirror_fisher']:
   for dim, area in zip(dir_dimensions, dir_area):
     for conc in dir_conc:
       # Create a mean shift object pointing in the [1, 0, ...] direction with the given concentration...
+      data = numpy.array([1.0] + [0.0]*(dim-1), dtype=numpy.float32)
+      
       ms = MeanShift()
-      ms.set_data(numpy.array([1.0] + [0.0]*(dim-1), dtype=numpy.float32), 'f')
+      ms.set_data(data, 'f')
       ms.set_kernel('%s(%.1f)' % (kernel, conc))
       ms.quality = 1.0
       
@@ -76,5 +78,5 @@ for kernel in ['fisher', 'mirror_fisher']:
       
       # Print their average - should again be one...
       volume = p.mean() * area
-      print 'Kernel = %s; Dims = %i | Monte-Carlo volume = %.3f' % (ms.get_kernel(), dim, volume)
+      print 'Kernel = %s; Dims = %i | Monte-Carlo vol = %.3f (max = %.1f)' % (ms.get_kernel(), dim, volume, ms.prob(data))
   print
