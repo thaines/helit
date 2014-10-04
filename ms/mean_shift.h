@@ -24,7 +24,7 @@ float calc_weight(DataMatrix * dm);
 
 
 
-// Returns the normalising constant required to be passed into some of the below functions - usually cached. alpha is for the kernel, weight is the output of calc_weight...
+// Returns the normalising constant required to be passed into some of the below functions - usually cached. config is for the kernel, weight is the output of calc_weight...
 float calc_norm(DataMatrix * dm, const Kernel * kernel, KernelConfig config, float weight);
 
 
@@ -42,6 +42,15 @@ void draw(DataMatrix * dm, const Kernel * kernel, KernelConfig config, PhiloxRNG
 // Calculates the log probability of all the items in the data set, leave one out style - allows for model comparison so you can optimise any of the parameters, such as scale or kernel type. Parameters match up with the prob function, except it gets the feature vectors from spatial and returns a negative log probability. It includes one extra parameter - a minimum probability to assign to any given exemplar, to limit the damage of outliers...
 // (Note that it does not correctly adjust the total weight for each exemplar probability calculation, which technically can bias things a bit if they all have different weights, but not really enough to worry about, and it would prevent the use of the norm optimisation.)
 float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality, float limit);
+
+
+
+// Calculates and returns an approximation of the entropy of the distribution, using the samples that the datamatrix contains as a sample from the distribution so its super efficient to calculate...
+float entropy(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality);
+
+
+// Calculates the Kullback-Leibler divergance of q from p D(P||Q), as in the average number of extra nats required to encode draws from p given an encoder that assumes draws from q. Same approach as entropy, using the samples in the KDE as both samples and to define the distribution. Note that the constraint the the KL-divergance be positive is broken by this estimate - you can get negative values out. What to do about this is left to the user. limit is a clamp on how low probability of q values are allowed to get, to avoid divide by zero...
+float kl_divergence(Spatial spatial_p, const Kernel * kernel_p, KernelConfig config_p, float norm_p, float quality_p, Spatial spatial_q, const Kernel * kernel_q, KernelConfig config_q, float norm_q, float quality_q, float limit);
 
 
 

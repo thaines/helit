@@ -1075,6 +1075,62 @@ static PyObject * MeanShift_loo_nll_py(MeanShift * self, PyObject * args)
 
 
 
+static PyObject * MeanShift_entropy_py(MeanShift * self, PyObject * args)
+{
+ // If spatial is null create it...
+  if (self->spatial==NULL)
+  {
+   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+  }
+  
+ // Calculate the normalising term if needed...
+  if (self->norm<0.0)
+  {
+   self->norm = calc_norm(&self->dm, self->kernel, self->config, MeanShift_weight(self));
+  }
+  
+ // Calculate and return...
+  float ret = entropy(self->spatial, self->kernel, self->config, self->norm, self->quality);
+  return Py_BuildValue("f", ret);
+}
+
+
+static PyObject * MeanShift_kl_py(MeanShift * self, PyObject * args)
+{
+ // Get the parameters - another mean shift object and an optional limit...
+  MeanShift * other;
+  float limit = 1e-16;
+  if (!PyArg_ParseTuple(args, "O!|f", &MeanShiftType, &other, &limit)) return NULL;
+  
+ // Make sure the required data structures for self are ready...
+  if (self->spatial==NULL)
+  {
+   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+  }
+  
+  if (self->norm<0.0)
+  {
+   self->norm = calc_norm(&self->dm, self->kernel, self->config, MeanShift_weight(self));
+  }
+  
+ // Ditto for other...
+  if (other->spatial==NULL)
+  {
+   other->spatial = Spatial_new(other->spatial_type, &other->dm); 
+  }
+  
+  if (other->norm<0.0)
+  {
+   other->norm = calc_norm(&other->dm, other->kernel, other->config, MeanShift_weight(other));
+  }
+ 
+ // Calculate and return...
+  float ret = kl_divergence(self->spatial, self->kernel, self->config, self->norm, self->quality, other->spatial, other->kernel, other->config, other->norm, other->quality, limit);
+  return Py_BuildValue("f", ret);
+}
+
+
+
 static PyObject * MeanShift_prob_py(MeanShift * self, PyObject * args)
 {
  // Get the argument - a feature vector... 
@@ -2240,6 +2296,9 @@ static PyMethodDef MeanShift_methods[] =
  {"scale_silverman", (PyCFunction)MeanShift_scale_silverman_py, METH_NOARGS, "Sets the scale for the current data using Silverman's rule of thumb, generalised to multidimensional data (Multidimensional version often attributed to Wand & Jones.). Note that this is assuming you are using Gaussian kernels and that the samples have been drawn from a Gaussian - if these asumptions are valid you should probably just fit a Gaussian in the first place, if they are not you should not use this method. Basically, do not use!"},
  {"scale_scott", (PyCFunction)MeanShift_scale_scott_py, METH_NOARGS, "Alternative to scale_silverman - assumptions are very similar and it is hence similarly crap - would recomend against this, though maybe prefered to Silverman."},
  {"loo_nll", (PyCFunction)MeanShift_loo_nll_py, METH_VARARGS, "Calculate the negative log liklihood of the model where it leaves out the sample whos probability is being calculated and then muliplies together the probability of all samples calculated independently. This can be used for model comparison, to see which is better out of several configurations, be that kernel size, kernel type etc. Takes one optional parameter, which is a lower bound on probability, to avoid outliers causing problems - defaults to 1e-16"},
+ 
+ {"entropy", (PyCFunction)MeanShift_entropy_py, METH_NOARGS, "Calculates and returns an approximation of the entropy of the distribution represented by this object. As it uses the samples contained within its accuracy will improve with the number of them, much like for the rest of the system. Uses the natural logarithm, so the return is measured in nats."},
+ {"kl", (PyCFunction)MeanShift_kl_py, METH_VARARGS, "Calculates and returns an approximation of the kullback leibler divergance, of the first parameter from self - D(self||arg1). In other words, it returns the average number of extra nats for encoding draws from p if you encode them optimally under the assumption they come from the density estimate of the mean shift object given as the first parameter. Uses the samples within self and solves using them as a sample from the distribution - consequntially the constraint the the KL-divergance be positive is broken by this estimate and you can get negative values out. What to do about this is left to the user. And optional second parameter provides a clamp on how low probability calculations for arg1 values are allowed to get, to avoid divide by zero - it defaults to 1e-16."},
  
  {"prob", (PyCFunction)MeanShift_prob_py, METH_VARARGS, "Given a feature vector returns its probability, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},
  {"probs", (PyCFunction)MeanShift_probs_py, METH_VARARGS, "Given a data matrix returns an array (1D) containing the probability of each feature, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},

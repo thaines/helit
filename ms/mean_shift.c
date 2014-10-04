@@ -152,6 +152,137 @@ float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float
 
 
 
+float entropy(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality)
+{
+ // Extract a bunch of things...
+  DataMatrix * dm = Spatial_dm(spatial);
+  
+  int exemplars = DataMatrix_exemplars(dm);
+  int features = DataMatrix_features(dm);
+  float range = kernel->range(features, config, quality);
+  
+ // Loop and do each exemplar in the data set in turn... 
+  float ret = 0.0;
+  float samples = 0.0;
+  
+  float * fvi = (float*)malloc(features * sizeof(float));
+  
+  int i, j;
+  for (i=0; i<exemplars; i++)
+  {
+   // Get exemplar i, so we can play with it...
+    float wi;
+    float * fv = DataMatrix_fv(dm, i, &wi);
+    for (j=0; j<features; j++) fvi[j] = fv[j];
+    
+   // Calculate the probability of exemplar i...
+    float prob = 0.0;
+    Spatial_start(spatial, fvi, range);
+    
+    while (1)
+    {
+     int targ = Spatial_next(spatial);
+     if (targ<0) break;
+   
+     float w;
+     float * fv = DataMatrix_fv(dm, targ, &w);
+
+     kernel->to_offset(features, config, fv, fvi);
+     w *= kernel->weight(features, config, fv);
+   
+     w *= norm;
+     prob += w;
+    }
+    
+   // Update the return cost - incrimental mean...
+    samples += wi;
+    ret += wi * (log(prob) - ret) / samples;
+  }
+  
+  free(fvi);
+  
+ return -ret;
+}
+
+
+
+float kl_divergence(Spatial spatial_p, const Kernel * kernel_p, KernelConfig config_p, float norm_p, float quality_p, Spatial spatial_q, const Kernel * kernel_q, KernelConfig config_q, float norm_q, float quality_q, float limit)
+{
+ // Extract a bunch of things...
+  DataMatrix * dm_p = Spatial_dm(spatial_p);
+  DataMatrix * dm_q = Spatial_dm(spatial_q);
+  
+  int exemplars = DataMatrix_exemplars(dm_p);
+  int features = DataMatrix_features(dm_p);
+  float range_p = kernel_p->range(features, config_p, quality_p);
+  float range_q = kernel_q->range(features, config_q, quality_q);
+
+// Loop and do each exemplar from p in turn... 
+  float ret = 0.0;
+  float samples = 0.0;
+  
+  float * fvi = (float*)malloc(features * sizeof(float));
+  
+  int i, j;
+  for (i=0; i<exemplars; i++)
+  {
+   // Get exemplar i, so we can play with it...
+    float wi;
+    float * fv = DataMatrix_fv(dm_p, i, &wi);
+    for (j=0; j<features; j++) fvi[j] = fv[j];
+    
+   // Calculate the probability of exemplar i in p...
+    float prob_p = 0.0;
+    Spatial_start(spatial_p, fvi, range_p);
+    
+    while (1)
+    {
+     int targ = Spatial_next(spatial_p);
+     if (targ<0) break;
+   
+     float w;
+     float * fv = DataMatrix_fv(dm_p, targ, &w);
+
+     kernel_p->to_offset(features, config_p, fv, fvi);
+     w *= kernel_p->weight(features, config_p, fv);
+   
+     w *= norm_p;
+     prob_p += w;
+    }
+   
+   // Calculate the probability of exemplar i in q...
+    float prob_q = 0.0;
+    Spatial_start(spatial_q, fvi, range_q);
+    
+    while (1)
+    {
+     int targ = Spatial_next(spatial_q);
+     if (targ<0) break;
+   
+     float w;
+     float * fv = DataMatrix_fv(dm_q, targ, &w);
+
+     kernel_q->to_offset(features, config_q, fv, fvi);
+     w *= kernel_q->weight(features, config_q, fv);
+   
+     w *= norm_q;
+     prob_q += w;
+    }
+    
+    if (prob_q<limit) prob_q = limit;
+    
+   // Update the return cost - incrimental mean...
+    samples += wi;
+    ret += wi * (log(prob_p / prob_q) - ret) / samples;
+  }
+  
+  free(fvi);
+  
+ return ret;
+}
+
+
+
 void mode(Spatial spatial, const Kernel * kernel, KernelConfig config, float * fv, float * temp, float quality, float epsilon, int iter_cap)
 {
  // Extract the many things we need... 
