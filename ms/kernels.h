@@ -58,11 +58,11 @@ typedef float (*KernelOffset)(int dims, KernelConfig config, float * fv, const f
 // Allows you to draw from the kernel (At position centre in the scaled space) - you provide the first 3 indices for the philox rng (It then has the entire range of the 4th value for its own use, whilst remaining entirly predictable.), and also provide an output vector, as well as the configuration as per usual...
 typedef void (*KernelDraw)(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out);
 
-// Given a set of feature vectors, each the centre of an instance of this kernel type, with different scales, this returns how much probability mass is in the multiplication of them - 1 if they all perfectly overlap, 0 if there is no overlap. It is the weight assigned to the multiplication of components if constructing a mixture model via multiplication. In addition to the usual takes as input pointers to arrays of feature vectors and scales, plus a MultCache, which controls how it behaves...
-typedef float (*KernelMultMass)(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache);
+// Given a set of feature vectors, each the centre of an instance of this kernel type, with different scales, this returns how much probability mass is in the multiplication of them - 1 if they all perfectly overlap, 0 if there is no overlap. It is the weight assigned to the multiplication of components if constructing a mixture model via multiplication. In addition to the usual takes as input pointers to arrays of feature vectors and scales, plus a MultCache, which controls how it behaves. Note that the configuration parameter is an array indexed by term, and can be NULL if its a kernel type that is not configured...
+typedef float (*KernelMultMass)(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache);
 
-// Given a set of features vectors, each the centre of an instance of this kernel type, with different scales, this outputs a draw from the distribution created by multiplying them together. The parameter fake indicates how fake it can be - 0 means it must be a proper draw, 1 means a mode of the resulting distribution is an acceptable alternative, 2 means the 'average' of the locations is allowed (If the distribution is not on Euclidean space this may still be complex.). Only mode 0 has to be truly supported - the others are optional optimisations. Rest of the parameters are identical to KernelMultMass, except for the new 'out' parameter - this must be of length dims so the draw can be dumped into it; note that the draw is output in unscaled space...
-typedef void (*KernelMultDraw)(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake);
+// Given a set of features vectors, each the centre of an instance of this kernel type, with different scales, this outputs a draw from the distribution created by multiplying them together. The parameter fake indicates how fake it can be - 0 means it must be a proper draw, 1 means a mode of the resulting distribution is an acceptable alternative, 2 means the 'average' of the locations is allowed (If the distribution is not on Euclidean space this may still be complex.). Only mode 0 has to be truly supported - the others are optional optimisations. Rest of the parameters are identical to KernelMultMass, except for the new 'out' parameter - this must be of length dims so the draw can be dumped into it; note that the draw is output in unscaled space Note that the configuration parameter is an array indexed by term, and can be NULL if its a kernel type that is not configured...
+typedef void (*KernelMultDraw)(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake);
 
 // Returns the number of states a feature vector using this kernel can be in - this is used for convergance detection when sending vectors to the balls system for mean shift, with all states being tried...
 typedef int (*KernelStates)(int dims, KernelConfig config);
@@ -140,6 +140,23 @@ extern const Kernel Composite;
 
 // List of all Kernel objects known to the system - for automatic detection...
 extern const Kernel * ListKernel[];
+
+
+
+// Would normally be kept private, but the multiplication system requires access to this...
+typedef struct FisherConfig FisherConfig;
+
+struct FisherConfig
+{
+ int ref_count; // Reference count.
+ float alpha; // Concentration parameter.
+ float log_norm; // log of the normalising constant.
+ 
+ int inv_culm_size; // Length of below.
+ float * inv_culm; // Array containing the inverse culmative of the distribution over the dot product result.
+ 
+ int * order; // Array of length dims that contains the integers 0..dims-1; used when drawing.
+};
 
 
 

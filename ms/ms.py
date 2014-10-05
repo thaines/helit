@@ -85,8 +85,6 @@ class MeanShift(MeanShiftC):
       
       score = self.loo_nll()
       
-      print choice.get_kernel(), score #####################################
-      
       if best_score==None or score < best_score:
         best_choice = choice
         best_score = score

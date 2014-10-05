@@ -220,14 +220,14 @@ print 'Prepared and visualised distribution A'
 
 
 ## Create another distribution, designed to create a funky effect when combined with the first...
-ang = numpy.linspace(-numpy.pi, 0.0, 128)
+ang = numpy.linspace(-numpy.pi, 0.0, 64)
 cos_ang = numpy.cos(ang)
 sin_ang = numpy.sin(ang)
 weight = numpy.fabs(numpy.sin(ang*3.0) * (1.0 - ((numpy.fabs(ang)+0.5*numpy.pi) / (0.5*numpy.pi))))
 
 mult_b = MeanShift()
 mult_b.set_data(numpy.concatenate((cos_ang[:,numpy.newaxis], sin_ang[:,numpy.newaxis], weight[:,numpy.newaxis]), axis=1), 'df', 2)
-mult_b.copy_all(mult_a)
+mult_b.set_kernel('mirror_fisher(2048.0)')
 
 visualise('mirror_fisher_mult_b.png', mult_b)
 print 'Prepared and visualised distribution B'
@@ -236,7 +236,7 @@ print 'Prepared and visualised distribution B'
 ## A borring distribution, without weighting to test that works...
 mult_c = MeanShift()
 mult_c.set_data(numpy.array([[1.0,0.0], [0.0,1.0]]), 'df')
-mult_c.copy_all(mult_a)
+mult_c.set_kernel('mirror_fisher(32.0)')
 
 visualise('mirror_fisher_mult_c.png', mult_c)
 print 'Prepared and visualised distribution C'
@@ -249,7 +249,7 @@ MeanShift.mult([mult_a, mult_b], draws)
 
 prod_a_b = MeanShift()
 prod_a_b.set_data(draws, 'df')
-prod_a_b.copy_all(mult_a)
+prod_a_b.set_kernel('mirror_fisher(512.0)')
 
 visualise('mirror_fisher_prod_a_b.png', prod_a_b)
 print 'Prepared and visualised product of a and b'
@@ -261,7 +261,7 @@ MeanShift.mult((mult_b, mult_c), draws)
 
 prod_b_c = MeanShift()
 prod_b_c.set_data(draws, 'df')
-prod_b_c.copy_all(mult_a)
+prod_b_c.copy_all(prod_a_b)
 
 visualise('mirror_fisher_prod_b_c.png', prod_b_c)
 print 'Prepared and visualised product of b and c'
@@ -274,7 +274,7 @@ MeanShift.mult((mult_c, mult_a), draws)
 
 prod_c_a = MeanShift()
 prod_c_a.set_data(draws, 'df')
-prod_c_a.copy_all(mult_a)
+prod_c_a.copy_all(prod_a_b)
 
 visualise('mirror_fisher_prod_c_a_wrong.png', prod_c_a)
 print 'Prepared and visualised product of c and a'

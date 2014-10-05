@@ -2123,8 +2123,14 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   mc.mci_samples = mci;
   mc.mh_proposals = mh;
   
- // Make sure all the MeanShift objects have a Spatial initialised; create the list of Spatials...
+ // Make sure all the MeanShift objects have a Spatial initialised; create the list of Spatials; also get the kernel configuration list setup at the same time...
   Spatial * sl = (Spatial)malloc(terms * sizeof(Spatial));
+  
+  KernelConfig * config = NULL;
+  if (self->config!=NULL)
+  {
+   config = (KernelConfig*)malloc(terms * sizeof(KernelConfig));
+  }
   
   for (i=0; i<terms; i++)
   {
@@ -2136,6 +2142,7 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
    }
     
    sl[i] = targ->spatial;
+   if (config!=NULL) config[i] = targ->config;
   }
  
  // Call the multiplication method for each draw and let it do the work...
@@ -2147,7 +2154,7 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   
   for (i=0; i<PyArray_DIMS(output)[0]; i++)
   {
-   mult(self->kernel, self->config, terms, sl, out, &mc, temp1, temp2, self->quality, fake);
+   mult(self->kernel, config, terms, sl, out, &mc, temp1, temp2, self->quality, fake);
    
    // Copy output to actual output array...
     int j;
@@ -2171,6 +2178,7 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   free(out);
   free(temp2);
   free(temp1);
+  free(config);
   free(sl);
   MultCache_delete(&mc);
  
@@ -2320,7 +2328,7 @@ static PyMethodDef MeanShift_methods[] =
  {"manifolds", (PyCFunction)MeanShift_manifolds_py, METH_VARARGS, "Given a data matrix [exemplar, feature] and the dimensionality of the manifold projects the feature vectors onto the manfold using subspace constrained mean shift. Returns a data matrix with the same shape as the input. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
  {"manifolds_data", (PyCFunction)MeanShift_manifolds_data_py, METH_VARARGS, "Given the dimensionality of the manifold projects the feature vectors that are defining the density estimate onto the manfold using subspace constrained mean shift. The return value will be indexed in the same way as the provided data matrix, but without the feature dimensions, with an extra dimension at the end to index features. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
  
- {"mult", (PyCFunction)MeanShift_mult_py, METH_KEYWORDS | METH_VARARGS | METH_STATIC, "A static method that allows you to multiply a bunch of kernel density estimates, and draw some samples from the resulting distribution, outputing the samples into an array. The first input must be a list of MeanShift objects (At least of length 1, though if length 1 it just resamples the input), the second a numpy array for the output - it must be 2D and have the same number of columns as all the MeanShift objects have features/dims; must be float or double. Its row count is how many samples will be drawn from the distribution implied by multiplying the KDEs together. Note that the first object in the MeanShift object list gets to set the kernel - it is assumed that all further objects have the same kernel, though if they don't it will still run through under that assumption just fine. Further to the first two inputs dictionary parameters it allows parameters to be set by name: {'gibbs': Number of Gibbs samples to do, noting its multiplied by the length of the multiplication list and is the number of complete passes through the state, 'mci': Number of samples to do if it has to do monte carlo integration, 'mh': Number of Metropolis-Hastings steps it will do if it has to, multiplied by the length of the multiplicand list, 'fake': Allows you to request an incorrect-but-useful result - the default of 0 is the correct output, 1 is a mode from the Gibbs sampled mixture component instead of a draw, whilst 2 is the average position of the components that made up the selected mixture component.}. Note that this method makes extensive use of the built in rng."},
+ {"mult", (PyCFunction)MeanShift_mult_py, METH_KEYWORDS | METH_VARARGS | METH_STATIC, "A static method that allows you to multiply a bunch of kernel density estimates, and draw some samples from the resulting distribution, outputing the samples into an array. The first input must be a list of MeanShift objects (At least of length 1, though if length 1 it just resamples the input), the second a numpy array for the output - it must be 2D and have the same number of columns as all the MeanShift objects have features/dims; must be float or double. Its row count is how many samples will be drawn from the distribution implied by multiplying the KDEs together. Note that the first object in the MeanShift object list gets to set the kernel - it is assumed that all further objects have the same kernel, and if thats not the case expect problems. Note that this is same structure - different scales and the same kernel with different parameters (e.g. different concentration parameter for a Fisher) is fine. Further to the first two inputs dictionary parameters it allows parameters to be set by name: {'gibbs': Number of Gibbs samples to do, noting its multiplied by the length of the multiplication list and is the number of complete passes through the state, 'mci': Number of samples to do if it has to do monte carlo integration, 'mh': Number of Metropolis-Hastings steps it will do if it has to, multiplied by the length of the multiplicand list, 'fake': Allows you to request an incorrect-but-useful result - the default of 0 is the correct output, 1 is a mode from the Gibbs sampled mixture component instead of a draw, whilst 2 is the average position of the components that made up the selected mixture component.}. Note that this method makes extensive use of the built in rng."},
  
  {NULL}
 };

@@ -160,12 +160,12 @@ void Uniform_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * 
 
 
 
-float Uniform_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float Uniform_mult_mass(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  return mult_area_mci(&Uniform, config, dims, terms, fv, scale, cache);
 }
 
-void Uniform_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+void Uniform_mult_draw(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
 {
  if (fake==2)
  {
@@ -268,12 +268,12 @@ void Triangular_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float
 
 
 
-float Triangular_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float Triangular_mult_mass(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  return mult_area_mci(&Triangular, config, dims, terms, fv, scale, cache);
 }
 
-void Triangular_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+void Triangular_mult_draw(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
 {
  if (fake==2)
  {
@@ -377,12 +377,12 @@ void Epanechnikov_draw(int dims, KernelConfig config, PhiloxRNG * rng, const flo
 
 
 
-float Epanechnikov_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float Epanechnikov_mult_mass(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  return mult_area_mci(&Epanechnikov, config, dims, terms, fv, scale, cache);
 }
 
-void Epanechnikov_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+void Epanechnikov_mult_draw(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
 {
  if (fake==2)
  {
@@ -511,12 +511,12 @@ void Cosine_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * c
 
 
 
-float Cosine_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float Cosine_mult_mass(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  return mult_area_mci(&Cosine, config, dims, terms, fv, scale, cache);
 }
 
-void Cosine_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+void Cosine_mult_draw(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
 {
  if (fake==2)
  {
@@ -603,12 +603,12 @@ void Gaussian_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float *
 
 
 
-float Gaussian_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float Gaussian_mult_mass(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  return mult_area_gaussian(dims, terms, fv, scale, cache);
 }
 
-void Gaussian_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+void Gaussian_mult_draw(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
 {
  // Ignore fake==2 option as its computationaly near as the same cost as outputing the mean - call through...
   mult_draw_gaussian(dims, terms, fv, scale, out, cache, fake);
@@ -705,12 +705,12 @@ void Cauchy_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * c
 
 
 
-float Cauchy_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float Cauchy_mult_mass(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  return mult_area_mci(&Cauchy, config, dims, terms, fv, scale, cache);
 }
 
-void Cauchy_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+void Cauchy_mult_draw(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
 {
  if (fake==2)
  {
@@ -759,22 +759,6 @@ const Kernel Cauchy =
 
 
 // The von-Mises Fisher kernel...
-typedef struct FisherConfig FisherConfig;
-
-struct FisherConfig
-{
- int ref_count; // Reference count.
- float alpha; // Concentration parameter.
- float log_norm; // log of the normalising constant.
- 
- int inv_culm_size; // Length of below.
- float * inv_culm; // Array containing the inverse culmative of the distribution over the dot product result.
- 
- int * order; // Array of length dims that contains the integers 0..dims-1; used when drawing.
-};
-
-
-
 KernelConfig Fisher_config_new(int dims, const char * config)
 {
  FisherConfig * ret = (FisherConfig*)malloc(sizeof(FisherConfig));
@@ -1144,13 +1128,13 @@ void Fisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * c
 }
 
 
-float Fisher_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float Fisher_mult_mass(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
- FisherConfig * self = (FisherConfig*)config;
- return mult_area_fisher(self->alpha, self->log_norm, dims, terms, fv, scale, cache, self->inv_culm==NULL);
+ FisherConfig ** selves = (FisherConfig**)config;
+ return mult_area_fisher(selves, dims, terms, fv, scale, cache);
 }
 
-void Fisher_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+void Fisher_mult_draw(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
 {
  mult_draw_mh(&Fisher, config, dims, terms, fv, scale, out, cache);
 }
@@ -1160,7 +1144,7 @@ void Fisher_mult_draw(int dims, KernelConfig config, int terms, const float ** f
 const Kernel Fisher =
 {
  "fisher",
- "A kernel for dealing with directional data, using the von-Mises Fisher distribution as a kernel (Fisher is technically 3 dimensions only, but I like short names! - this will do anything from 2 dimensions upwards. Dimensions is the embeding space, as in the length of the unit vector, to match the rest of the system - the degrees of freedom is one less.). Requires that all feature vectors be on the unit-hypersphere (does not check this - gigo), plus it uses the alpha parameter provided to the kernel as the concentration parameter of the distribution. Be careful with the merge_range parameter when using this kernel - unlike the other kernels it won't default to anything sensible, and will have to be manually set. Suffers from the problem that you must use the same kernel for multiplication, so you can only multiply distributions with the same concentration value.",
+ "A kernel for dealing with directional data, using the von-Mises Fisher distribution as a kernel (Fisher is technically 3 dimensions only, but I like short names! - this will do anything from 2 dimensions upwards. Dimensions is the embeding space, as in the length of the unit vector, to match the rest of the system - the degrees of freedom is one less.). Requires that all feature vectors be on the unit-hypersphere (does not check this - gigo), plus it uses the alpha parameter provided to the kernel as the concentration parameter of the distribution. Be careful with the merge_range parameter when using this kernel - unlike the other kernels it won't default to anything sensible, and will have to be manually set.",
  "Specified as fisher(alpha), e.g. fisher(10), where alpha is the concentration parameter. Can optionally include a letter immediatly after the alpha value - either 'a' to force approximate mode or 'c' to force correct mode, e.g. 'fisher(64.0a)'. Note that this is generally not a good idea - the approximation breaks down for low concentration and the correct approach numerically explodes for high concentration - the default behaviour automatically takes this into account and selects the right one.",
  Fisher_config_new,
  Fisher_config_verify,
@@ -1239,13 +1223,13 @@ void MirrorFisher_draw(int dims, KernelConfig config, PhiloxRNG * rng, const flo
 
 
 
-float MirrorFisher_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float MirrorFisher_mult_mass(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
- FisherConfig * self = (FisherConfig*)config;
- return mult_area_mirror_fisher(self->alpha, self->log_norm, dims, terms, fv, scale, cache, self->inv_culm==NULL);
+ FisherConfig ** selves = (FisherConfig**)config;
+ return mult_area_mirror_fisher(selves, dims, terms, fv, scale, cache);
 }
 
-void MirrorFisher_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+void MirrorFisher_mult_draw(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
 {
  mult_draw_mh(&MirrorFisher, config, dims, terms, fv, scale, out, cache);
 }
@@ -1271,7 +1255,7 @@ void MirrorFisher_next(int dims, KernelConfig config, int state, float * fv)
 const Kernel MirrorFisher =
 {
  "mirror_fisher",
- "A kernel for dealing with directional data where a 180 degree rotation is meaningless; one specific use case is for rotations expressed with unit quaternions. It wraps the Fisher distribution such that it is an even mixture of two of them - one with the correct unit vector, one with its negation. All other behaviours and requirements are basically the same as a Fisher distribution however. Suffers from the problem that you must use the same kernel for multiplication, so you can only multiply distributions with the same concentration value.",
+ "A kernel for dealing with directional data where a 180 degree rotation is meaningless; one specific use case is for rotations expressed with unit quaternions. It wraps the Fisher distribution such that it is an even mixture of two of them - one with the correct unit vector, one with its negation. All other behaviours and requirements are basically the same as a Fisher distribution however.",
  "Specified as mirror_fisher(alpha), e.g. mirror_fisher(10), where alpha is the concentration parameter used for both of the von-Mises Fisher distributions. Same as fisher you can immediatly postcede the concentration with 'a' to force it to be approximate or 'c' to force it to be correct.",
  Fisher_config_new,
  Fisher_config_verify,
@@ -1305,6 +1289,10 @@ struct CompositeChild
 struct CompositeConfig
 {
  int ref_count;
+ 
+ int kca_length; // Temporary array used during multiplication.
+ KernelConfig * kca;
+ 
  int children; // Number of children.
  CompositeChild child[0];
 };
@@ -1351,6 +1339,10 @@ KernelConfig Composite_config_new(int dims, const char * config)
   CompositeConfig * ret = (CompositeConfig*)malloc(sizeof(CompositeConfig) + children * sizeof(CompositeChild));
   
   ret->ref_count = 1;
+  
+  ret->kca_length = 0;
+  ret->kca = NULL;
+  
   ret->children = children;
  
  // Second pass to fill in the data structure...
@@ -1460,7 +1452,8 @@ void Composite_config_release(KernelConfig config)
   {
    self->child[i].kernel->config_release(self->child[i].config);
   }
-   
+  
+  free(self->kca);
   free(self); 
  }
 }
@@ -1563,10 +1556,17 @@ void Composite_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float 
 
 
 
-float Composite_mult_mass(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float Composite_mult_mass(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  float ret = 1.0;
- CompositeConfig * self = (CompositeConfig*)config;
+ CompositeConfig ** selves = (CompositeConfig**)config;
+ CompositeConfig * self = selves[0];
+ 
+ if (self->kca_length<terms)
+ {
+  self->kca_length = terms;
+  self->kca = realloc(self->kca, terms * sizeof(KernelConfig));
+ }
  
  int i;
  int child;
@@ -1574,9 +1574,15 @@ float Composite_mult_mass(int dims, KernelConfig config, int terms, const float 
  int total = 0;
  for (child=0; child<self->children; child++)
  {
+  // Prepare the kernel config array...
+   for (i=0; i<terms; i++)
+   {
+    self->kca[i] = selves[i]->child[child].config;
+   }
+   
   // Factor in the current child...
    int c_dims = self->child[child].dims;
-   ret *= self->child[child].kernel->mult_mass(c_dims, self->child[child].config, terms, fv, scale, cache);
+   ret *= self->child[child].kernel->mult_mass(c_dims, self->kca, terms, fv, scale, cache);
   
   // Move array pointers to the next item...
    for (i=0; i<terms; i++)
@@ -1597,19 +1603,32 @@ float Composite_mult_mass(int dims, KernelConfig config, int terms, const float 
  return ret;
 }
 
-void Composite_mult_draw(int dims, KernelConfig config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+void Composite_mult_draw(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
 {
- CompositeConfig * self = (CompositeConfig*)config;
+ CompositeConfig ** selves = (CompositeConfig**)config;
+ CompositeConfig * self = selves[0];
  
+ if (self->kca_length<terms)
+ {
+  self->kca_length = terms;
+  self->kca = realloc(self->kca, terms * sizeof(KernelConfig));
+ }
+
  int i;
  int child;
  
  int total = 0;
  for (child=0; child<self->children; child++)
  {
+  // Prepare the kernel config array...
+   for (i=0; i<terms; i++)
+   {
+    self->kca[i] = selves[i]->child[child].config;
+   }
+
   // Draw for the current child...
    int c_dims = self->child[child].dims;
-   self->child[child].kernel->mult_draw(c_dims, self->child[child].config, terms, fv, scale, out, cache, fake);
+   self->child[child].kernel->mult_draw(c_dims, self->kca, terms, fv, scale, out, cache, fake);
   
   // Move array pointers to the next item...
    for (i=0; i<terms; i++)

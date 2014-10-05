@@ -77,7 +77,7 @@ void MultCache_ensure(MultCache * self, int dims, int terms)
 
 
 
-float mult_area_mci(const Kernel * kernel, KernelConfig config, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache)
+float mult_area_mci(const Kernel * kernel, KernelConfig * config, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  MultCache_ensure(cache, dims, terms);
  
@@ -85,16 +85,26 @@ float mult_area_mci(const Kernel * kernel, KernelConfig config, int dims, int te
  float * draw_s = cache->temp_dims2;
  int samples = cache->mci_samples;
  
- float norm = kernel->norm(dims, config);
+ float * norm = cache->temp_terms1;
+ int i;
+ if (config!=NULL)
+ {
+  for (i=0; i<terms; i++) norm[i] = kernel->norm(dims, config[i]);
+ }
+ else
+ {
+  norm[0] = kernel->norm(dims, NULL);
+  for (i=1; i<terms; i++) norm[i] = norm[0];
+ }
+ 
  float ret = 0.0;
  
  int s;
  for (s=0; s<samples; s++)
  {
   // Draw from the first distribution, convert to global space...
-   kernel->draw(dims, config, cache->rng, fv[0], draw);
+   kernel->draw(dims, (config!=NULL)?config[0]:NULL, cache->rng, fv[0], draw);
    
-   int i;
    for (i=0; i<dims; i++) draw[i] /= scale[0][i];
    
   // Calculate its value, by multiplying with the probabilities of the remaining distributions - do everything in the global 'without scale' space for consistancy...
@@ -107,7 +117,7 @@ float mult_area_mci(const Kernel * kernel, KernelConfig config, int dims, int te
      for (i=0; i<dims; i++) draw_s[i] = draw[i] * scale[j][i] - fv[j][i];
      
     // Multiply in the base normalised probability...
-     prob *= norm * kernel->weight(dims, config, draw_s);
+     prob *= norm[j] * kernel->weight(dims, (config!=NULL)?config[j]:NULL, draw_s);
      
     // Factor in scaling effects...
      for (i=0; i<dims; i++) prob *= scale[j][i];
@@ -184,7 +194,7 @@ float mult_area_gaussian(int dims, int terms, const float ** fv, const float ** 
 
 
 
-float mult_area_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache, int force_approximate)
+float mult_area_fisher(FisherConfig ** config, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  MultCache_ensure(cache, dims, terms);
  
@@ -197,7 +207,7 @@ float mult_area_fisher(float conc, float log_norm, int dims, int terms, const fl
   int j;
   for (j=0; j<terms; j++)
   {
-   for (i=0; i<dims; i++) dir[i] += conc * fv[j][i];
+   for (i=0; i<dims; i++) dir[i] += config[j]->alpha * fv[j][i];
   }
   
   float mult_conc = 0.0;
@@ -207,57 +217,44 @@ float mult_area_fisher(float conc, float log_norm, int dims, int terms, const fl
   for (i=0; i<dims; i++) dir[i] /= mult_conc;
   
  // Choose a point - the mode of the multiplied distributions (dir) is safe - and work out the ratio between the area one value and multiplication value, as this gives us the area under the multiplication of the distributions. Either approximate with Gaussians or done properly...
-  if ((mult_conc>CONC_SWITCH)||(force_approximate))
-  {
-   if (!force_approximate)
-   {
-    // log_norm contains the correct normaliser, not the one used with the Gaussian approximation - fix that...
-     log_norm = (-0.5*(dims-1)) * log(2 * M_PI / conc);
-   }
-   
-   float exp_me = 0.0;
-   
-   // Put in the value of the normalised distribution...
-    exp_me -= (-0.5*(dims-1)) * log(2 * M_PI / mult_conc);
-   
-   // Loop through and divide by each Fisher in turn...
-    for (j=0; j<terms; j++)
-    {
-     float dot = 0.0;
-     for (i=0; i<dims; i++) dot += dir[i] * fv[j][i];
-     
-     exp_me += -0.5 * conc * (1.0 - dot*dot) + log_norm;
-    }
-   
-   // Return the calculated ratio, which matches the area as we started with a volume of one by defintion of them being PDFs...
-    return exp(exp_me);
-  }
-  else
-  {
-   float exp_me = 0.0;
+  float exp_me = 0.0;
   
-   // Put in the value of the normalised distribution...
+  // First the normalisation term of the multiplied distribution...
+   if (mult_conc>CONC_SWITCH)
+   {
+    exp_me -= (-0.5*(dims-1)) * log(2 * M_PI / mult_conc);
+   }
+   else
+   {
     exp_me -= mult_conc;
     exp_me -= (0.5 * dims - 1) * log(mult_conc);
     exp_me += (0.5 * dims) * log(2 * M_PI);
-    exp_me += LogModBesselFirst(dims-2, mult_conc, 1e-6, 1024);
-   
-   // Loop through and divide by each Fisher in turn...
-    for (j=0; j<terms; j++)
+    exp_me += LogModBesselFirst(dims-2, mult_conc, 1e-6, 1024); 
+   }
+
+  // Now loop through and divide by each Fisher terms normalisation in turn... 
+   for (j=0; j<terms; j++)
+   {
+    float dot = 0.0;
+    for (i=0; i<dims; i++) dot += dir[i] * fv[j][i];
+     
+    if (config[j]->inv_culm==NULL)
     {
-     float dot = 0.0;
-     for (i=0; i<dims; i++) dot += dir[i] * fv[j][i];
-     exp_me += conc * dot + log_norm;
+     exp_me += -0.5 * config[j]->alpha * (1.0 - dot*dot) + config[j]->log_norm;
     }
-   
-   // Return the calculated ratio, which matches the area as we started with a volume of one by defintion of them being PDFs...
-    return exp(exp_me);
-  }
+    else
+    {
+     exp_me += config[j]->alpha * dot + config[j]->log_norm;
+    }
+   }
+  
+ // Return the calculated ratio, which matches the area as we started with a volume of one by defintion of them being PDFs...
+  return exp(exp_me);
 }
 
 
 
-float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache, int force_approximate)
+float mult_area_mirror_fisher(FisherConfig ** config, int dims, int terms, const float ** fv, const float ** scale, MultCache * cache)
 {
  MultCache_ensure(cache, dims, terms);
 
@@ -265,9 +262,6 @@ float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, c
   float ret = 0.0;
   int parts = 1 << (terms-1);
   float * dir = cache->temp_dims1;
-  
-  int approx_setup = 0;
-  float log_norm_approx = 0.0;
   
   int i, j, p;
   for (p=0; p<parts; p++)
@@ -277,8 +271,8 @@ float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, c
     
     for (j=0; j<terms; j++)
     {
-     float fact = conc;
-     if (((p<<1)>>j)&1) fact = -conc; // Swap sign if part requires it - using index as flags with first item fixed positive.
+     float fact = config[j]->alpha;
+     if (((p<<1)>>j)&1) fact *= -1; // Swap sign if part requires it - using index as flags with first item fixed positive.
      
      for (i=0; i<dims; i++) dir[i] += fact * fv[j][i];
     }
@@ -292,49 +286,41 @@ float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, c
    // Calculate the area under the multiplied distribution using the single point ratio trick, and sum it into the return value...
     float exp_me = 0.0;
     
-    if ((mult_conc>CONC_SWITCH)||(force_approximate))
-    {
-     if (approx_setup==0)
+    // First the normalisation term of the multiplied distribution...
+     if (mult_conc>CONC_SWITCH)
      {
-      approx_setup = 1;
-      if (force_approximate) log_norm_approx = log_norm;
-      else
-      {
-       log_norm_approx = (-0.5*(dims-1)) * log(2 * M_PI / conc);
-      }
+      // Put in the value of the normalised distribution...
+       exp_me -= (-0.5*(dims-1)) * log(2 * M_PI / mult_conc);
      }
-     
-    // Put in the value of the normalised distribution...
-     exp_me -= (-0.5*(dims-1)) * log(2 * M_PI / mult_conc);
-   
-    // Loop through and divide by each Fisher in turn...
+     else
+     {
+      // Value of the normalised distribution...
+       exp_me -= mult_conc;
+       exp_me -= (0.5 * dims - 1) * log(mult_conc);
+       exp_me += (0.5 * dims) * log(2 * M_PI);
+       exp_me += LogModBesselFirst(dims-2, mult_conc, 1e-6, 1024);
+     }
+    
+    // Now loop through and divide by each Fisher terms normalisation in turn...
      for (j=0; j<terms; j++)
      {
-      float dot = 0.0;
-      for (i=0; i<dims; i++) dot += dir[i] * fv[j][i];
+      if (config[j]->inv_culm==NULL)
+      {
+       float dot = 0.0;
+       for (i=0; i<dims; i++) dot += dir[i] * fv[j][i];
      
-      exp_me += -0.5 * conc * (1.0 - dot*dot) + log_norm_approx;
-     }
-    }
-    else
-    {
-     // Value of the normalised distribution...
-      exp_me -= mult_conc;
-      exp_me -= (0.5 * dims - 1) * log(mult_conc);
-      exp_me += (0.5 * dims) * log(2 * M_PI);
-      exp_me += LogModBesselFirst(dims-2, mult_conc, 1e-6, 1024);
-   
-     // Divide by each Fisher in turn...
-      for (j=0; j<terms; j++)
+       exp_me += -0.5 * config[j]->alpha * (1.0 - dot*dot) + config[j]->log_norm;
+      }
+      else
       {
        int sign = 1;
        if (((p<<1)>>j)&1) sign = -1;
        
        float dot = 0.0;
        for (i=0; i<dims; i++) dot += sign * dir[i] * fv[j][i];
-       exp_me += conc * dot + log_norm;
+       exp_me += config[j]->alpha * dot + config[j]->log_norm;
       }
-    }
+     }
  
    ret += exp(exp_me);
   }
@@ -345,7 +331,7 @@ float mult_area_mirror_fisher(float conc, float log_norm, int dims, int terms, c
 
 
 
-int mult_draw_mh(const Kernel * kernel, KernelConfig config, int dims, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache)
+int mult_draw_mh(const Kernel * kernel, KernelConfig * config, int dims, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache)
 {
  MultCache_ensure(cache, dims, terms);
  
@@ -360,7 +346,7 @@ int mult_draw_mh(const Kernel * kernel, KernelConfig config, int dims, int terms
  const float norm = 1.0; //kernel->norm(dims, config); // Always cancels out.
  
  // Create an initial proposal - just draw from the first distribution, scale, and fill in the probability values in out_prob...
-  kernel->draw(dims, config, cache->rng, fv[0], out);
+  kernel->draw(dims, (config!=NULL)?config[0]:NULL, cache->rng, fv[0], out);
   
   for (j=0; j<dims; j++) out[j] /= scale[0][j];
   
@@ -372,7 +358,7 @@ int mult_draw_mh(const Kernel * kernel, KernelConfig config, int dims, int terms
     //out_prob[k] *= scale[k][j]; // Always cancels out.
     p_temp[j] = out[j] * scale[k][j] - fv[k][j];
    }
-   out_prob[k] *= kernel->weight(dims, config, p_temp);
+   out_prob[k] *= kernel->weight(dims, (config!=NULL)?config[k]:NULL, p_temp);
   }
   
  // Loop through creating proposals and accepting/rejecting them - by the end we should have a reasonable draw in out...
@@ -383,7 +369,7 @@ int mult_draw_mh(const Kernel * kernel, KernelConfig config, int dims, int terms
     term = (term+1) % terms;
     
    // Draw from that term, converting the draw to global space...
-     kernel->draw(dims, config, cache->rng, fv[term], proposal);
+     kernel->draw(dims, (config!=NULL)?config[term]:NULL, cache->rng, fv[term], proposal);
      
      for (j=0; j<dims; j++) proposal[j] /= scale[term][j];
     
@@ -396,7 +382,7 @@ int mult_draw_mh(const Kernel * kernel, KernelConfig config, int dims, int terms
       //proposal_prob[k] *= scale[k][j]; // Always cancels out.
       p_temp[j] = proposal[j] * scale[k][j] - fv[k][j];
      }
-     proposal_prob[k] *= kernel->weight(dims, config, p_temp);
+     proposal_prob[k] *= kernel->weight(dims, (config!=NULL)?config[k]:NULL, p_temp);
     }
 
    // Calculate the accept probability...
@@ -480,7 +466,7 @@ void mult_draw_gaussian(int dims, int terms, const float ** fv, const float ** s
 
 
 
-void mult(const Kernel * kernel, KernelConfig config, int terms, Spatial * spatials, float * out, MultCache * cache, int * index, float * prob, float quality, int fake)
+void mult(const Kernel * kernel, KernelConfig * config, int terms, Spatial * spatials, float * out, MultCache * cache, int * index, float * prob, float quality, int fake)
 {
  // Make sure the cache is large enough, and will not need to be resized at all...
   int dims = DataMatrix_features(Spatial_dm(spatials[0]));
@@ -490,7 +476,7 @@ void mult(const Kernel * kernel, KernelConfig config, int terms, Spatial * spati
   int i;
   int samples = cache->gibbs_samples * terms;
   
-  float range = 2.0 * kernel->range(dims, config, quality);
+  float range = 2.0 * kernel->range(dims, (config!=NULL)?config[0]:NULL, quality);
   
  // Store the scales into the cache...
   int t;
