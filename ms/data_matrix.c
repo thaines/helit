@@ -11,6 +11,7 @@
 #include "data_matrix.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 
 
@@ -136,6 +137,10 @@ void DataMatrix_init(DataMatrix * dm)
   dm->feat_dims = 0;
   dm->feat_indices = NULL;
   dm->to_float = ToFloat_zero;
+  dm->feats_conv = 0;
+  dm->fv_conv = NULL;
+  dm->ops_conv = 0;
+  dm->conv = NULL;
 }
 
 
@@ -165,11 +170,18 @@ void DataMatrix_deinit(DataMatrix * dm)
  dm->feat_indices = NULL;
 
  dm->to_float = ToFloat_zero;
+ 
+ dm->feats_conv = 0;
+ free(dm->fv_conv);
+ dm->fv_conv = NULL;
+ dm->ops_conv = 0;
+ free(dm->conv);
+ dm->conv = NULL;
 }
 
 
 
-void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int weight_index)
+void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int weight_index, const char * conv_str)
 {
  int i;
  
@@ -242,6 +254,37 @@ void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int we
   
  // Store a function pointer in the to_float variable that matches this array type...
   dm->to_float = KindToFunc(PyArray_DESCR(dm->array));
+  
+ // Prepare the conversion system...
+  if (conv_str!=NULL)
+  {
+   dm->ops_conv = strlen(conv_str);
+   dm->conv = (ConvertOp*)malloc(dm->ops_conv * sizeof(ConvertOp));
+   
+   int offset_external = 0;
+   int offset_internal = 0;
+   for (i=0; i<dm->ops_conv; i++)
+   {
+    // Find the index of the relevant convertor...
+     int j=0;
+     while (ListConvert[j]->code!=conv_str[i]) ++j;
+    
+    // Store the convertor...
+     dm->conv[i].conv = ListConvert[j];
+     dm->conv[i].offset_external = offset_external;
+     dm->conv[i].offset_internal = offset_internal;
+     
+    // Offset accordingly...
+     offset_external += dm->conv[i].conv->dim_ext;
+     offset_internal += dm->conv[i].conv->dim_int;
+   }
+   
+   dm->fv_conv = (float*)malloc(dm->feats_conv * sizeof(float));
+  }
+  else
+  {
+   dm->feats_conv = dm->feats;
+  }  
 }
 
 
@@ -253,6 +296,11 @@ int DataMatrix_exemplars(DataMatrix * dm)
 
 
 int DataMatrix_features(DataMatrix * dm)
+{
+ return dm->feats_conv; 
+}
+
+int DataMatrix_ext_features(DataMatrix * dm)
 {
  return dm->feats; 
 }
@@ -269,6 +317,14 @@ void DataMatrix_set_scale(DataMatrix * dm, float * scale, float weight_scale)
 
 
 float * DataMatrix_fv(DataMatrix * dm, int index, float * weight)
+{
+ float * ret = DataMatrix_ext_fv(dm, index, weight);
+ float * ret = DataMatrix_to_int(dm, ret, dm->fv_conv);
+ return ret;
+}
+
+
+float * DataMatrix_ext_fv(DataMatrix * dm, int index, float * weight)
 {
  int i;
  char * base = PyArray_DATA(dm->array);
@@ -346,7 +402,7 @@ float * DataMatrix_fv(DataMatrix * dm, int index, float * weight)
      if (weight!=NULL) *weight *= dm->to_float(pos);
     }
   }
-  
+
  // Return the internal storage we have written the information into...
   return dm->fv;
 }
@@ -409,4 +465,39 @@ int DataMatrix_draw(DataMatrix * dm, PhiloxRNG * rng)
     
     return high;
   }
+}
+
+
+
+float * DataMatrix_to_int(DataMatrix * dm, float * external, float * internal)
+{
+ // Escape quickly if no conversion required...
+  if (dm->fv_conv==NULL) return external;
+ 
+ // Loop and apply each conversion operation in turn...
+  int i;
+  for (i=0; i<dm->ops_conv; i++)
+  {
+   dm->conv[i].conv->to_int(external + dm->conv[i].offset_external, internal + dm->conv[i].offset_internal);
+  }
+ 
+ // Return the external array, as work has actually occured...
+  return internal;
+}
+
+
+float * DataMatrix_to_ext(DataMatrix * dm, float * internal, float * external)
+{
+ // Escape quickly if no conversion required...
+  if (dm->fv_conv==NULL) return internal;
+  
+ // Loop and apply each conversion operation in turn...
+  int i;
+  for (i=0; i<dm->ops_conv; i++)
+  {
+   dm->conv[i].conv->to_ext(internal + dm->conv[i].offset_internal, external + dm->conv[i].offset_external);
+  }
+ 
+ // Return the external array, as work has actually occured...
+  return external;
 }

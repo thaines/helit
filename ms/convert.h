@@ -18,10 +18,10 @@
 // Typedefs of assortd function pointers that are used for the convertor interface...
 
 // Converts from the provided representaton to the representation on which the kernels work. Pointers to float arrays must be long enough...
-typedef void (*ConvertTo)(const float * before, float * after);
+typedef void (*ConvertToInt)(const float * external, float * internal);
 
 // Converts from the kernel-suitable representation back to the original. Pointers to float arrays must be long enough...
-typedef void (*ConvertFrom)(const float * after, float * before);
+typedef void (*ConvertToExt)(const float * internal, float * external);
 
 
 
@@ -34,16 +34,22 @@ struct Convert
  const char * name;
  const char * description;
  
- const int dim_before;
- const int dim_after;
+ const int dim_ext;
+ const int dim_int;
  
- ConvertTo to;
- ConvertFrom from;
+ ConvertToInt to_int;
+ ConvertToExt to_ext;
 };
 
 
 
 // Convertors provided by this code...
+
+// NoOp - just copies across a single value...
+extern const Convert NoOp;
+
+// Deletes a single feature - bit weird, but can be useful when you are constructing multiple estiamtes driven by different subsets of an input array...
+extern const Convert Delete;
 
 // Converts an angle into a 2D unit length vector that represents the angle...
 extern const Convert Angle;

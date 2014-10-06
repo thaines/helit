@@ -20,6 +20,7 @@
 #include <numpy/arrayobject.h>
 
 #include "philox.h"
+#include "convert.h"
 
 // Provides a wrapper around a numpy matrix that converts it into a data matrix of floats - allows each index of the dat matrix to be assigned to one of three classes - data, feature or spatial. It does linearisation to allow indexing of the exemplars/features, always in row major order...
 
@@ -33,6 +34,16 @@ typedef float (*ToFloat)(void * data);
 
 // Helper function, that is also used elsewhere in the system...
 ToFloat KindToFunc(const PyArray_Descr * descr);
+
+// An internal structure that is used by the system...
+typedef struct ConvertOp ConvertOp;
+
+struct ConvertOp
+{
+ const Convert * conv;
+ int offset_external; // Offset of external representation.
+ int offset_internal; // Offset of internal representation.
+};
 
 
 
@@ -75,6 +86,13 @@ struct DataMatrix
   
  // Function pointer to accelerate conversion...
   ToFloat to_float;
+
+ // All the stuff for conversion - only valid if the fv_conv pointer is not null...
+  int feats_conv; // Set to feats even when conversion system not active, to avoid branching.
+  float * fv_conv; // Substitute for fv, after conversion to internal use state.
+  
+  int ops_conv; // Number of below - conversion is to loop and apply each in turn.
+  ConvertOp * conv;
 };
 
 
@@ -83,21 +101,36 @@ struct DataMatrix
 void DataMatrix_init(DataMatrix * dm);
 void DataMatrix_deinit(DataMatrix * dm);
 
-// Allows you to set a numpy data matrix for use; you have to assign a type to each dimension as well. If you want a weight that is not 1 you can assign one of the features to be a weight, by giving its index - this feature will not appear in the feature count and return of the fv method. Otherwise set the weight index to be negative...
-void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int weight_index);
+// Allows you to set a numpy data matrix for use; you have to assign a type to each dimension as well. If you want a weight that is not 1 you can assign one of the features to be a weight, by giving its index - this feature will not appear in the feature count and return of the fv method. Otherwise set the weight index to be negative. You can optionally provide a conversion string (rather than NULL), of convert codes to define a runtime format different to the storage format (no error checking!)...
+void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int weight_index, const char * conv_str);
+
 
 // Returns basic stats...
 int DataMatrix_exemplars(DataMatrix * dm);
 int DataMatrix_features(DataMatrix * dm);
 
+int DataMatrix_ext_features(DataMatrix * dm); // External feature count, before conversion (if any).
+
+
 // Allows you to set the multipliers for the features - the scale array passed in better have the right length, as returned by the feats method. You should also provide a weight_scale...
 void DataMatrix_set_scale(DataMatrix * dm, float * scale, float weight_scale);
+
 
 // Fetches a feature vector, using a single index to do row-major indexing into all dimensions marked as data or dual. Note that the returned pointer is to internal storage, that is replaced every time this method is called. The dual dimensions will always be first, followed by all the feature dimensions in row major flattened order. If you want the weight as well provide a pointer and it will be filled...
 float * DataMatrix_fv(DataMatrix * dm, int index, float * weight);
 
+// As above, but in the external format, without conversion...
+float * DataMatrix_ext_fv(DataMatrix * dm, int index, float * weight);
+
 // Draws the index of a random exemplar from the datamatrix, using the philox random number generator (If exemplars are weighted it will be a weighted draw)...
 int DataMatrix_draw(DataMatrix * dm, PhiloxRNG * rng);
+
+
+// Converts an external vector to an internal vector, noting that if no conversion happens it just returns the pointer to the provided external array rather than copying the data across (in the no-conversion case its safe for internal to be NULL!)...
+float * DataMatrix_to_int(DataMatrix * dm, float * external, float * internal);
+
+// As above, other direction...
+float * DataMatrix_to_ext(DataMatrix * dm, float * internal, float * external);
 
 
 
