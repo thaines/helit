@@ -1186,7 +1186,7 @@ float MirrorFisher_weight(int dims, KernelConfig config, float * offset)
 
 float MirrorFisher_range(int dims, KernelConfig config, float quality)
 {
- return 2.1; // Due to the nature of the distribution this optimisation is not possible - 2.1 effectivly switches it off.
+ return 2.001; // Due to the nature of the distribution this optimisation is not possible - greater than 2 effectivly switches it off.
 }
 
 void MirrorFisher_to_offset(int dims, KernelConfig config, float * fv, const float * base_fv)

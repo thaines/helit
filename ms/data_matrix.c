@@ -276,6 +276,7 @@ void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int we
      offset_internal += dm->conv[i].conv->dim_int;
    }
    
+   dm->feats_conv = offset_internal;
    dm->fv_conv = (float*)malloc(dm->feats_conv * sizeof(float));
   }
   else
