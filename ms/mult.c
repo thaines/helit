@@ -114,7 +114,7 @@ float mult_area_mci(const Kernel * kernel, KernelConfig * config, int dims, int 
    for (j=1; j<terms; j++)
    {
     // Convert to local space and offset...
-     for (i=0; i<dims; i++) draw_s[i] = draw[i] * scale[j][i] - fv[j][i];
+     for (i=0; i<dims; i++) draw_s[i] = draw[i] * scale[j][i] - fv[j][i]; // Wrong - should use kernel offset method, but I know that this is safe for all kernels to which I apply this method!
      
     // Multiply in the base normalised probability...
      prob *= norm[j] * kernel->weight(dims, (config!=NULL)?config[j]:NULL, draw_s);
@@ -356,8 +356,9 @@ int mult_draw_mh(const Kernel * kernel, KernelConfig * config, int dims, int ter
    for (j=0; j<dims; j++)
    {
     //out_prob[k] *= scale[k][j]; // Always cancels out.
-    p_temp[j] = out[j] * scale[k][j] - fv[k][j];
+    p_temp[j] = out[j] * scale[k][j];
    }
+   kernel->to_offset(dims, (config!=NULL)?config[k]:NULL, p_temp, fv[k]);
    out_prob[k] *= kernel->weight(dims, (config!=NULL)?config[k]:NULL, p_temp);
   }
   
@@ -380,8 +381,9 @@ int mult_draw_mh(const Kernel * kernel, KernelConfig * config, int dims, int ter
      for (j=0; j<dims; j++)
      {
       //proposal_prob[k] *= scale[k][j]; // Always cancels out.
-      p_temp[j] = proposal[j] * scale[k][j] - fv[k][j];
+      p_temp[j] = proposal[j] * scale[k][j];
      }
+     kernel->to_offset(dims, (config!=NULL)?config[k]:NULL, p_temp, fv[k]);
      proposal_prob[k] *= kernel->weight(dims, (config!=NULL)?config[k]:NULL, p_temp);
     }
 

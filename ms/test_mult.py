@@ -134,6 +134,7 @@ for kernel in kernels:
     ms.set_data(data, 'df')
     ms.set_kernel(kernel)
     ms.set_spatial('kd_tree')
+    ms.quality = 1.0
     return ms
   
   ms = map(to_ms, samples)
@@ -143,7 +144,7 @@ for kernel in kernels:
   ms[0].scale_loo_nll(callback=p.callback)
   del p
   
-  for i in xrange(1,4): ms[i].set_scale(ms[0].get_scale())
+  for i in xrange(1,4): ms[i].copy_scale(ms[0])
 
   # Visualise the distributions using KDE...
   imgs = []
@@ -185,11 +186,11 @@ for kernel in kernels:
   output = numpy.empty((draw, 2), dtype=numpy.float32);
   for i in xrange(draw):
     p.callback(i, draw)
-    MeanShift.mult(ms, output[i,:].reshape((1,-1)), fake=0)
+    MeanShift.mult(ms, output[i,:].reshape((1,-1)), fake=2)
   del p
   
   mult = to_ms(output)
-  mult.set_scale(ms[0].get_scale())
+  mult.copy_scale(ms[0])
 
   # Visualise the resulting distribution - the actual multiplication...
   img = numpy.zeros((draw_scale*size[0], draw_scale*size[1]), dtype=numpy.float32)

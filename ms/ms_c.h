@@ -65,6 +65,10 @@ struct MeanShift
  // For the rng...
   MeanShift * rng_link; // Allows the rng between MeanShift objects to be linked; this is subject to proper reference counting.
   unsigned int rng[4];
+  
+ // Two temporaries, to save on mallocs...
+  float * fv_int; // length matches that of internal data matrix, after conversion.
+  float * fv_ext; // length matches that of external data matrix.
 };
 
 

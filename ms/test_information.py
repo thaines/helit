@@ -256,8 +256,8 @@ def to_kde(grid):
   
   ret = MeanShift()
   ret.set_data(data, 'bb', 2)
-  ret.set_kernel('triangular')
-  ret.set_spatial('kd_tree')
+  #ret.set_kernel('triangular')
+  #ret.set_spatial('kd_tree')
   ret.scale_loo_nll()
   
   return ret

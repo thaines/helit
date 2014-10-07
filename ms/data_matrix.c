@@ -230,10 +230,7 @@ void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int we
   }
   else dm->weight_index = -1;
   
- // Create the scale and feature vector internal storage...
-  dm->mult = (float*)malloc(dm->feats * sizeof(float));
-  for (i=0; i<dm->feats; i++) dm->mult[i] = 1.0;
-  
+ // Create the feature vector internal storage...  
   dm->fv = (float*)malloc(dm->feats * sizeof(float));
   
  // Create the index of all feature indices...
@@ -284,7 +281,11 @@ void DataMatrix_set(DataMatrix * dm, PyArrayObject * array, DimType * dt, int we
   else
   {
    dm->feats_conv = dm->feats;
-  }  
+  }
+  
+ // Prepare the scale array...
+  dm->mult = (float*)malloc(dm->feats_conv * sizeof(float));
+  for (i=0; i<dm->feats_conv; i++) dm->mult[i] = 1.0;
 }
 
 
@@ -310,7 +311,7 @@ int DataMatrix_ext_features(DataMatrix * dm)
 void DataMatrix_set_scale(DataMatrix * dm, float * scale, float weight_scale)
 {
  int i;
- for (i=0; i<dm->feats; i++) dm->mult[i] = scale[i];
+ for (i=0; i<dm->feats_conv; i++) dm->mult[i] = scale[i];
  dm->weight_scale = weight_scale;
 }
 
@@ -319,7 +320,7 @@ void DataMatrix_set_scale(DataMatrix * dm, float * scale, float weight_scale)
 float * DataMatrix_fv(DataMatrix * dm, int index, float * weight)
 {
  float * ret = DataMatrix_ext_fv(dm, index, weight);
- float * ret = DataMatrix_to_int(dm, ret, dm->fv_conv);
+ ret = DataMatrix_to_int(dm, ret, dm->fv_conv); 
  return ret;
 }
 
@@ -346,7 +347,7 @@ float * DataMatrix_ext_fv(DataMatrix * dm, int index, float * weight)
     }
     else
     {
-     dm->fv[next_dual_feat] = step * dm->mult[next_dual_feat];
+     dm->fv[next_dual_feat] = step;
     }
     next_dual_feat -= 1;
    }
@@ -394,7 +395,7 @@ float * DataMatrix_ext_fv(DataMatrix * dm, int index, float * weight)
    // Translate the various possibilities - the use of a function pointer makes this relativly efficient...
     if (i!=(dm->weight_index-dm->dual_feats))
     {
-     dm->fv[oi] = dm->to_float(pos) * dm->mult[oi];
+     dm->fv[oi] = dm->to_float(pos);
      oi += 1;
     }
     else
@@ -471,33 +472,47 @@ int DataMatrix_draw(DataMatrix * dm, PhiloxRNG * rng)
 
 float * DataMatrix_to_int(DataMatrix * dm, float * external, float * internal)
 {
- // Escape quickly if no conversion required...
-  if (dm->fv_conv==NULL) return external;
+ int i;
  
- // Loop and apply each conversion operation in turn...
-  int i;
-  for (i=0; i<dm->ops_conv; i++)
+ // Switch on if conversion is required or not...
+  if (dm->fv_conv==NULL)
   {
-   dm->conv[i].conv->to_int(external + dm->conv[i].offset_external, internal + dm->conv[i].offset_internal);
+   internal = external;
   }
+  else
+  {
+   // Loop and apply each conversion operation in turn...
+    
+    for (i=0; i<dm->ops_conv; i++)
+    {
+     dm->conv[i].conv->to_int(external + dm->conv[i].offset_external, internal + dm->conv[i].offset_internal);
+    }
+  }
+
+ // Do the scale conversion...
+  for (i=0; i<dm->feats_conv; i++) internal[i] *= dm->mult[i]; 
  
- // Return the external array, as work has actually occured...
+ // Return...
   return internal;
 }
 
 
 float * DataMatrix_to_ext(DataMatrix * dm, float * internal, float * external)
 {
- // Escape quickly if no conversion required...
+ int i;
+ 
+ // Apply the inverse scale... 
+  for (i=0; i<dm->feats_conv; i++) internal[i] /= dm->mult[i];
+  
+ // Escape early if no conversion required...
   if (dm->fv_conv==NULL) return internal;
   
  // Loop and apply each conversion operation in turn...
-  int i;
   for (i=0; i<dm->ops_conv; i++)
   {
    dm->conv[i].conv->to_ext(internal + dm->conv[i].offset_internal, external + dm->conv[i].offset_external);
   }
  
- // Return the external array, as work has actually occured...
+ // Return the converted array...
   return external;
 }

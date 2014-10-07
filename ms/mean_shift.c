@@ -90,10 +90,6 @@ void draw(DataMatrix * dm, const Kernel * kernel, KernelConfig config, PhiloxRNG
   
  // Draw from the kernel in question...
   kernel->draw(feats, config, rng, fv, out);
- 
- // Convert from scaled space to normal space...
-  int i;
-  for (i=0; i<feats; i++) out[i] /= dm->mult[i];
 }
 
 

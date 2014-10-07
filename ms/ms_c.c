@@ -42,6 +42,9 @@ void MeanShift_new(MeanShift * this)
  this->rng_link = NULL;
  int i;
  for (i=0; i<4; i++) this->rng[i] = 0;
+ 
+ this->fv_int = NULL;
+ this->fv_ext = NULL;
 }
 
 void MeanShift_dealloc(MeanShift * this)
@@ -51,6 +54,9 @@ void MeanShift_dealloc(MeanShift * this)
  if (this->spatial!=NULL) Spatial_delete(this->spatial);
  if (this->balls!=NULL) Balls_delete(this->balls);
  this->kernel->config_release(this->config);
+ 
+ free(this->fv_int);
+ free(this->fv_ext);
 }
 
 
@@ -630,6 +636,10 @@ static PyObject * MeanShift_set_data_py(MeanShift * self, PyObject * args)
   DataMatrix_set(&self->dm, data, dt, weight_i, conv_codes);
   free(dt);
   
+ // Setup the temporaries kept with the mean shift object...
+  self->fv_int = (float*)realloc(self->fv_int, DataMatrix_features(&self->dm) * sizeof(float));
+  self->fv_ext = (float*)realloc(self->fv_ext, DataMatrix_ext_features(&self->dm) * sizeof(float));
+  
  // Trash the spatial...
   if (self->spatial!=NULL)
   {
@@ -772,22 +782,20 @@ static PyObject * MeanShift_set_scale_py(MeanShift * self, PyObject * args)
   if (!PyArg_ParseTuple(args, "O!|f", &PyArray_Type, &scale, &weight_scale)) return NULL;
  
  // Handle the scale...
-  if ((PyArray_NDIM(scale)!=1)||(PyArray_DIMS(scale)[0]!=DataMatrix_ext_features(&self->dm)))
+  if ((PyArray_NDIM(scale)!=1)||(PyArray_DIMS(scale)[0]!=DataMatrix_features(&self->dm)))
   {
-   PyErr_SetString(PyExc_RuntimeError, "scale vector must be a simple 1D numpy array with length matching the number of pre-conversion features.");
+   PyErr_SetString(PyExc_RuntimeError, "scale vector must be a simple 1D numpy array with length matching the number of features after any conversion.");
    return NULL;
   }
   ToFloat atof = KindToFunc(PyArray_DESCR(scale));
   
-  float * s = (float*)malloc(PyArray_DIMS(scale)[0] * sizeof(float));
   int i;
   for (i=0; i<PyArray_DIMS(scale)[0]; i++)
   {
-   s[i] = atof(PyArray_GETPTR1(scale, i));
+   self->fv_int[i] = atof(PyArray_GETPTR1(scale, i));
   }
   
-  DataMatrix_set_scale(&self->dm, s, weight_scale);
-  free(s);
+  DataMatrix_set_scale(&self->dm, self->fv_int, weight_scale);
   
  // Trash the spatial - changing either of the above invalidates it...
   if (self->spatial!=NULL)
@@ -907,7 +915,7 @@ static PyObject * MeanShift_stats_py(MeanShift * self, PyObject * args)
 {
  // Prep...
   int exemplars = DataMatrix_exemplars(&self->dm);
-  npy_intp features = DataMatrix_ext_features(&self->dm);
+  npy_intp features = DataMatrix_features(&self->dm);
   
   PyArrayObject * mean = (PyArrayObject*)PyArray_SimpleNew(1, &features, NPY_FLOAT32);
   PyArrayObject * sd   = (PyArrayObject*)PyArray_SimpleNew(1, &features, NPY_FLOAT32);
@@ -924,7 +932,7 @@ static PyObject * MeanShift_stats_py(MeanShift * self, PyObject * args)
   for (i=0; i<exemplars; i++)
   {
    float w;
-   float * fv = DataMatrix_ext_fv(&self->dm, i, &w);
+   float * fv = DataMatrix_fv(&self->dm, i, &w);
    float new_total = total + w;
    
    for (j=0; j<features; j++)
@@ -958,7 +966,7 @@ static PyObject * MeanShift_scale_silverman_py(MeanShift * self, PyObject * args
  
  // Reset the scale to 1 before we start, so fv does something sensible...
   int exemplars = DataMatrix_exemplars(&self->dm);
-  int features = DataMatrix_ext_features(&self->dm);
+  int features = DataMatrix_features(&self->dm);
   
   for (i=0; i<features; i++) self->dm.mult[i] = 1.0;
   
@@ -977,7 +985,7 @@ static PyObject * MeanShift_scale_silverman_py(MeanShift * self, PyObject * args
    for (j=0; j<exemplars; j++)
    {
     float w;
-    float * fv = DataMatrix_ext_fv(&self->dm, j, &w);
+    float * fv = DataMatrix_fv(&self->dm, j, &w);
     float temp = weight + w;
     
     for (i=0; i<features; i++)
@@ -1038,7 +1046,7 @@ static PyObject * MeanShift_scale_scott_py(MeanShift * self, PyObject * args)
  
  // Reset the scale to 1 before we start, so fv does something sensible...
   int exemplars = DataMatrix_exemplars(&self->dm);
-  int features = DataMatrix_ext_features(&self->dm);
+  int features = DataMatrix_features(&self->dm);
   
   for (i=0; i<features; i++) self->dm.mult[i] = 1.0;
  
@@ -1057,7 +1065,7 @@ static PyObject * MeanShift_scale_scott_py(MeanShift * self, PyObject * args)
    for (j=0; j<exemplars; j++)
    {
     float w;
-    float * fv = DataMatrix_ext_fv(&self->dm, j, &w);
+    float * fv = DataMatrix_fv(&self->dm, j, &w);
     float temp = weight + w;
     
     for (i=0; i<features; i++)
@@ -1190,6 +1198,7 @@ static PyObject * MeanShift_kl_py(MeanShift * self, PyObject * args)
  
  // Calculate and return...
   float ret = kl_divergence(self->spatial, self->kernel, self->config, self->norm, self->quality, other->spatial, other->kernel, other->config, other->norm, other->quality, limit);
+  
   return Py_BuildValue("f", ret);
 }
 
@@ -1223,24 +1232,16 @@ static PyObject * MeanShift_prob_py(MeanShift * self, PyObject * args)
   }
  
  // Create a temporary to hold the feature vector; handle conversion...
-  float * fv = (float*)malloc(feats * sizeof(float));
   int i;
   for (i=0; i<feats; i++)
   {
-   fv[i] = atof(PyArray_GETPTR1(start, i)) * self->dm.mult[i];
+   self->fv_ext[i] = atof(PyArray_GETPTR1(start, i));
   }
   
-  int int_feats = DataMatrix_features(&self->dm);
-  float * int_fv = (float*)malloc(int_feats * sizeof(float));
-  
-  float * use = DataMatrix_to_int(&self->dm, fv, int_fv);
+  float * fv = DataMatrix_to_int(&self->dm, self->fv_ext, self->fv_int);
   
  // Calculate the probability...
-  float p = prob(self->spatial, self->kernel, self->config, use, self->norm, self->quality);
-  
- // Clean up...
-  free(int_fv);
-  free(fv);
+  float p = prob(self->spatial, self->kernel, self->config, fv, self->norm, self->quality);
  
  // Return the calculated probability...
   return Py_BuildValue("f", p);
@@ -1275,12 +1276,6 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
    self->norm = calc_norm(&self->dm, self->kernel, self->config, MeanShift_weight(self));
   }
   
- // Create a temporary array of floats...
-  float * fv = (float*)malloc(feats * sizeof(float));
-  
-  int int_feats = DataMatrix_features(&self->dm);
-  float * int_fv = (float*)malloc(int_feats * sizeof(float));
-
  // Create the output array... 
   PyArrayObject * out = (PyArrayObject*)PyArray_SimpleNew(1, PyArray_DIMS(start), NPY_FLOAT32);
   
@@ -1293,22 +1288,18 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
     int j;
     for (j=0; j<feats; j++)
     {
-     fv[j] = atof(PyArray_GETPTR2(start, i, j)) * self->dm.mult[j];
+     self->fv_ext[j] = atof(PyArray_GETPTR2(start, i, j));
     }
     
    // Convert...
-    float * use = DataMatrix_to_int(&self->dm, fv, int_fv);
+    float * fv = DataMatrix_to_int(&self->dm, self->fv_ext, self->fv_int);
    
    // Calculate the probability...
-    float p = prob(self->spatial, self->kernel, self->config, use, self->norm, self->quality);
+    float p = prob(self->spatial, self->kernel, self->config, fv, self->norm, self->quality);
    
    // Store it...
     *(float*)PyArray_GETPTR1(out, i) = p;
   }
-  
- // Clean up...
-  free(int_fv);
-  free(fv);
  
  // Return the assigned clusters...
   return (PyObject*)out;
@@ -1323,11 +1314,20 @@ static PyObject * MeanShift_draw_py(MeanShift * self, PyObject * args)
   PhiloxRNG_init(&rng, (self->rng_link!=NULL)?self->rng_link->rng:self->rng);
   
  // Create the return array...
-  npy_intp feats = DataMatrix_features(&self->dm);
+  npy_intp feats = DataMatrix_ext_features(&self->dm);
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats, NPY_FLOAT32);
   
  // Generate the return...
-  draw(&self->dm, self->kernel, self->config, &rng, (float*)PyArray_DATA(ret));
+  draw(&self->dm, self->kernel, self->config, &rng, self->fv_int);
+  
+ // Convert from internal to external, stick in array...
+  float * fv = DataMatrix_to_ext(&self->dm, self->fv_int, self->fv_ext);
+  
+  int i;
+  for (i=0; i<feats; i++)
+  {
+   *(float*)PyArray_GETPTR1(ret, i) = fv[i];
+  }
   
  // Return the draw...
   return (PyObject*)ret;
@@ -1346,15 +1346,21 @@ static PyObject * MeanShift_draws_py(MeanShift * self, PyObject * args)
   PhiloxRNG_init(&rng, (self->rng_link!=NULL)?self->rng_link->rng:self->rng);
 
  // Create the return array...
-  shape[1] = DataMatrix_features(&self->dm);
+  shape[1] = DataMatrix_ext_features(&self->dm);
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, shape, NPY_FLOAT32);
   
  // Fill in the return matrix...
-  int i;
-  for (i=0; i<shape[0]; i++)
+  int j;
+  for (j=0; j<shape[0]; j++)
   {
-   float * out = (float*)PyArray_GETPTR2(ret, i, 0);
-   draw(&self->dm, self->kernel, self->config, &rng, out);
+   draw(&self->dm, self->kernel, self->config, &rng, self->fv_int);
+   float * fv = DataMatrix_to_ext(&self->dm, self->fv_int, self->fv_ext);
+   
+   int i;
+   for (i=0; i<shape[1]; i++)
+   {
+    *(float*)PyArray_GETPTR2(ret, j, i) = fv[i];
+   }
   }
   
  // Return the draw...
@@ -1382,12 +1388,12 @@ static PyObject * MeanShift_bootstrap_py(MeanShift * self, PyObject * args)
   for (j=0; j<shape[0]; j++)
   {
    int ind = DataMatrix_draw(&self->dm, &rng);
-   float * fv = DataMatrix_fv(&self->dm, ind, NULL);
+   float * fv = DataMatrix_ext_fv(&self->dm, ind, NULL);
    
    int i;
    for (i=0; i<shape[1]; i++)
    {
-    *(float*)PyArray_GETPTR2(ret, j, i) = fv[i] / self->dm.mult[i];
+    *(float*)PyArray_GETPTR2(ret, j, i) = fv[i];
    }
   }
   
@@ -1404,7 +1410,7 @@ static PyObject * MeanShift_mode_py(MeanShift * self, PyObject * args)
   if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &start)) return NULL;
   
  // Check the input is acceptable...
-  npy_intp feats = DataMatrix_features(&self->dm);
+  npy_intp feats = DataMatrix_ext_features(&self->dm);
   if ((PyArray_NDIM(start)!=1)||(PyArray_DIMS(start)[0]!=feats))
   {
    PyErr_SetString(PyExc_RuntimeError, "input vector must be 1D with the same length as the number of features.");
@@ -1412,31 +1418,38 @@ static PyObject * MeanShift_mode_py(MeanShift * self, PyObject * args)
   }
   ToFloat atof = KindToFunc(PyArray_DESCR(start));
   
- // Create an output matrix, copy in the data, applying the scale change...  
-  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats, NPY_FLOAT32);
-  
-  int i;
-  for (i=0; i<feats; i++)
-  {
-   float * out = (float*)PyArray_GETPTR1(ret, i);
-   *out = atof(PyArray_GETPTR1(start, i)) * self->dm.mult[i];
-  }
- 
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
    self->spatial = Spatial_new(self->spatial_type, &self->dm); 
   }
+
+ // Create an output matrix...  
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats, NPY_FLOAT32);
   
- // Run the algorithm; we need some temporary storage...
-  float * temp = (float*)malloc(feats * sizeof(float));
-  mode(self->spatial, self->kernel, self->config, (float*)PyArray_DATA(ret), temp, self->quality, self->epsilon, self->iter_cap);
-  free(temp);
-   // Undo the scale change...
+ // Fetch the data and covert into the internal format...
+  int i;
   for (i=0; i<feats; i++)
   {
-   float * out = (float*)PyArray_GETPTR1(ret, i);
-   *out /= self->dm.mult[i];
+   self->fv_ext[i] = atof(PyArray_GETPTR1(start, i));
+  }
+  
+  float * fv = DataMatrix_to_int(&self->dm, self->fv_ext, self->fv_int);
+   
+ // Run the algorithm; we need some temporary storage...
+  int feats_int = DataMatrix_features(&self->dm);
+  float * temp = (float*)malloc(feats_int * sizeof(float));
+  
+  mode(self->spatial, self->kernel, self->config, fv, temp, self->quality, self->epsilon, self->iter_cap);
+  
+  free(temp);
+  
+ // Convert back and write into the output...
+  fv = DataMatrix_to_ext(&self->dm, fv, self->fv_ext);
+  
+  for (i=0; i<feats; i++)
+  {
+   *(float*)PyArray_GETPTR1(ret, i) = fv[i];
   }
  
  // Return the array...
@@ -1454,7 +1467,7 @@ static PyObject * MeanShift_modes_py(MeanShift * self, PyObject * args)
  // Check the input is acceptable...
   npy_intp dims[2];
   dims[0] = PyArray_DIMS(start)[0];
-  dims[1] = DataMatrix_features(&self->dm);
+  dims[1] = DataMatrix_ext_features(&self->dm);
   
   if ((PyArray_NDIM(start)!=2)||(PyArray_DIMS(start)[1]!=dims[1]))
   {
@@ -1463,34 +1476,43 @@ static PyObject * MeanShift_modes_py(MeanShift * self, PyObject * args)
   }
   ToFloat atof = KindToFunc(PyArray_DESCR(start));
   
- // Create an output matrix, copy in the data, applying the scale change...  
-  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
-  
-  int i,j;
-  for (i=0; i<dims[0]; i++)
-  {
-   for (j=0; j<dims[1]; j++)
-   {
-    *(float*)PyArray_GETPTR2(ret, i, j) = atof(PyArray_GETPTR2(start, i, j)) * self->dm.mult[j];
-   }
-  }
-  
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
    self->spatial = Spatial_new(self->spatial_type, &self->dm); 
   }
+
+ // Create an output matrix...  
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
   
- // Calculate each mode in turn, including undo any scale changes...
-  float * temp = (float*)malloc(dims[1] * sizeof(float));
-  for (i=0; i<dims[0]; i++)
+ // Calculate each mode in turn, including conversion both ways...
+  int feats_int = DataMatrix_features(&self->dm);
+  float * temp = (float*)malloc(feats_int * sizeof(float));
+  
+  int j;
+  for (j=0; j<dims[0]; j++)
   {
-   float * out = (float*)PyArray_GETPTR1(ret, i);
+   // Extratc data and convert to internal format...
+    int i;
+    for (i=0; i<dims[1]; i++)
+    {
+     self->fv_ext[i] = atof(PyArray_GETPTR2(start, j, i));
+    }
+  
+    float * fv = DataMatrix_to_int(&self->dm, self->fv_ext, self->fv_int);
+  
+   // Find the mode...
+    mode(self->spatial, self->kernel, self->config, fv, temp, self->quality, self->epsilon, self->iter_cap);
    
-   mode(self->spatial, self->kernel, self->config, out, temp, self->quality, self->epsilon, self->iter_cap);
-   
-   for (j=0; j<dims[1]; j++) out[j] /= self->dm.mult[j];
+   // Convert back and write out...
+    fv = DataMatrix_to_ext(&self->dm, fv, self->fv_ext);
+  
+    for (i=0; i<dims[1]; i++)
+    {
+     *(float*)PyArray_GETPTR2(ret, j, i) = fv[i];
+    }
   }
+  
   free(temp); 
   
  // Return the matrix of modes...
@@ -1527,28 +1549,35 @@ static PyObject * MeanShift_modes_data_py(MeanShift * self, PyObject * args)
    }
   }
   
-  dims[nd] = DataMatrix_features(&self->dm);
+  dims[nd] = DataMatrix_ext_features(&self->dm);
   nd += 1;
  
  // Create the output matrix...
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(nd, dims, NPY_FLOAT32);
  
  // Iterate and do each entry in turn...
-  float * temp = (float*)malloc(dims[nd-1] * sizeof(float));
+  int feats_int = DataMatrix_features(&self->dm);
+  float * temp = (float*)malloc(feats_int * sizeof(float));
   
   float * out = (float*)PyArray_DATA(ret);
   int loc = 0;
+  
   while (loc<DataMatrix_exemplars(&self->dm))
   {
-   // Copy in the relevent feature vector...
+   // Get the relevent feature vector...
     float * fv = DataMatrix_fv(&self->dm, loc, NULL);
-    for (i=0; i<dims[nd-1]; i++) out[i] = fv[i];
+    for (i=0; i<feats_int; i++) self->fv_int[i] = fv[i];
    
    // Converge mean shift...
-    mode(self->spatial, self->kernel, self->config, out, temp, self->quality, self->epsilon, self->iter_cap);
+    mode(self->spatial, self->kernel, self->config, self->fv_int, temp, self->quality, self->epsilon, self->iter_cap);
     
-   // Undo any scale change...
-    for (i=0; i<dims[nd-1]; i++) out[i] /= self->dm.mult[i];
+   // Undo conversion and copy into out...
+    fv = DataMatrix_to_ext(&self->dm, self->fv_int, self->fv_ext);
+  
+    for (i=0; i<dims[nd-1]; i++)
+    {
+     out[i] = fv[i];
+    }
     
    // Move to next position, detecting when we are done... 
     loc += 1;
@@ -1573,6 +1602,11 @@ static PyObject * MeanShift_cluster_py(MeanShift * self, PyObject * args)
    self->spatial = Spatial_new(self->spatial_type, &self->dm); 
   }
 
+ // Create the balls...
+  int feats_int = DataMatrix_features(&self->dm);
+  if (self->balls!=NULL) Balls_delete(self->balls);
+  self->balls = Balls_new(self->balls_type, feats_int, self->merge_range);
+
  // Work out the output matrix size...
   int nd = 0;
   int i;
@@ -1581,7 +1615,7 @@ static PyObject * MeanShift_cluster_py(MeanShift * self, PyObject * args)
    if (self->dm.dt[i]!=DIM_FEATURE) nd += 1;
   }
   
-  if (nd<2) nd = 2; // So the array can be abused below
+  if (nd<2) nd = 2; // So the array can be reused below
   npy_intp * dims = (npy_intp*)malloc(nd * sizeof(npy_intp));
   
   nd = 0;
@@ -1597,28 +1631,33 @@ static PyObject * MeanShift_cluster_py(MeanShift * self, PyObject * args)
  // Create the output matrix...
   PyArrayObject * index = (PyArrayObject*)PyArray_SimpleNew(nd, dims, NPY_INT32);
  
- // Create the balls...
-  if (self->balls!=NULL) Balls_delete(self->balls);
-  self->balls = Balls_new(self->balls_type, self->dm.feats, self->merge_range);
- 
  // Do the work...
   cluster(self->spatial, self->kernel, self->config, self->balls, (int*)PyArray_DATA(index), self->quality, self->epsilon, self->iter_cap, self->ident_dist, self->merge_range, self->merge_check_step);
  
  // Extract the modes, which happen to be the centers of the balls...
   dims[0] = Balls_count(self->balls);
-  dims[1] = Balls_dims(self->balls);
+  dims[1] = DataMatrix_ext_features(&self->dm);
   
   PyArrayObject * modes = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
   
-  for (i=0; i<dims[0]; i++)
+  int j;
+  for (j=0; j<dims[0]; j++)
   {
-   const float * loc = Balls_pos(self->balls, i);
+   // Fetch the location...
+    const float * loc = Balls_pos(self->balls, j);
+    for (i=0; i<feats_int; i++)
+    {
+     self->fv_int[i] = loc[i]; 
+    }
+    
+   // Convert to external... 
+    float * fv = DataMatrix_to_ext(&self->dm, self->fv_int, self->fv_ext);
    
-   int j;
-   for (j=0; j<dims[1]; j++)
-   {
-    *(float*)PyArray_GETPTR2(modes, i, j) = loc[j] / self->dm.mult[j]; 
-   }
+   // Store...
+    for (i=0; i<dims[1]; i++)
+    {
+     *(float*)PyArray_GETPTR2(modes, j, i) = fv[i];
+    }
   }
  
  // Clean up...
@@ -1637,8 +1676,8 @@ static PyObject * MeanShift_assign_cluster_py(MeanShift * self, PyObject * args)
   if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &start)) return NULL;
   
  // Check the input is acceptable...
-  npy_intp feats = DataMatrix_features(&self->dm);
-  if ((PyArray_NDIM(start)!=1)||(PyArray_DIMS(start)[0]!=feats))
+  npy_intp feats_ext = DataMatrix_ext_features(&self->dm);
+  if ((PyArray_NDIM(start)!=1)||(PyArray_DIMS(start)[0]!=feats_ext))
   {
    PyErr_SetString(PyExc_RuntimeError, "input vector must be 1D with the same length as the number of features.");
    return NULL;
@@ -1649,17 +1688,7 @@ static PyObject * MeanShift_assign_cluster_py(MeanShift * self, PyObject * args)
   if (self->balls==NULL)
   {
    PyErr_SetString(PyExc_RuntimeError, "the cluster method must be run before the assign_cluster method.");
-   return NULL; 
-  }
-  
- // Create two temporary array fo floats, putting the feature vector into one of them...
-  float * fv = (float*)malloc(feats * sizeof(float));
-  float * temp = (float*)malloc(feats * sizeof(float));
-
-  int i;
-  for (i=0; i<feats; i++)
-  {
-   fv[i] = atof(PyArray_GETPTR1(start, i)) * self->dm.mult[i];
+   return NULL;
   }
  
  // If spatial is null create it...
@@ -1667,13 +1696,22 @@ static PyObject * MeanShift_assign_cluster_py(MeanShift * self, PyObject * args)
   {
    self->spatial = Spatial_new(self->spatial_type, &self->dm); 
   }
+
+ // Fetch and convert the feature vector...
+  int i;
+  for (i=0; i<feats_ext; i++)
+  {
+   self->fv_ext[i] = atof(PyArray_GETPTR1(start, i));
+  }
   
+  float * fv = DataMatrix_to_int(&self->dm, self->fv_ext, self->fv_int);
+
  // Run the algorithm...
+  float * temp = (float*)malloc(DataMatrix_features(&self->dm) * sizeof(float));
+  
   int cluster = assign_cluster(self->spatial, self->kernel, self->config, self->balls, fv, temp, self->quality, self->epsilon, self->iter_cap, self->merge_check_step);
   
- // Clean up...
   free(temp);
-  free(fv);
  
  // Return the assigned cluster...
   return Py_BuildValue("i", cluster);
@@ -1688,8 +1726,8 @@ static PyObject * MeanShift_assign_clusters_py(MeanShift * self, PyObject * args
   if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &start)) return NULL;
   
  // Check the input is acceptable...
-  npy_intp feats = DataMatrix_features(&self->dm);
-  if ((PyArray_NDIM(start)!=2)||(PyArray_DIMS(start)[1]!=feats))
+  npy_intp feats_ext = DataMatrix_ext_features(&self->dm);
+  if ((PyArray_NDIM(start)!=2)||(PyArray_DIMS(start)[1]!=feats_ext))
   {
    PyErr_SetString(PyExc_RuntimeError, "input vector must be 2D with the second dimension the same length as the number of features.");
    return NULL;
@@ -1703,40 +1741,40 @@ static PyObject * MeanShift_assign_clusters_py(MeanShift * self, PyObject * args
    return NULL; 
   }
   
- // Create two temporary array of floats...
-  float * fv = (float*)malloc(feats * sizeof(float));
-  float * temp = (float*)malloc(feats * sizeof(float));
-
- // Create the output array... 
-  PyArrayObject * cluster = (PyArrayObject*)PyArray_SimpleNew(1, PyArray_DIMS(start), NPY_INT32);
- 
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
    self->spatial = Spatial_new(self->spatial_type, &self->dm); 
   }
   
+ // Create a temporary array of floats...
+  float * temp = (float*)malloc(DataMatrix_features(&self->dm) * sizeof(float));
+
+ // Create the output array... 
+  PyArrayObject * cluster = (PyArrayObject*)PyArray_SimpleNew(1, PyArray_DIMS(start), NPY_INT32);
+  
  // Run the algorithm...
-  int i;
-  for (i=0; i<PyArray_DIMS(start)[0]; i++)
+  int j;
+  for (j=0; j<PyArray_DIMS(start)[0]; j++)
   {
-   // Copy the feature vector into the temporary storage...
-    int j;
-    for (j=0; j<feats; j++)
+   // Fetch and convert the feature vector...
+    int i;
+    for (i=0; i<feats_ext; i++)
     {
-     fv[j] = atof(PyArray_GETPTR2(start, i, j)) * self->dm.mult[j];
+     self->fv_ext[i] = atof(PyArray_GETPTR2(start, j, i));
     }
+    
+    float * fv = DataMatrix_to_int(&self->dm, self->fv_ext, self->fv_int);
    
    // Run it...
     int c = assign_cluster(self->spatial, self->kernel, self->config, self->balls, fv, temp, self->quality, self->epsilon, self->iter_cap, self->merge_check_step);
    
    // Store the result...
-    *(int*)PyArray_GETPTR1(cluster, i) = c;
+    *(int*)PyArray_GETPTR1(cluster, j) = c;
   }
   
  // Clean up...
   free(temp);
-  free(fv);
  
  // Return the assigned clusters...
   return (PyObject*)cluster;
@@ -1750,8 +1788,8 @@ static PyObject * MeanShift_cluster_on_py(MeanShift * self, PyObject * args)
   if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &dm)) return NULL;
 
  // Check the input is acceptable...
-  int feats = DataMatrix_features(&self->dm);
-  if ((PyArray_NDIM(dm)!=2)||(PyArray_DIMS(dm)[1]!=feats))
+  int feats_ext = DataMatrix_ext_features(&self->dm);
+  if ((PyArray_NDIM(dm)!=2)||(PyArray_DIMS(dm)[1]!=feats_ext))
   {
    PyErr_SetString(PyExc_RuntimeError, "input matrix must be 2D with the same length as the number of features in the second dimension");
    return NULL;
@@ -1772,43 +1810,51 @@ static PyObject * MeanShift_cluster_on_py(MeanShift * self, PyObject * args)
   PyArrayObject * index = (PyArrayObject*)PyArray_SimpleNew(1, &exemplars, NPY_INT32);
   
  // Go through and converge each exemplar in turn...
-  float * fv   = (float*)malloc(feats * sizeof(float));
-  float * temp = (float*)malloc(feats * sizeof(float));
+  int feats_int = DataMatrix_features(&self->dm);
+  float * temp = (float*)malloc(feats_int * sizeof(float));
   
-  int i;
-  for (i=0; i<exemplars; i++)
+  int j, i;
+  for (j=0; j<exemplars; j++)
   {
-   // Extract and convert to correct coordinate space...
-    int j;
-    for (j=0; j<feats; j++)
+   // Obtain and convert the feature vector...
+    for (i=0; i<feats_ext; i++)
     {
-     fv[j] = atof(PyArray_GETPTR2(dm, i, j)) * self->dm.mult[j];
+     self->fv_ext[i] = atof(PyArray_GETPTR2(dm, j, i));
     }
     
+    float * fv = DataMatrix_to_int(&self->dm, self->fv_ext, self->fv_int);
+    
    // Process...
-    *(int*)PyArray_GETPTR1(index, i) = mode_merge(self->spatial, self->kernel, self->config, balls, fv, temp, self->quality, self->epsilon, self->iter_cap, self->merge_range, self->merge_check_step);
+    *(int*)PyArray_GETPTR1(index, j) = mode_merge(self->spatial, self->kernel, self->config, balls, fv, temp, self->quality, self->epsilon, self->iter_cap, self->merge_range, self->merge_check_step);
   }
   
  // Extract the modes, which are the centers of the balls...
   npy_intp dims[2];
   dims[0] = Balls_count(balls);
-  dims[1] = Balls_dims(balls);
+  dims[1] = feats_ext;
   
   PyArrayObject * modes = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
   
-  for (i=0; i<dims[0]; i++)
+  for (j=0; j<dims[0]; j++)
   {
-   const float * loc = Balls_pos(balls, i);
+   // Fetch the location...
+    const float * loc = Balls_pos(balls, j);
+    for (i=0; i<feats_int; i++)
+    {
+     self->fv_int[i] = loc[i]; 
+    }
+    
+   // Convert to external... 
+    float * fv = DataMatrix_to_ext(&self->dm, self->fv_int, self->fv_ext);
    
-   int j;
-   for (j=0; j<dims[1]; j++)
-   {
-    *(float*)PyArray_GETPTR2(modes, i, j) = loc[j] / self->dm.mult[j]; 
-   }
+   // Store...
+    for (i=0; i<dims[1]; i++)
+    {
+     *(float*)PyArray_GETPTR2(modes, j, i) = fv[i];
+    }
   }
   
  // Clean up...
-  free(fv);
   free(temp);
   Balls_delete(balls);
   
@@ -1833,48 +1879,53 @@ static PyObject * MeanShift_manifold_py(MeanShift * self, PyObject * args)
   }
 
  // Check the input is acceptable...
-  npy_intp feats = DataMatrix_features(&self->dm);
-  if ((PyArray_NDIM(start)!=1)||(PyArray_DIMS(start)[0]!=feats))
+  npy_intp feats_ext = DataMatrix_ext_features(&self->dm);
+  if ((PyArray_NDIM(start)!=1)||(PyArray_DIMS(start)[0]!=feats_ext))
   {
    PyErr_SetString(PyExc_RuntimeError, "input vector must be 1D with the same length as the number of features.");
    return NULL;
   }
   ToFloat atof = KindToFunc(PyArray_DESCR(start));
   
- // Create an output matrix, copy in the data, applying the scale change...  
-  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats, NPY_FLOAT32);
-  
-  int i;
-  for (i=0; i<feats; i++)
-  {
-   float * out = (float*)PyArray_GETPTR1(ret, i);
-   *out = atof(PyArray_GETPTR1(start, i)) * self->dm.mult[i];
-  }
- 
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
    self->spatial = Spatial_new(self->spatial_type, &self->dm); 
   }
+
+ // Create an output matrix, copy in the data, applying the scale change...  
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats_ext, NPY_FLOAT32);
   
- // Run the agorithm; we need some temporary storage...
-  float * grad = (float*)malloc(feats * sizeof(float));
-  float * hess = (float*)malloc(feats * feats * sizeof(float));
-  float * eigen_vec = (float*)malloc(feats * feats * sizeof(float));
-  float * eigen_val = (float*)malloc(feats * sizeof(float));
+ // Obtain the data, convert to internal...
+  int i;
+  for (i=0; i<feats_ext; i++)
+  {
+   self->fv_ext[i] = atof(PyArray_GETPTR1(start, i));
+  }
   
-  manifold(self->spatial, degrees, (float*)PyArray_DATA(ret), grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
+  float * fv = DataMatrix_to_int(&self->dm, self->fv_ext, self->fv_int);
+ 
+ // Run the algorithm; we need some temporary storage...
+  int feats_int = DataMatrix_features(&self->dm);
+  
+  float * grad = (float*)malloc(feats_int * sizeof(float));
+  float * hess = (float*)malloc(feats_int * feats_int * sizeof(float));
+  float * eigen_vec = (float*)malloc(feats_int * feats_int * sizeof(float));
+  float * eigen_val = (float*)malloc(feats_int * sizeof(float));
+  
+  manifold(self->spatial, degrees, fv, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
   
   free(eigen_val);
   free(eigen_vec);
   free(hess);
   free(grad);
   
- // Undo the scale change...
-  for (i=0; i<feats; i++)
+ // Convert back and store into output...
+  fv = DataMatrix_to_ext(&self->dm, fv, self->fv_ext);
+  
+  for (i=0; i<feats_ext; i++)
   {
-   float * out = (float*)PyArray_GETPTR1(ret, i);
-   *out /= self->dm.mult[i];
+   *(float*)PyArray_GETPTR1(ret, i) = fv[i];
   }
  
  // Return the array...
@@ -1900,7 +1951,7 @@ static PyObject * MeanShift_manifolds_py(MeanShift * self, PyObject * args)
  // Check the input is acceptable...
   npy_intp dims[2];
   dims[0] = PyArray_DIMS(start)[0];
-  dims[1] = DataMatrix_features(&self->dm);
+  dims[1] = DataMatrix_ext_features(&self->dm);
   
   if ((PyArray_NDIM(start)!=2)||(PyArray_DIMS(start)[1]!=dims[1]))
   {
@@ -1909,37 +1960,44 @@ static PyObject * MeanShift_manifolds_py(MeanShift * self, PyObject * args)
   }
   ToFloat atof = KindToFunc(PyArray_DESCR(start));
   
- // Create an output matrix, copy in the data, applying the scale change...  
-  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
-  
-  int i,j;
-  for (i=0; i<dims[0]; i++)
-  {
-   for (j=0; j<dims[1]; j++)
-   {
-    *(float*)PyArray_GETPTR2(ret, i, j) = atof(PyArray_GETPTR2(start, i, j)) * self->dm.mult[j];
-   }
-  }
-  
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
    self->spatial = Spatial_new(self->spatial_type, &self->dm); 
   }
+
+ // Create an output matrix...  
+  PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(2, dims, NPY_FLOAT32);
   
  // Calculate each mode in turn, including undo any scale changes...
-  float * grad = (float*)malloc(dims[1] * sizeof(float));
-  float * hess = (float*)malloc(dims[1] * dims[1] * sizeof(float));
-  float * eigen_vec = (float*)malloc(dims[1] * dims[1] * sizeof(float));
-  float * eigen_val = (float*)malloc(dims[1] * sizeof(float));
+  int feats_int = DataMatrix_features(&self->dm);
   
-  for (i=0; i<dims[0]; i++)
+  float * grad = (float*)malloc(feats_int * sizeof(float));
+  float * hess = (float*)malloc(feats_int * feats_int * sizeof(float));
+  float * eigen_vec = (float*)malloc(feats_int * feats_int * sizeof(float));
+  float * eigen_val = (float*)malloc(feats_int * sizeof(float));
+  
+  int j, i;
+  for (j=0; j<dims[0]; j++)
   {
-   float * out = (float*)PyArray_GETPTR1(ret,i);
+   // Obtain and convert the feature vector...
+    for (i=0; i<dims[1]; i++)
+    {
+     self->fv_ext[i] = atof(PyArray_GETPTR2(start, j, i));
+    }
+    
+    float * fv =  DataMatrix_to_int(&self->dm, self->fv_ext, self->fv_int);
    
-   manifold(self->spatial, degrees, out, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
+   // Find convergance point...
+    manifold(self->spatial, degrees, fv, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
+    
+   // Convert back and store...
+    fv = DataMatrix_to_ext(&self->dm, fv, self->fv_ext);
    
-   for (j=0; j<dims[1]; j++) out[j] /= self->dm.mult[j];
+    for (i=0; i<dims[1]; i++)
+    {
+     *(float*)PyArray_GETPTR2(ret, j, i) = fv[i]; 
+    }
   }
   
   free(eigen_val);
@@ -1992,31 +2050,34 @@ static PyObject * MeanShift_manifolds_data_py(MeanShift * self, PyObject * args)
    }
   }
   
-  dims[nd] = DataMatrix_features(&self->dm);
+  dims[nd] = DataMatrix_ext_features(&self->dm);
   nd += 1;
  
  // Create the output matrix...
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(nd, dims, NPY_FLOAT32);
  
  // Iterate and do each entry in turn...
-  float * grad = (float*)malloc(dims[1] * sizeof(float));
-  float * hess = (float*)malloc(dims[1] * dims[1] * sizeof(float));
-  float * eigen_vec = (float*)malloc(dims[1] * dims[1] * sizeof(float));
-  float * eigen_val = (float*)malloc(dims[1] * sizeof(float));
+  int feats_int = DataMatrix_features(&self->dm);
+  
+  float * grad = (float*)malloc(feats_int * sizeof(float));
+  float * hess = (float*)malloc(feats_int * feats_int * sizeof(float));
+  float * eigen_vec = (float*)malloc(feats_int * feats_int * sizeof(float));
+  float * eigen_val = (float*)malloc(feats_int * sizeof(float));
   
   float * out = (float*)PyArray_DATA(ret);
   int loc = 0;
   while (loc<DataMatrix_exemplars(&self->dm))
   {
-   // Copy in the relevent feature vector...
+   // Obtain the relevant feature vector in internal space...
     float * fv = DataMatrix_fv(&self->dm, loc, NULL);
-    for (i=0; i<dims[nd-1]; i++) out[i] = fv[i];
-   
-   // Converge mean shift...
-    manifold(self->spatial, degrees, out, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
+    for (i=0; i<feats_int; i++) self->fv_int[i] = fv[i];
     
-   // Undo any scale change...
-    for (i=0; i<dims[nd-1]; i++) out[i] /= self->dm.mult[i];
+   // Converge mean shift...
+    manifold(self->spatial, degrees, self->fv_int, grad, hess, eigen_val, eigen_vec, self->quality, self->epsilon, self->iter_cap, (always_hessian==Py_False) ? 0 : 1);
+    
+   // Convert to external space and store in output...
+    fv = DataMatrix_to_ext(&self->dm, self->fv_int, self->fv_ext);
+    for (i=0; i<dims[nd-1]; i++) out[i] = fv[i];
 
    // Move to next position, detecting when we are done... 
     loc += 1;
@@ -2060,7 +2121,7 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   int terms = PySequence_Size(multiplicands);
   if (terms<1)
   {
-   PyErr_SetString(PyExc_RuntimeError, "Need some MeanShift objects to multiply");
+   PyErr_SetString(PyExc_RuntimeError, "Need some MeanShift objects to multiply - identity is not defined.");
    return NULL;
   }
   
@@ -2071,7 +2132,8 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   }
   
   self = (MeanShift*)PySequence_GetItem(multiplicands, 0); // Bit weird, but why not? - self is avaliable and free to dance!
-  int dims = DataMatrix_features(&self->dm);
+  int feats_ext = DataMatrix_ext_features(&self->dm);
+  int feats_int = DataMatrix_features(&self->dm);
   
   int longest = DataMatrix_exemplars(&self->dm);
   if (longest==0)
@@ -2091,9 +2153,9 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
    }
    
    MeanShift * targ = (MeanShift*)temp;
-   if (DataMatrix_features(&targ->dm)!=dims)
+   if (DataMatrix_features(&targ->dm)!=feats_int)
    {
-    PyErr_SetString(PyExc_RuntimeError, "All the input KDEs must have the same number of features (dimensions)");
+    PyErr_SetString(PyExc_RuntimeError, "All the input KDEs must have the same number of internal features (dimensions)");
     return NULL;
    }
    
@@ -2113,7 +2175,7 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
    return NULL;
   }
   
-  if (PyArray_DIMS(output)[1]!=dims)
+  if (PyArray_DIMS(output)[1]!=feats_ext)
   {
    PyErr_SetString(PyExc_RuntimeError, "Output array must have the same number of columns as the input KDEs have features");
    return NULL; 
@@ -2160,34 +2222,46 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   PhiloxRNG_init(&rng, (self->rng_link!=NULL)?self->rng_link->rng:self->rng);
   
  // Check for the degenerate situation of only one multiplicand, in which case we can just draw from it to generate the output...
+  int j;
   if (terms==1)
   {
-   float * out = (float*)malloc(dims * sizeof(float));
    char cd = PyArray_DESCR(output)->elsize!=4;
    
-   for (i=0;i<PyArray_DIMS(output)[0]; i++)
+   for (j=0;j<PyArray_DIMS(output)[0]; j++)
    {
-    draw(&self->dm, self->kernel, self->config, &rng, out);
-    
-    // Copy output to actual output array...
-     int j;
+    // Code depends on status of fake...
+     float * fv;
+     if (fake==0)
+     {
+      // Correct approach - a real draw...
+       draw(&self->dm, self->kernel, self->config, &rng, self->fv_int);
+      
+      // Convert to external format...
+       fv = DataMatrix_to_ext(&self->dm, self->fv_int, self->fv_ext);
+     }
+     else
+     {
+      // Do a bootstrap draw...
+       int ind = DataMatrix_draw(&self->dm, &rng);
+       fv = DataMatrix_ext_fv(&self->dm, ind, NULL);
+     }
+     
+    // Store...
      if (cd)
      {
-      for (j=0; j<dims; j++)
+      for (i=0; i<feats_ext; i++)
       {
-       *(double*)PyArray_GETPTR2(output, i, j) = out[j];
+       *(double*)PyArray_GETPTR2(output, j, i) = fv[i];
       }
      }
      else
      {
-      for (j=0; j<dims; j++)
+      for (i=0; i<feats_ext; i++)
       {
-       *(float*)PyArray_GETPTR2(output, i, j) = out[j];
+       *(float*)PyArray_GETPTR2(output, j, i) = fv[i];
       }
      }
    }
-   
-   free(out);
    
    Py_INCREF(Py_None);
    return Py_None;
@@ -2229,33 +2303,40 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
   int * temp1 = (int*)malloc(longest * sizeof(int));
   float * temp2 = (float*)malloc(longest * sizeof(float));
   
-  float * out = (float*)malloc(dims * sizeof(float));
   char cd = PyArray_DESCR(output)->elsize!=4;
   
-  for (i=0; i<PyArray_DIMS(output)[0]; i++)
+  for (j=0; j<PyArray_DIMS(output)[0]; j++)
   {
-   mult(self->kernel, config, terms, sl, out, &mc, temp1, temp2, self->quality, fake);
+   // Do multiplication...
+    mult(self->kernel, config, terms, sl, self->fv_int, &mc, temp1, temp2, self->quality, fake);
+    
+   // Multiply it back to self's space...
+    for (i=0; i<feats_int; i++)
+    {
+     self->fv_int[i] *= self->dm.mult[i]; 
+    }
+    
+   // Convert to external format (inefficient given above!)...
+    float * fv = DataMatrix_to_ext(&self->dm, self->fv_int, self->fv_ext);
    
    // Copy output to actual output array...
-    int j;
     if (cd)
     {
-     for (j=0; j<dims; j++)
+     for (i=0; i<feats_ext; i++)
      {
-      *(double*)PyArray_GETPTR2(output, i, j) = out[j];
+      *(double*)PyArray_GETPTR2(output, j, i) = fv[i];
      }
     }
     else
     {
-     for (j=0; j<dims; j++)
+     for (i=0; i<feats_ext; i++)
      {
-      *(float*)PyArray_GETPTR2(output, i, j) = out[j];
+      *(float*)PyArray_GETPTR2(output, j, i) = fv[i];
      }
     }
   }
  
  // Clean up the MultCache object and other stuff...
-  free(out);
   free(temp2);
   free(temp1);
   free(config);
@@ -2287,10 +2368,10 @@ static PyObject * MeanShift_GetItem(MeanShift * self, Py_ssize_t i)
   }
 
  // Get the actual data...
-  float * fv = DataMatrix_fv(&self->dm, i, NULL);
+  float * fv = DataMatrix_ext_fv(&self->dm, i, NULL);
  
  // Convert into a numpy array...
-  npy_intp feats = DataMatrix_features(&self->dm);
+  npy_intp feats = DataMatrix_ext_features(&self->dm);
   PyArrayObject * ret = (PyArrayObject*)PyArray_SimpleNew(1, &feats, NPY_FLOAT32);
   
   npy_intp j;
@@ -2322,7 +2403,7 @@ static PySequenceMethods MeanShift_as_sequence =
 
 static PyMemberDef MeanShift_members[] =
 {
- {"quality", T_FLOAT, offsetof(MeanShift, quality), 0, "Value between 0 and 1, inclusive - for kernel types that have an infinite domain this controls how much of that domain to use for the calculations - 0 for lowest quality, 1 for the highest quality. (Ignored by kernel types that have a finite kernel.)"},
+ {"quality", T_FLOAT, offsetof(MeanShift, quality), 0, "Value between 0 and 1, inclusive - for kernel types that have an infinite domain this controls how much of that domain to use for the calculations - 0 for lowest quality, 1 for the highest quality. (Ignored by kernel types that have a finite kernel.) In the gaussian case it is equivalent of 1 sd for quality 0, 3 sd for quality 1; the other kernels are comparable."},
  {"epsilon", T_FLOAT, offsetof(MeanShift, epsilon), 0, "For convergance detection - when the step size is smaller than this it stops."},
  {"iter_cap", T_INT, offsetof(MeanShift, iter_cap), 0, "Maximum number of iterations to do before stopping, a hard limit on computation."},
  {"ident_dist", T_FLOAT, offsetof(MeanShift, ident_dist), 0, "If two exemplars are found at any point to have a distance less than this from each other whilst clustering it is assumed they will go to the same destination, saving computation."},
@@ -2363,24 +2444,24 @@ static PyMethodDef MeanShift_methods[] =
  {"copy_all", (PyCFunction)MeanShift_copy_all_py, METH_VARARGS, "Copies everything from another mean shift object except for the data structure - kernel, spatial, balls and all exposed parameters. Faster than doing things manually, including the sharing of caches - if you are making lots of MeanShift objects with the same parameters it is strongly recomended to use this."},
  {"reset", (PyCFunction)MeanShift_reset_py, METH_VARARGS, "Changing the contents of the numpy array that contains the samples wrapped by a MeanShift object will break things, potentially even causing a crash. However, you can change the contents of the array then call this - it will reset all data structures that are built on assumptions about the numpy array. Note that this only works for changing the contents - resizing it will not do anything as the MeanShift object will still have a pointer to the original."},
  
- {"set_data", (PyCFunction)MeanShift_set_data_py, METH_VARARGS, "Sets the data matrix, which defines the probability distribution via a kernel density estimate that everything is using. The data matrix is used directly, so it should not be modified during use as it could break the data structures created to accelerate question answering. First parameter is a numpy matrix (Any normal numerical type), the second a string with its length matching the number of dimensions of the matrix. The characters in the string define the meaning of each dimension: 'd' (data) - changing the index into this dimension changes which exemplar you are indexing; 'f' (feature) - changing the index into this dimension changes which feature you are indexing; 'b' (both) - same as d, except it also contributes an item to the feature vector, which is essentially the position in that dimension (used on the dimensions of an image for instance, to include pixel position in the feature vector). The system unwraps all data indices and all feature indices in row major order to hallucinate a standard data matrix, with all 'both' features at the start of the feature vector. Note that calling this resets scale. A third optional parameter sets an index into the original feature vector (Including the dual dimensions, so you can use one of them to provide weight) that is to be the weight of the feature vector - this effectivly reduces the length of the feature vector, as used by all other methods, by one. A fourth optional parameter can provide conversion codes, for a conversion provided after scaling and weight extraction but before a kernel is applied, so you can hallucinate the data is in a different format that is more amenable to a pdf being applied. Most common use is angles, which need to be converted into vectors for the directional kernels to make sense. There are static methods to query the conversion options."}, 
- {"get_dm", (PyCFunction)MeanShift_get_dm_py, METH_NOARGS, "Returns the current data matrix, which will be some kind of numpy ndarray"},
+ {"set_data", (PyCFunction)MeanShift_set_data_py, METH_VARARGS, "Sets the data matrix, which defines the probability distribution via a kernel density estimate that everything is using. The data matrix is used directly, so it should not be modified during use as it could break the data structures created to accelerate question answering. First parameter is a numpy matrix (Any normal numerical type), the second a string with its length matching the number of dimensions of the matrix. The characters in the string define the meaning of each dimension: 'd' (data) - changing the index into this dimension changes which exemplar you are indexing; 'f' (feature) - changing the index into this dimension changes which feature you are indexing; 'b' (both) - same as d, except it also contributes an item to the feature vector, which is essentially the position in that dimension (used on the dimensions of an image for instance, to include pixel position in the feature vector). The system unwraps all data indices and all feature indices in row major order to hallucinate a standard data matrix, with all 'both' features at the start of the feature vector. Note that calling this resets scale. A third optional parameter sets an index into the original feature vector (Including the dual dimensions, so you can use one of them to provide weight) that is to be the weight of the feature vector - this effectivly reduces the length of the feature vector, as used by all other methods, by one. A fourth optional parameter can provide conversion codes, for a conversion provided after weight extraction but before scaling and the kernel is applied, so you can hallucinate the data is in a different format that is more amenable to a pdf being applied. Most common use is angles, which need to be converted into vectors for the directional kernels to make sense. The conversion is applied for all inputs and outputs so you only have to worry about the conversion when setting up scale and the kernel. There are static methods to query the conversion options."},
+ {"get_dm", (PyCFunction)MeanShift_get_dm_py, METH_NOARGS, "Returns the current data matrix, which will be some kind of numpy ndarray."},
  {"get_dim", (PyCFunction)MeanShift_get_dim_py, METH_NOARGS, "Returns the string that gives the meaning of each dimension, as matched to the number of dimensions in the data matrix."},
  {"get_weight_dim", (PyCFunction)MeanShift_get_weight_dim_py, METH_NOARGS, "Returns the feature vector index that provides the weight of each sample, or None if there is not one and they are all fixed to 1."},
  
  {"fetch_dm", (PyCFunction)MeanShift_fetch_dm_py, METH_NOARGS, "Returns a new numpy ndarray, of float32 type to be indexed [exemplar, feature], regardless of what was provided to the set_data method. Basically a predicatable version of get_dm that hides weirdness. Note that the order is the same as if you were to use the numpy flatten() method on the data matrix, if you extracted one feature at a time first."},
  {"fetch_weight", (PyCFunction)MeanShift_fetch_weight_py, METH_NOARGS, "Returns a new numpy ndarray, of float32 type indexed by [exemplar] - each entry will be the weight assigned to the given exemplar, noting that if no weights are given then its just going to be a vector of ones. Partner to fetch_dm."},
  
- {"set_scale", (PyCFunction)MeanShift_set_scale_py, METH_VARARGS, "Given two parameters. First is an array indexed by feature to get a multiplier that is applied before the kernel (Which is always of radius 1, or some approximation of.) is considered - effectivly an inverse bandwidth in kernel density estimation terms or the inverse standard deviation if you are using the Gaussian kernel. Second is an optional scale for the weight assigned to each feature vector via the set_data method (In the event that no weight is assigned this parameter is the weight of each feature vector, as the default is 1)."},
+ {"set_scale", (PyCFunction)MeanShift_set_scale_py, METH_VARARGS, "Given two parameters. First is an array indexed by feature to get a multiplier that is applied before the kernel (Which is always of radius 1, or some approximation of.) is considered - effectivly an inverse bandwidth in kernel density estimation terms or the inverse standard deviation if you are using the Gaussian kernel. Second is an optional scale for the weight assigned to each feature vector via the set_data method (In the event that no weight is assigned this parameter is the weight of each feature vector, as the default is 1). Scaling occurs after conversion, so the provided vctor may not match the number of true features."},
  {"get_scale", (PyCFunction)MeanShift_get_scale_py, METH_NOARGS, "Returns a copy of the scale array (Inverse bandwidth)."},
  {"get_weight_scale", (PyCFunction)MeanShift_get_weight_scale_py, METH_NOARGS, "Returns the scalar for the weight of each sample - typically left as 1."},
- {"copy_scale", (PyCFunction)MeanShift_copy_scale_py, METH_VARARGS, "Given anotehr MeanShift object this copies its scale parameters - a touch faster than using get then set as it avoids an intermediate matrix."},
+ {"copy_scale", (PyCFunction)MeanShift_copy_scale_py, METH_VARARGS, "Given another MeanShift object this copies its scale parameters - a touch faster than using get then set as it avoids an intermediate numpy array."},
  
  {"exemplars", (PyCFunction)MeanShift_exemplars_py, METH_NOARGS, "Returns how many exemplars are in the hallucinated data matrix."},
- {"features", (PyCFunction)MeanShift_features_py, METH_NOARGS, "Returns how many features are in the hallucinated data matrix."},
- {"features_internal", (PyCFunction)MeanShift_features_internal_py, METH_NOARGS, "Returns how many features are in the hallucinated data matrix as seen internally after any conversion filters have been applied."},
+ {"features", (PyCFunction)MeanShift_features_py, METH_NOARGS, "Returns how many features are in the hallucinated data matrix, before any conversion is applied."},
+ {"features_internal", (PyCFunction)MeanShift_features_internal_py, METH_NOARGS, "Returns how many features are in the hallucinated data matrix as seen internally after any conversion filters have been applied. This is the length required of a scale vector."},
  {"weight", (PyCFunction)MeanShift_weight_py, METH_NOARGS, "Returns the total weight of the included data, taking into account the weight channel if provided."},
- {"stats", (PyCFunction)MeanShift_stats_py, METH_NOARGS, "Returns some basic stats about the data set - (mean, standard deviation). These are per channel."},
+ {"stats", (PyCFunction)MeanShift_stats_py, METH_NOARGS, "Returns some basic stats about the data set - (mean, standard deviation). These are per channel and for the internaly seen features, after conversion."},
 
  {"scale_silverman", (PyCFunction)MeanShift_scale_silverman_py, METH_NOARGS, "Sets the scale for the current data using Silverman's rule of thumb, generalised to multidimensional data (Multidimensional version often attributed to Wand & Jones.). Note that this is assuming you are using Gaussian kernels and that the samples have been drawn from a Gaussian - if these asumptions are valid you should probably just fit a Gaussian in the first place, if they are not you should not use this method. Basically, do not use!"},
  {"scale_scott", (PyCFunction)MeanShift_scale_scott_py, METH_NOARGS, "Alternative to scale_silverman - assumptions are very similar and it is hence similarly crap - would recomend against this, though maybe prefered to Silverman."},
@@ -2390,7 +2471,7 @@ static PyMethodDef MeanShift_methods[] =
  {"kl", (PyCFunction)MeanShift_kl_py, METH_VARARGS, "Calculates and returns an approximation of the kullback leibler divergance, of the first parameter from self - D(self||arg1). In other words, it returns the average number of extra nats for encoding draws from p if you encode them optimally under the assumption they come from the density estimate of the mean shift object given as the first parameter. Uses the samples within self and solves using them as a sample from the distribution - consequntially the constraint the the KL-divergance be positive is broken by this estimate and you can get negative values out. What to do about this is left to the user. And optional second parameter provides a clamp on how low probability calculations for arg1 values are allowed to get, to avoid divide by zero - it defaults to 1e-16."},
  
  {"prob", (PyCFunction)MeanShift_prob_py, METH_VARARGS, "Given a feature vector returns its probability, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},
- {"probs", (PyCFunction)MeanShift_probs_py, METH_VARARGS, "Given a data matrix returns an array (1D) containing the probability of each feature, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},
+ {"probs", (PyCFunction)MeanShift_probs_py, METH_VARARGS, "Given a data matrix returns an array (1D) containing the probability of each feature, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return values can include zeros."},
  
  {"draw", (PyCFunction)MeanShift_draw_py, METH_NOARGS, "Allows you to draw from the distribution represented by the kernel density estimate. Returns a vector and makes use of the internal RNG."},
  {"draws", (PyCFunction)MeanShift_draws_py, METH_VARARGS, "Allows you to draw from the distribution represented by the kernel density estimate. Same as draw except it returns a matrix - you provide a single argument of how many draws to make. Returns an array, <# draws>X<# features> and makes use of the internal RNG."},
@@ -2439,7 +2520,7 @@ static PyTypeObject MeanShiftType =
  0,                                /*tp_setattro*/
  0,                                /*tp_as_buffer*/
  Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /*tp_flags*/
- "An object implimenting mean shift; also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Has multiplication capabilities, such that you can multiply density estimates to get a further desnity estimate. Includes multiple spatial indexing schemes and kernel types, including ones for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario. Note that it pretends to be a readonly list, from which you can get copies of each feature vector (len(self) will return self.exemplars()). Note that you must set the kernel after the setting the data in some cases, so that the kernel knows the correct number of dimensions it needs to support.", /* tp_doc */
+ "An object implimenting mean shift; also includes kernel density estimation and subspace constrained mean shift using the same object, such that they are all using the same underlying density estimate. Has multiplication capabilities, such that you can multiply density estimates to get a further density estimate. Includes multiple spatial indexing schemes and kernel types, including ones for directional data. Clustering is supported, with a choice of cluster intersection tests, as well as the ability to interpret exemplar indexing dimensions of the data matrix as extra features, so it can handle the traditional image segmentation scenario. Note that it pretends to be a readonly list, from which you can get copies of each feature vector (len(self) will return self.exemplars()). Note that you must set the kernel after setting the data in some cases, so that the kernel knows the correct number of dimensions it needs to support.", /* tp_doc */
  0,                                /* tp_traverse */
  0,                                /* tp_clear */
  0,                                /* tp_richcompare */
