@@ -65,5 +65,21 @@ doc.addOther('\n'.join(text), "Cluster Convergence Detection Methods (balls)", F
 
 
 
+# Pull in information about the converters...
+text = []
+for code in ms.MeanShift.converters():
+  info = ms.MeanShift.converter(code)
+  
+  text.append(info['name'])
+  text.append('code = %s' % info['code'])
+  text.append('external dimensions = %i' % info['external'])
+  text.append('internal dimensions = %i' % info['internal'])
+  text.append(info['description'])
+  text.append('')
+
+doc.addOther('\n'.join(text), "Converters", False)
+
+
+
 # Classes...
 doc.addClass(ms.MeanShift)

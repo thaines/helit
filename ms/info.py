@@ -57,3 +57,19 @@ for ball in ms.MeanShift.balls():
   for i in xrange(0, len(d), 60):
     print '    %s' % d[i:i+60].strip()
   print
+
+
+
+print
+print 'Converters:'
+for code in ms.MeanShift.converters():
+  info = ms.MeanShift.converter(code)
+  print '  >%s' % info['name']
+  print '   code = %s' % info['code']
+  print '   external dimensions = %i' % info['external']
+  print '   internal dimensions = %i' % info['internal']
+  
+  d = info['description']
+  for i in xrange(0, len(d), 60):
+    print '    %s' % d[i:i+60].strip()
+  print

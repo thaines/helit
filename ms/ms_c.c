@@ -520,6 +520,53 @@ static PyObject * MeanShift_reset_py(MeanShift * self, PyObject * args)
 
 
 
+static PyObject * MeanShift_converters_py(MeanShift * self, PyObject * args)
+{
+ // Create the return list...
+  PyObject * ret = PyList_New(0);
+  
+ // Add each balls type in turn...
+  int i = 0;
+  while (ListConvert[i]!=NULL)
+  {
+   PyObject * name = PyString_FromStringAndSize(&ListConvert[i]->code, 1);
+   PyList_Append(ret, name);
+   Py_DECREF(name);
+   
+   ++i; 
+  }
+ 
+ // Return...
+  return ret;
+}
+
+
+static PyObject * MeanShift_converter_py(MeanShift * self, PyObject * args)
+{
+ // Parse the parameter...
+  char * code;
+  if (!PyArg_ParseTuple(args, "s", &code)) return NULL;
+
+ // Search for the relevant convertor...
+  int i = 0;
+  while (ListConvert[i]!=NULL)
+  {
+   if (code[0]==ListConvert[i]->code)
+   {
+    // Create and return a dictionary with the relevant stuff in... 
+     return Py_BuildValue("{ss#sssssisi}", "code", &ListConvert[i]->code, 1, "name", ListConvert[i]->name, "description", ListConvert[i]->description, "external", ListConvert[i]->dim_ext, "internal", ListConvert[i]->dim_int);
+   }
+    
+   ++i; 
+  }
+  
+ // Didn't find it - return none...
+  Py_INCREF(Py_None);
+  return Py_None; 
+}
+
+
+
 static PyObject * MeanShift_set_data_py(MeanShift * self, PyObject * args)
 {
  // Extract the parameters...
@@ -2443,6 +2490,9 @@ static PyMethodDef MeanShift_methods[] =
  
  {"copy_all", (PyCFunction)MeanShift_copy_all_py, METH_VARARGS, "Copies everything from another mean shift object except for the data structure - kernel, spatial, balls and all exposed parameters. Faster than doing things manually, including the sharing of caches - if you are making lots of MeanShift objects with the same parameters it is strongly recomended to use this."},
  {"reset", (PyCFunction)MeanShift_reset_py, METH_VARARGS, "Changing the contents of the numpy array that contains the samples wrapped by a MeanShift object will break things, potentially even causing a crash. However, you can change the contents of the array then call this - it will reset all data structures that are built on assumptions about the numpy array. Note that this only works for changing the contents - resizing it will not do anything as the MeanShift object will still have a pointer to the original."},
+ 
+ {"converters", (PyCFunction)MeanShift_converters_py, METH_NOARGS | METH_STATIC, "Returns a list of converters that can be passed into the set_data method, as their single-character code strings. The converter method allows you to get details."},
+ {"converter", (PyCFunction)MeanShift_converter_py, METH_VARARGS | METH_STATIC, "Given the code for a converter this returns None if its not recognised or a dictionary: {'code' : The code used to select it, single character string., 'name' : Name, provided for documentation purposes - no real use., 'description' : A human-consumable text description of the converter., 'external' : How many features it expects the external representation to have (as provided in the data matrix)., 'internal' : How many features it provides to the actual kernel - the scale and kernel itself match up with this.}."},
  
  {"set_data", (PyCFunction)MeanShift_set_data_py, METH_VARARGS, "Sets the data matrix, which defines the probability distribution via a kernel density estimate that everything is using. The data matrix is used directly, so it should not be modified during use as it could break the data structures created to accelerate question answering. First parameter is a numpy matrix (Any normal numerical type), the second a string with its length matching the number of dimensions of the matrix. The characters in the string define the meaning of each dimension: 'd' (data) - changing the index into this dimension changes which exemplar you are indexing; 'f' (feature) - changing the index into this dimension changes which feature you are indexing; 'b' (both) - same as d, except it also contributes an item to the feature vector, which is essentially the position in that dimension (used on the dimensions of an image for instance, to include pixel position in the feature vector). The system unwraps all data indices and all feature indices in row major order to hallucinate a standard data matrix, with all 'both' features at the start of the feature vector. Note that calling this resets scale. A third optional parameter sets an index into the original feature vector (Including the dual dimensions, so you can use one of them to provide weight) that is to be the weight of the feature vector - this effectivly reduces the length of the feature vector, as used by all other methods, by one. A fourth optional parameter can provide conversion codes, for a conversion provided after weight extraction but before scaling and the kernel is applied, so you can hallucinate the data is in a different format that is more amenable to a pdf being applied. Most common use is angles, which need to be converted into vectors for the directional kernels to make sense. The conversion is applied for all inputs and outputs so you only have to worry about the conversion when setting up scale and the kernel. There are static methods to query the conversion options."},
  {"get_dm", (PyCFunction)MeanShift_get_dm_py, METH_NOARGS, "Returns the current data matrix, which will be some kind of numpy ndarray."},
