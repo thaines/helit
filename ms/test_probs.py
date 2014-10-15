@@ -24,7 +24,7 @@ data = numpy.array(map(lambda _: random.normalvariate(0.0, 2.0), xrange(1000)))
 ms = MeanShift()
 ms.set_data(data, 'd')
 
-normal_kernels = [k for k in MeanShift.kernels() if MeanShift.info_config(k)==None]
+normal_kernels = ['uniform', 'triangular', 'epanechnikov', 'cosine', 'gaussian', 'cauchy']
 ms.set_kernel(random.choice(normal_kernels))
 ms.set_spatial(random.choice(ms.spatials()))
 

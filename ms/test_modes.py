@@ -51,7 +51,7 @@ data *= scale
 ms = MeanShift()
 ms.set_data(data, 'df')
 
-normal_kernels = [k for k in MeanShift.kernels() if MeanShift.info_config(k)==None]
+normal_kernels = ['uniform', 'triangular', 'epanechnikov', 'cosine', 'gaussian', 'cauchy']
 ms.set_kernel(random.choice(normal_kernels))
 ms.set_spatial(random.choice(ms.spatials()))
 

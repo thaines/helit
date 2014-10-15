@@ -123,8 +123,7 @@ cv.SaveImage('mult_input_draw.png', img)
   
 
 # Iterate and do each of the normal kernels in turn - we want to really dig into this...
-kernels = filter(lambda k: MeanShift.info_config(k)==None, MeanShift.kernels())
-kernels = ['gaussian'] + filter(lambda k: k!='gaussian', kernels)
+kernels = ['gaussian', 'uniform', 'triangular', 'epanechnikov', 'cosine', 'cauchy']
 
 for kernel in kernels:
   print 'Processing', kernel

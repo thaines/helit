@@ -78,6 +78,85 @@ void Kernel_next(int dims, KernelConfig config, int state, float * fv)
 
 
 
+// The discrete kernel type...
+float Discrete_weight(int dims, KernelConfig config, float * offset)
+{
+ int i;
+ for (i=0; i<dims; i++)
+ {
+  if ((offset[i]<=-0.5)||(offset[i]>0.5)) return 0.0; // 0.5 because of 'round to nearest integer'.
+ }
+ return 1.0;
+}
+
+float Discrete_norm(int dims, KernelConfig config)
+{
+ return 1.0; // The values have already been normalised.
+}
+
+float Discrete_range(int dims, KernelConfig config, float quality)
+{
+ return 0.5;
+}
+
+void Discrete_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
+{
+ // Degenerate - just copy the feature vector over...
+  int i;
+  for (i=0; i<dims; i++) out[i] = center[i];
+}
+
+
+
+float Discrete_mult_mass(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ // For each dimension in turn find the rounded integer of the first entry and check all the rest are identical - if any fail this test the mass is 0, otherwise its 1...
+  int i, j;
+  for (i=0; i<dims; i++)
+  {
+   int correct = (int)floor(0.5 + fv[0][i]);
+   for (j=1; j<terms; j++)
+   {
+    float zeroed = fv[j][i] - correct;
+    if ((zeroed<=-0.5)||(zeroed>0.5)) return 0.0;
+   }
+  }
+  
+  return 1.0;
+}
+
+void Discrete_mult_draw(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ // Kinda degenerate - just copy the first feature vector over (If they don't all match we have a serious problem!)...
+  int i;
+  for (i=0; i<dims; i++) out[i] = fv[0][i] / scale[0][i];
+}
+
+
+
+const Kernel Discrete =
+{
+ "discrete",
+ "A discrete kernel - it rounds every value it sees to the nearest integer and treates each integer as a discrete value. The system is not designed for this use case, and doing this is horribly inefficient, but its still valuable because you can use this with the Composite kernel and combine it with one or more continuous distributions. Will happily work where each dimension is a different discrete variable, and behaves itself if given negative values. Note that if you provide data that is on the integer you will get data out that is on teh integer, but if you provide data that needs rounding (e.g. discretising a continuous variable and setting the scale to get the desired number of bins, which would be relly weird given this system allows you to handle that properlly.) then the outputs of the system, e.g. draw will also need rounding. Certain operations don't make sense with this kernel, most noticably mean shift! Others might be a rather bad idea, like calculating KL divergance or multiplication - its really only good for probability calculation and drawing, at least until I figure out how to make it behave with other system.",
+ NULL,
+ Kernel_config_new,
+ Kernel_config_verify,
+ Kernel_config_acquire,
+ Kernel_config_release,
+ Discrete_weight,
+ Discrete_norm,
+ Discrete_range,
+ Kernel_to_offset,
+ Kernel_offset,
+ Discrete_draw,
+ Discrete_mult_mass,
+ Discrete_mult_draw,
+ Kernel_states,
+ Kernel_next,
+};
+
+
+
 // The uniform kernel type...
 float Uniform_weight(int dims, KernelConfig config, float * offset)
 {
@@ -1722,6 +1801,7 @@ const Kernel Composite =
 // The list of known kernels...
 const Kernel * ListKernel[] =
 {
+ &Discrete,
  &Uniform,
  &Triangular,
  &Epanechnikov,
