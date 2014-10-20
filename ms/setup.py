@@ -13,8 +13,8 @@ from distutils.core import setup, Extension
 
 
 
-depends = ['philox.h', 'bessel.h', 'eigen.h', 'mult.h', 'kernels.h', 'data_matrix.h', 'spatial.h', 'balls.h', 'mean_shift.h', 'ms_c.h']
-code = ['philox.c', 'bessel.c', 'eigen.c', 'mult.c', 'kernels.c', 'data_matrix.c', 'spatial.c', 'balls.c',  'mean_shift.c', 'ms_c.c']
+depends = ['philox.h', 'bessel.h', 'eigen.h', 'mult.h', 'kernels.h', 'convert.h', 'data_matrix.h', 'spatial.h', 'balls.h', 'mean_shift.h', 'ms_c.h']
+code = ['philox.c', 'bessel.c', 'eigen.c', 'mult.c', 'kernels.c', 'convert.c', 'data_matrix.c', 'spatial.c', 'balls.c',  'mean_shift.c', 'ms_c.c']
 
 ext = Extension('ms_c', code, depends=depends)
 
