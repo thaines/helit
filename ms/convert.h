@@ -11,6 +11,8 @@
 
 
 
+#include <stddef.h>
+
 // Defines a system for converting the input into another format for processing - this is typically used when the data is encoded in such a way that none of the provided kernels make sense unless its converted into a different represntation first. Mainly used to convert angular representations into vectors for compatibility with euclidean and directional statistics kernels. Also has a memory advantage if the provided encoding takes up less space than the intermediate.
 
 

@@ -65,6 +65,12 @@ int Balls_within(Balls this, const float * pos)
  return type->within(this, pos);
 }
 
+size_t Balls_byte_size(Balls this)
+{
+ const BallsType * type = *(const BallsType**)this;
+ return type->byte_size(this);
+}
+
 
 
 // Implimentation using a simple (linked) list of coordinates/radii and a brute force search...
@@ -209,6 +215,16 @@ int BallsList_within(Balls self, const float * pos)
  return -1;
 }
 
+size_t BallsList_byte_size(Balls self)
+{
+ BallsList * this = (BallsList*)self;
+ 
+ size_t node_mem = sizeof(BallsNode) + this->dims * sizeof(float);
+ node_mem *= this->count;
+ 
+ return sizeof(BallsList) + node_mem;
+}
+
 
 
 const BallsType BallsListType =
@@ -223,6 +239,7 @@ const BallsType BallsListType =
  BallsList_pos,
  BallsList_radius,
  BallsList_within,
+ BallsList_byte_size,
 };
 
 
@@ -694,6 +711,37 @@ int BallsHash_within(Balls self, const float * pos)
   return -1;
 }
 
+size_t BallsHash_byte_size(Balls self)
+{
+ BallsHash * this = (BallsHash*)self;
+ 
+ size_t mem = sizeof(BallsHash);
+ 
+ mem += this->storage * (sizeof(Ball) + this->dims * sizeof(float));
+ mem += 2 * this->size * sizeof(BallsBucket*);
+ mem += 3 * this->dims * sizeof(int);
+ 
+ int i;
+ for (i=0; i<this->size; i++)
+ {
+  BallsBucket * targ = this->tableA[i];
+  while (targ!=NULL)
+  {
+   mem += sizeof(BallsBucket);
+   targ = targ->next;
+  }
+  
+  targ = this->tableB[i];
+  while (targ!=NULL)
+  {
+   mem += sizeof(BallsBucket);
+   targ = targ->next;
+  }
+ }
+ 
+ return mem;
+}
+
 
 
 const BallsType BallsHashType =
@@ -708,6 +756,7 @@ const BallsType BallsHashType =
  BallsHash_pos,
  BallsHash_radius,
  BallsHash_within,
+ BallsHash_byte_size,
 };
 
 

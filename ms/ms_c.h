@@ -57,6 +57,7 @@ struct MeanShift
   float quality;
   float epsilon;
   int iter_cap;
+  float spatial_param;
   
   float ident_dist;
   float merge_range;

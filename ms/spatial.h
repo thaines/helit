@@ -25,7 +25,7 @@ typedef void * Spatial;
 // Typedef the various methods that define a spatial indexing object...
 
 // New and delete...
-typedef Spatial (*SpatialNew)(DataMatrix * dm);
+typedef Spatial (*SpatialNew)(DataMatrix * dm, float param);
 typedef void (*SpatialDelete)(Spatial this);
 
 // Returns the data matrix it is a spatial structure for (Note that it does not own this data matrix - user must delete it when done.)...
@@ -36,6 +36,9 @@ typedef void (*SpatialStart)(Spatial this, const float * centre, float range);
 
 // You call this until it returns a negative number - each return is a value to process. Will include all values in the bounding box, and possibly some outside it as well...
 typedef int (*SpatialNext)(Spatial this);
+
+// Returns the size of the object, in bytes; does not include the size of the data matrix...
+typedef size_t (*SpatialByteSize)(Spatial this);
 
 
 
@@ -54,12 +57,14 @@ struct SpatialType
  
  SpatialStart start;
  SpatialNext next;
+ 
+ SpatialByteSize byte_size;
 };
 
 
 
 // Define access functions for the spatial objects - they all assume the first entry in the structure pointed to by Spatial is a pointer to its type structure. These just match up with the function pointer typedefs...
-Spatial Spatial_new(const SpatialType * type, DataMatrix * dm);
+Spatial Spatial_new(const SpatialType * type, DataMatrix * dm, float param);
 void Spatial_delete(Spatial this);
 
 const SpatialType * Spatial_type(Spatial this);
@@ -67,6 +72,8 @@ DataMatrix * Spatial_dm(Spatial this);
 
 void Spatial_start(Spatial this, const float * centre, float range);
 int Spatial_next(Spatial this);
+
+size_t Spatial_byte_size(Spatial this);
 
 
 

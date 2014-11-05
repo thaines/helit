@@ -133,5 +133,9 @@ float * DataMatrix_to_int(DataMatrix * dm, float * external, float * internal);
 float * DataMatrix_to_ext(DataMatrix * dm, float * internal, float * external);
 
 
+// Returns how many bytes are consumed by the DataMatrix object, excluding the numpy array it points at...
+size_t DataMatrix_byte_size(DataMatrix * dm);
+
+
 
 #endif

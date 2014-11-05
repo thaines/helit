@@ -15,9 +15,9 @@
 
 
 // The conveniance methods that handle all Spatial objects...
-Spatial Spatial_new(const SpatialType * type, DataMatrix * dm)
+Spatial Spatial_new(const SpatialType * type, DataMatrix * dm, float param)
 {
- return type->init(dm);
+ return type->init(dm, param);
 }
 
 void Spatial_delete(Spatial this)
@@ -51,6 +51,12 @@ int Spatial_next(Spatial this)
  return type->next(this); 
 }
 
+size_t Spatial_byte_size(Spatial this)
+{
+ const SpatialType * type = *(const SpatialType**)this;
+ return type->byte_size(this);
+}
+
 
 
 // Implimentation of the brute force spatial indexer...
@@ -67,7 +73,7 @@ struct BruteForce
 
 
 
-Spatial BruteForce_new(DataMatrix * dm)
+Spatial BruteForce_new(DataMatrix * dm, float param)
 {
  BruteForce * this = (BruteForce*)malloc(sizeof(BruteForce));
  
@@ -118,6 +124,13 @@ int BruteForce_next(Spatial self)
 
 
 
+size_t BruteForce_byte_size(Spatial self)
+{
+ return sizeof(BruteForce);
+}
+
+
+
 const SpatialType BruteForceType =
 {
  "brute_force",
@@ -127,6 +140,7 @@ const SpatialType BruteForceType =
  BruteForce_dm,
  BruteForce_start,
  BruteForce_next,
+ BruteForce_byte_size,
 };
 
 
@@ -151,7 +165,7 @@ struct IterDual
 
 
 
-Spatial IterDual_new(DataMatrix * dm)
+Spatial IterDual_new(DataMatrix * dm, float param)
 {
  IterDual * this = (IterDual*)malloc(sizeof(IterDual));
  
@@ -274,6 +288,14 @@ int IterDual_next(Spatial self)
 
 
 
+size_t IterDual_byte_size(Spatial self)
+{
+ IterDual * this = (IterDual*)self;
+ return sizeof(IterDual) + 4 * this->indices * sizeof(int);
+}
+
+
+
 const SpatialType IterDualType =
 {
  "iter_dual",
@@ -283,6 +305,7 @@ const SpatialType IterDualType =
  IterDual_dm,
  IterDual_start,
  IterDual_next,
+ IterDual_byte_size,
 };
 
 
@@ -341,7 +364,7 @@ struct KDTree
 
 
 
-KDNode * KDNode_new(DataMatrix * dm, int * indices, int low, int high, int depth, PosFeat * scratch)
+KDNode * KDNode_new(DataMatrix * dm, int * indices, int low, int high, int depth, PosFeat * scratch, float min_size)
 {
  KDNode * this = (KDNode*)malloc(sizeof(KDNode) + dm->feats * 2 * sizeof(float));
  
@@ -374,7 +397,7 @@ KDNode * KDNode_new(DataMatrix * dm, int * indices, int low, int high, int depth
   
  // Decide if we are going to divide further or not...
   if (depth>64) return this;
-  if ((high-low)<6) return this;
+  if ((high-low)<8) return this;
  
  // Choose a division direction - the one with the largest range; possible condition for leaving as well...
   int split_feat = 0;
@@ -388,7 +411,7 @@ KDNode * KDNode_new(DataMatrix * dm, int * indices, int low, int high, int depth
     split_range = range;
    }
   }
-  if (split_range<1e-3) return this;
+  if (split_range<min_size) return this;
   
  // Sort the indices by the feature...
   for (i=low; i<high; i++)
@@ -406,8 +429,8 @@ KDNode * KDNode_new(DataMatrix * dm, int * indices, int low, int high, int depth
   
  // Do the split...
   int half = (low + high) / 2;
-  this->child_low = KDNode_new(dm, indices, low, half, depth+1, scratch);
-  this->child_high = KDNode_new(dm, indices, half, high, depth+1, scratch);
+  this->child_low = KDNode_new(dm, indices, low, half, depth+1, scratch, min_size);
+  this->child_high = KDNode_new(dm, indices, half, high, depth+1, scratch, min_size);
   
  // Assign parents...
   this->child_low->parent = this;
@@ -477,8 +500,18 @@ KDNode * KDNode_next_up(KDNode * this, DataMatrix * dm, const float * centre, fl
 }
 
 
+int KDNode_count(KDNode * this)
+{
+ int ret = 1;
+ if (this->child_low!=NULL)  ret += KDNode_count(this->child_low);
+ if (this->child_high!=NULL) ret += KDNode_count(this->child_high);
 
-Spatial KDTree_new(DataMatrix * dm)
+ return ret;
+}
+
+
+
+Spatial KDTree_new(DataMatrix * dm, float param)
 {
  KDTree * this = (KDTree*)malloc(sizeof(KDTree));
  
@@ -490,7 +523,7 @@ Spatial KDTree_new(DataMatrix * dm)
  for (i=0; i<this->dm->exemplars; i++) this->indices[i] = i;
  
  PosFeat * scratch = (PosFeat*)malloc(this->dm->exemplars * sizeof(PosFeat));
- this->root = KDNode_new(this->dm, this->indices, 0, this->dm->exemplars, 0, scratch);
+ this->root = KDNode_new(this->dm, this->indices, 0, this->dm->exemplars, 0, scratch, param);
  free(scratch);
  
  this->targ = NULL;
@@ -550,6 +583,18 @@ int KDTree_next(Spatial self)
 
 
 
+size_t KDTree_byte_size(Spatial self)
+{
+ KDTree * this = (KDTree*)self;
+ 
+ size_t node_mem = sizeof(KDNode) + this->dm->feats * 2 * sizeof(float);
+ node_mem *= KDNode_count(this->root);
+ 
+ return sizeof(KDTree) + this->dm->exemplars * sizeof(int) + node_mem;
+}
+
+
+
 const SpatialType KDTreeType =
 {
  "kd_tree",
@@ -559,6 +604,7 @@ const SpatialType KDTreeType =
  KDTree_dm,
  KDTree_start,
  KDTree_next,
+ KDTree_byte_size,
 };
 
 

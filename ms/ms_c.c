@@ -35,6 +35,7 @@ void MeanShift_new(MeanShift * this)
  this->quality = 0.5;
  this->epsilon = 1e-3;
  this->iter_cap = 1024;
+ this->spatial_param = 0.5;
  this->ident_dist = 0.0;
  this->merge_range = 0.5;
  this->merge_check_step = 4;
@@ -1176,7 +1177,7 @@ static PyObject * MeanShift_loo_nll_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
   
  // Calculate the normalising term if needed...
@@ -1199,7 +1200,7 @@ static PyObject * MeanShift_entropy_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
   
  // Calculate the normalising term if needed...
@@ -1224,7 +1225,7 @@ static PyObject * MeanShift_kl_py(MeanShift * self, PyObject * args)
  // Make sure the required data structures for self are ready...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
   
   if (self->norm<0.0)
@@ -1235,7 +1236,7 @@ static PyObject * MeanShift_kl_py(MeanShift * self, PyObject * args)
  // Ditto for other...
   if (other->spatial==NULL)
   {
-   other->spatial = Spatial_new(other->spatial_type, &other->dm); 
+   other->spatial = Spatial_new(other->spatial_type, &other->dm, self->spatial_param); 
   }
   
   if (other->norm<0.0)
@@ -1269,7 +1270,7 @@ static PyObject * MeanShift_prob_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
   
  // Calculate the normalising term if needed...
@@ -1314,7 +1315,7 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
   
  // Calculate the normalising term if needed...
@@ -1468,7 +1469,7 @@ static PyObject * MeanShift_mode_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
 
  // Create an output matrix...  
@@ -1526,7 +1527,7 @@ static PyObject * MeanShift_modes_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
 
  // Create an output matrix...  
@@ -1573,7 +1574,7 @@ static PyObject * MeanShift_modes_data_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
 
  // Work out the output matrix size...
@@ -1646,7 +1647,7 @@ static PyObject * MeanShift_cluster_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
 
  // Create the balls...
@@ -1741,7 +1742,7 @@ static PyObject * MeanShift_assign_cluster_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
 
  // Fetch and convert the feature vector...
@@ -1791,7 +1792,7 @@ static PyObject * MeanShift_assign_clusters_py(MeanShift * self, PyObject * args
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
   
  // Create a temporary array of floats...
@@ -1846,7 +1847,7 @@ static PyObject * MeanShift_cluster_on_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
   
  // We need a balls object to detect clustering...
@@ -1937,7 +1938,7 @@ static PyObject * MeanShift_manifold_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
 
  // Create an output matrix, copy in the data, applying the scale change...  
@@ -2010,7 +2011,7 @@ static PyObject * MeanShift_manifolds_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
 
  // Create an output matrix...  
@@ -2074,7 +2075,7 @@ static PyObject * MeanShift_manifolds_data_py(MeanShift * self, PyObject * args)
  // If spatial is null create it...
   if (self->spatial==NULL)
   {
-   self->spatial = Spatial_new(self->spatial_type, &self->dm); 
+   self->spatial = Spatial_new(self->spatial_type, &self->dm, self->spatial_param); 
   }
 
  // Work out the output matrix size...
@@ -2339,7 +2340,7 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
    
    if (targ->spatial==NULL)
    {
-    targ->spatial = Spatial_new(targ->spatial_type, &targ->dm);
+    targ->spatial = Spatial_new(targ->spatial_type, &targ->dm, self->spatial_param);
    }
     
    sl[i] = targ->spatial;
@@ -2393,6 +2394,59 @@ static PyObject * MeanShift_mult_py(MeanShift * self, PyObject * args, PyObject 
  // Return None...
   Py_INCREF(Py_None);
   return Py_None;
+}
+
+
+
+static PyObject * MeanShift_sizeof_py(MeanShift * self, PyObject * args)
+{
+ size_t mem = sizeof(MeanShift) - sizeof(DataMatrix); // The DataMatrix has its own size method.
+ 
+ int dims = DataMatrix_features(&self->dm);
+ int ref_count;
+ size_t shared_mem = self->kernel->byte_size(dims, self->config, &ref_count);
+ if (self->name!=NULL) shared_mem += PyString_Size(self->name); // Wrong, but can't figure out the right way!
+ mem += (size_t)ceil(shared_mem / (float)ref_count);
+ 
+ mem += DataMatrix_byte_size(&self->dm);
+ if (self->dm.array!=NULL) mem += PyArray_NBYTES(self->dm.array);
+ 
+ if (self->spatial!=NULL) mem += Spatial_byte_size(self->spatial);
+ if (self->balls!=NULL) mem += Balls_byte_size(self->balls);
+ 
+ if (self->fv_int!=NULL) mem += dims * sizeof(float);
+ if (self->fv_ext!=NULL) mem += DataMatrix_ext_features(&self->dm) * sizeof(float);
+ 
+ return Py_BuildValue("n", mem);
+}
+
+
+static PyObject * MeanShift_memory_py(MeanShift * self, PyObject * args)
+{
+ int dims = DataMatrix_features(&self->dm);
+ 
+ size_t self_mem = sizeof(MeanShift) - sizeof(DataMatrix);
+ if (self->fv_int!=NULL) self_mem += dims * sizeof(float);
+ if (self->fv_ext!=NULL) self_mem += DataMatrix_ext_features(&self->dm) * sizeof(float);
+ 
+ int ref_count;
+ size_t kernel_mem = self->kernel->byte_size(dims, self->config, &ref_count);
+ if (self->name!=NULL) kernel_mem += PyString_Size(self->name); // Wrong, but can't figure out the right way!
+ 
+ size_t dm_mem = DataMatrix_byte_size(&self->dm);
+ 
+ size_t data_mem = 0;
+ if (self->dm.array!=NULL) data_mem += PyArray_NBYTES(self->dm.array);
+ 
+ size_t spatial_mem = 0;
+ if (self->spatial!=NULL) spatial_mem += Spatial_byte_size(self->spatial);
+ 
+ size_t balls_mem = 0;
+ if (self->balls!=NULL) balls_mem += Balls_byte_size(self->balls);
+ 
+ size_t total_mem = self_mem + (size_t)ceil(kernel_mem / (float)ref_count) + dm_mem + data_mem + spatial_mem + balls_mem;
+  
+ return Py_BuildValue("{snsnsisnsnsnsnsn}", "data", data_mem, "kernel", kernel_mem, "kernel_ref_count", ref_count, "dm", dm_mem, "spatial", spatial_mem, "balls", balls_mem, "self", self_mem, "total", total_mem);
 }
 
 
@@ -2453,6 +2507,7 @@ static PyMemberDef MeanShift_members[] =
  {"quality", T_FLOAT, offsetof(MeanShift, quality), 0, "Value between 0 and 1, inclusive - for kernel types that have an infinite domain this controls how much of that domain to use for the calculations - 0 for lowest quality, 1 for the highest quality. (Ignored by kernel types that have a finite kernel.) In the gaussian case it is equivalent of 1 sd for quality 0, 3 sd for quality 1; the other kernels are comparable."},
  {"epsilon", T_FLOAT, offsetof(MeanShift, epsilon), 0, "For convergance detection - when the step size is smaller than this it stops."},
  {"iter_cap", T_INT, offsetof(MeanShift, iter_cap), 0, "Maximum number of iterations to do before stopping, a hard limit on computation."},
+ {"spatial_param", T_FLOAT, offsetof(MeanShift, spatial_param), 0, "A parameter passed through to the spatial data structure. Currently only used by the kd tree spatial, as the minimum dimension range that it will split - it defaults to 0.5 as a reasonable tradeoff between memory/speed."},
  {"ident_dist", T_FLOAT, offsetof(MeanShift, ident_dist), 0, "If two exemplars are found at any point to have a distance less than this from each other whilst clustering it is assumed they will go to the same destination, saving computation."},
  {"merge_range", T_FLOAT, offsetof(MeanShift, merge_range), 0, "Controls how close two mean shift locations have to be to be merged in the clustering method."},
  {"merge_check_step", T_INT, offsetof(MeanShift, merge_check_step), 0, "When clustering this controls how many mean shift iterations it does between checking for convergance - simply a tradeoff between wasting time doing mean shift when it has already converged and doing proximity checks for convergance. Should only affect runtime."},
@@ -2541,6 +2596,9 @@ static PyMethodDef MeanShift_methods[] =
  {"manifolds_data", (PyCFunction)MeanShift_manifolds_data_py, METH_VARARGS, "Given the dimensionality of the manifold projects the feature vectors that are defining the density estimate onto the manfold using subspace constrained mean shift. The return value will be indexed in the same way as the provided data matrix, but without the feature dimensions, with an extra dimension at the end to index features. A further optional boolean parameter allows you to enable calculation of the hessain for every iteration (The default, True, correct algorithm), or only do it once at the start (False, incorrect but works for clean data.)."},
  
  {"mult", (PyCFunction)MeanShift_mult_py, METH_KEYWORDS | METH_VARARGS | METH_STATIC, "A static method that allows you to multiply a bunch of kernel density estimates, and draw some samples from the resulting distribution, outputing the samples into an array. The first input must be a list of MeanShift objects (At least of length 1, though if length 1 it just resamples the input), the second a numpy array for the output - it must be 2D and have the same number of columns as all the MeanShift objects have features/dims; must be float or double. Its row count is how many samples will be drawn from the distribution implied by multiplying the KDEs together. Note that the first object in the MeanShift object list gets to set the kernel - it is assumed that all further objects have the same kernel, and if thats not the case expect problems. Note that this is same structure - different scales and the same kernel with different parameters (e.g. different concentration parameter for a Fisher) is fine. Further to the first two inputs dictionary parameters it allows parameters to be set by name: {'gibbs': Number of Gibbs samples to do, noting its multiplied by the length of the multiplication list and is the number of complete passes through the state, 'mci': Number of samples to do if it has to do monte carlo integration, 'mh': Number of Metropolis-Hastings steps it will do if it has to, multiplied by the length of the multiplicand list, 'fake': Allows you to request an incorrect-but-useful result - the default of 0 is the correct output, 1 is a mode from the Gibbs sampled mixture component instead of a draw, whilst 2 is the average position of the components that made up the selected mixture component.}. Note that this method makes extensive use of the built in rng."},
+ 
+ {"__sizeof__", (PyCFunction)MeanShift_sizeof_py, METH_NOARGS, "Returns the number of bytes used the complete object. This is a non-trivial calculation, as data can be shared etc. - all the data that it definitely owns is included, as is the byte count for the numpy array that it contains a pointer to. If the kernel type includes a chache that is shared between objects it amortises it - divides the number of bytes by how many objects are using it and rounds up. This set of asusmptions means that if each MeanShoft object has its own numpy array and you sum them all up for a running program then the result is probably reasonable; in other situations it may not be. Also note that it counts all the caches etc. - many of these are not initalised until first used, or resized at various times, so size can vary a lot as you use an object."},
+ {"memory", (PyCFunction)MeanShift_memory_py, METH_NOARGS, "Does the same thing as __sizeof__, except it returns a dictionary that breaks down all the byte counts that sum together to create the final value, as well as the final value. Output is {'data' : Size of contained data matrix, 'kernel' : Size of any data from the kernel (for most kernels this is 0), 'kernel_ref_count' : Data from the kernel can be shared between multiple instances - this is that count so you can amortise it if that makes sense, 'dm' : Size of data matrix information without the actual data matrix!, 'spatial' : Size of the spatial data structure, 'balls' : Size of the balls structure, 'self' : Size of just the object without all the stuff its holding pointers to, includes some internal caches, 'total' : Final output, what __sizeof__ returns.}"},
  
  {NULL}
 };

@@ -11,6 +11,8 @@
 
 
 
+#include <stddef.h>
+
 // Defines code to handle a set of hyper-spheres - essentially provides online algorithms to create them, and query if a given point is within one, where each ball is represented by a center and radius...
 
 
@@ -44,6 +46,9 @@ typedef float (*BallsRadius)(Balls this, int index);
 // If the given point is within a ball this returns the index of that hyper-sphere, if its not it returns a negative number. If its within multiple it returns whichever one it feels like...
 typedef int (*BallsWithin)(Balls this, const float * pos);
 
+// Returns the memory consumed by the object...
+typedef size_t (*BallsByteSize)(Balls this);
+
 
 
 // Define the type for a ball intersection object...
@@ -65,6 +70,8 @@ struct BallsType
  BallsRadius radius;
  
  BallsWithin within;
+ 
+ BallsByteSize byte_size;
 };
 
 
@@ -78,6 +85,7 @@ int Balls_create(Balls this, const float * pos, float radius);
 const float * Balls_pos(Balls this, int index);
 float Balls_radius(Balls this, int index);
 int Balls_within(Balls this, const float * pos);
+size_t Balls_byte_size(Balls this);
 
 
 

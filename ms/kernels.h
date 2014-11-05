@@ -70,6 +70,9 @@ typedef int (*KernelStates)(int dims, KernelConfig config);
 // Transitions the given feature vector from the current state to the next one - note that this must be cyclic, such that if called KernelStates times you end up back where you started. State is how many times this method has been called on the given feature vector - it could loop many times!..
 typedef void (*KernelNext)(int dims, KernelConfig config, int state, float * fv);
 
+// Returns the size in bytes of the kernel, in most cases this is zero. You can optionally provide ref_count, which will be filled in with how many MeanShift objects use the given configuration, so you can amortize their memory between them...
+typedef size_t (*KernelByteSize)(int dims, KernelConfig config, int * ref_count);
+
 
 
 // Define the struct that defines a kernel type...
@@ -79,7 +82,7 @@ struct Kernel
 {
  const char * name;
  const char * description;
- const char * configuration; // NULL if it requires no configuration, otherwise a human readable string describing what is required. If NULL the kernel is assumed to be initialised with its name alone - this fact can be used by code.
+ const char * configuration; // NULL if it requires no configuration, otherwise a human readable string describing what is required. If NULL the kernel is assumed to be initialised with its name alone - this fact is used by the code. Yeah, this is staggering drunk into Daily WTF terratory...
  
  KernelConfigNew     config_new;
  KernelConfigVerify  config_verify;
@@ -98,6 +101,8 @@ struct Kernel
  
  KernelStates states;
  KernelNext next;
+ 
+ KernelByteSize byte_size;
 };
 
 

@@ -120,7 +120,7 @@ ToFloat KindToFunc(const PyArray_Descr * descr)
 
 void DataMatrix_init(DataMatrix * dm)
 {
- // Not 100% sure this is needed, as this module is used by a module that iwll inevitably call it, but just incase and to make the compilter shut up about me not using it...
+ // Not 100% sure this is needed, as this module is used by a module that will inevitably call it, but just incase and to make the compiler shut up about me not calling it...
   import_array();
   
  // Initalise everything to nulls etc...
@@ -516,4 +516,20 @@ float * DataMatrix_to_ext(DataMatrix * dm, float * internal, float * external)
  
  // Return the converted array...
   return external;
+}
+
+
+size_t DataMatrix_byte_size(DataMatrix * dm)
+{
+ size_t mem = sizeof(DataMatrix);
+ 
+ if (dm->dt!=NULL) mem += PyArray_NDIM(dm->array) * sizeof(DimType);
+ if (dm->weight_cum!=NULL) mem += dm->exemplars * sizeof(float);
+ if (dm->mult!=NULL) mem += dm->feats_conv * sizeof(float);
+ if (dm->fv!=NULL) mem += dm->feats * sizeof(float);
+ if (dm->feat_indices!=NULL) mem += dm->feat_dims * sizeof(int);
+ if (dm->fv_conv!=NULL) mem += dm->feats_conv * sizeof(float);
+ if (dm->conv!=NULL) mem += dm->ops_conv * sizeof(ConvertOp);
+
+ return mem;  
 }

@@ -19,7 +19,7 @@
 
 
 
-// Most kernels don't need a configuration, and hecne use this dummy set of configuration handlers...
+// Most kernels don't need a configuration, and hence use this dummy set of configuration handlers...
 KernelConfig Kernel_config_new(int dims, const char * config)
 {
  return NULL; 
@@ -39,6 +39,12 @@ void Kernel_config_acquire(KernelConfig config)
 void Kernel_config_release(KernelConfig config)
 {
  // Noop 
+}
+
+size_t Kernel_byte_size(int dims, KernelConfig config, int * ref_count)
+{
+ if (ref_count!=NULL) *ref_count = 1;
+ return 0; 
 }
 
 
@@ -153,6 +159,7 @@ const Kernel Discrete =
  Discrete_mult_draw,
  Kernel_states,
  Kernel_next,
+ Kernel_byte_size,
 };
 
 
@@ -288,6 +295,7 @@ const Kernel Uniform =
  Uniform_mult_draw,
  Kernel_states,
  Kernel_next,
+ Kernel_byte_size,
 };
 
 
@@ -396,6 +404,7 @@ const Kernel Triangular =
  Triangular_mult_draw,
  Kernel_states,
  Kernel_next,
+ Kernel_byte_size,
 };
 
 
@@ -505,6 +514,7 @@ const Kernel Epanechnikov =
  Epanechnikov_mult_draw,
  Kernel_states,
  Kernel_next,
+ Kernel_byte_size,
 };
 
 
@@ -639,6 +649,7 @@ const Kernel Cosine =
  Cosine_mult_draw,
  Kernel_states,
  Kernel_next,
+ Kernel_byte_size,
 };
 
 
@@ -714,6 +725,7 @@ const Kernel Gaussian =
  Gaussian_mult_draw,
  Kernel_states,
  Kernel_next,
+ Kernel_byte_size,
 };
 
 
@@ -833,6 +845,7 @@ const Kernel Cauchy =
  Cauchy_mult_draw,
  Kernel_states,
  Kernel_next,
+ Kernel_byte_size,
 };
 
 
@@ -1219,6 +1232,19 @@ void Fisher_mult_draw(int dims, KernelConfig * config, int terms, const float **
 }
 
 
+size_t Fisher_byte_size(int dims, KernelConfig config, int * ref_count)
+{
+ FisherConfig * self = (FisherConfig*)config;
+ 
+ size_t mem = sizeof(FisherConfig);
+ mem += self->inv_culm_size * sizeof(float);
+ mem += dims * sizeof(int);
+ 
+ if (ref_count!=NULL) *ref_count = self->ref_count;
+ return mem;
+}
+
+
 
 const Kernel Fisher =
 {
@@ -1239,7 +1265,10 @@ const Kernel Fisher =
  Fisher_mult_draw,
  Kernel_states,
  Kernel_next,
+ Fisher_byte_size,
 };
+
+
 
 // The mirrored von-Mises Fisher kernel - reuse the data structure from the non-mirrored version...
 float MirrorFisher_weight(int dims, KernelConfig config, float * offset)
@@ -1350,6 +1379,7 @@ const Kernel MirrorFisher =
  MirrorFisher_mult_draw,
  MirrorFisher_states,
  MirrorFisher_next,
+ Fisher_byte_size,
 };
 
 
@@ -1775,6 +1805,26 @@ void Composite_next(int dims, KernelConfig config, int state, float * fv)
 
 
 
+size_t Composite_byte_size(int dims, KernelConfig config, int * ref_count)
+{
+ CompositeConfig * self = (CompositeConfig*)config;
+
+ size_t mem = sizeof(CompositeConfig);
+ mem += self->children * sizeof(CompositeChild);
+ mem += self->kca_length * sizeof(KernelConfig);
+ 
+ int i;
+ for (i=0; i<self->children; i++)
+ {
+  mem += self->child[i].kernel->byte_size(dims, self->child[i].config, NULL);
+ }
+ 
+ if (ref_count!=NULL) *ref_count = self->ref_count;
+ return mem;
+}
+
+
+
 const Kernel Composite =
 {
  "composite",
@@ -1794,6 +1844,7 @@ const Kernel Composite =
  Composite_mult_draw,
  Composite_states,
  Composite_next,
+ Composite_byte_size,
 };
 
 
