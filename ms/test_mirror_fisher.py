@@ -278,3 +278,21 @@ prod_c_a.copy_all(prod_a_b)
 
 visualise('mirror_fisher_prod_c_a_wrong.png', prod_c_a)
 print 'Prepared and visualised product of c and a'
+
+
+# Test out the memory breakdown method...
+print
+print 'Memory breakdown of product of c and a:'
+mem = prod_c_a.memory()
+
+for key, value in mem.iteritems():
+  if key=='kernel_ref_count' or key=='total':
+    continue
+  
+  if key=='kernel':
+    print '  %s: %i bytes (ref count = %i)' % (key, value, mem['kernel_ref_count'])
+  else:
+    print '  %s: %i bytes' % (key, value)
+
+print 'total = %i bytes' % mem['total']
+print

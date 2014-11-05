@@ -35,7 +35,7 @@ void MeanShift_new(MeanShift * this)
  this->quality = 0.5;
  this->epsilon = 1e-3;
  this->iter_cap = 1024;
- this->spatial_param = 0.5;
+ this->spatial_param = 1e-3;
  this->ident_dist = 0.0;
  this->merge_range = 0.5;
  this->merge_check_step = 4;
@@ -2507,7 +2507,7 @@ static PyMemberDef MeanShift_members[] =
  {"quality", T_FLOAT, offsetof(MeanShift, quality), 0, "Value between 0 and 1, inclusive - for kernel types that have an infinite domain this controls how much of that domain to use for the calculations - 0 for lowest quality, 1 for the highest quality. (Ignored by kernel types that have a finite kernel.) In the gaussian case it is equivalent of 1 sd for quality 0, 3 sd for quality 1; the other kernels are comparable."},
  {"epsilon", T_FLOAT, offsetof(MeanShift, epsilon), 0, "For convergance detection - when the step size is smaller than this it stops."},
  {"iter_cap", T_INT, offsetof(MeanShift, iter_cap), 0, "Maximum number of iterations to do before stopping, a hard limit on computation."},
- {"spatial_param", T_FLOAT, offsetof(MeanShift, spatial_param), 0, "A parameter passed through to the spatial data structure. Currently only used by the kd tree spatial, as the minimum dimension range that it will split - it defaults to 0.5 as a reasonable tradeoff between memory/speed."},
+ {"spatial_param", T_FLOAT, offsetof(MeanShift, spatial_param), 0, "A parameter passed through to the spatial data structure. Currently only used by the kd tree spatial, as the minimum dimension range that it will split - it defaults to 1e-3, which almost switches this off. (There is also a depth limit and 8 node per leaf limit)"},
  {"ident_dist", T_FLOAT, offsetof(MeanShift, ident_dist), 0, "If two exemplars are found at any point to have a distance less than this from each other whilst clustering it is assumed they will go to the same destination, saving computation."},
  {"merge_range", T_FLOAT, offsetof(MeanShift, merge_range), 0, "Controls how close two mean shift locations have to be to be merged in the clustering method."},
  {"merge_check_step", T_INT, offsetof(MeanShift, merge_check_step), 0, "When clustering this controls how many mean shift iterations it does between checking for convergance - simply a tradeoff between wasting time doing mean shift when it has already converged and doing proximity checks for convergance. Should only affect runtime."},

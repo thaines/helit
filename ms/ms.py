@@ -35,8 +35,9 @@ class MeanShift(MeanShiftC):
     # Select values for low and high as needed...
     if isinstance(low, float) or isinstance(high, float):
       _, silverman = self.stats()
+      silverman = silverman * (self.weight() * (silverman.shape[0] + 2.0) / 4.0) ** (-1.0 / (silverman.shape[0] + 4.0))
       silverman[silverman<1e-6] = 1e-6
-      silverman = 1.0 / (silverman * (self.weight() * (silverman.shape[0] + 2.0) / 4.0) ** (-1.0 / (silverman.shape[0] + 4.0)))
+      silverman = 1.0 / silverman
       
       if isinstance(low, float):
         low = silverman * low
@@ -100,8 +101,9 @@ class MeanShift(MeanShiftC):
     # Select values for low and high as needed...
     if isinstance(low, float) or isinstance(high, float):
       _, silverman = self.stats()
+      silverman = silverman * (self.weight() * (silverman.shape[0] + 2.0) / 4.0) ** (-1.0 / (silverman.shape[0] + 4.0))
       silverman[silverman<1e-6] = 1e-6
-      silverman = 1.0 / (silverman * (self.weight() * (silverman.shape[0] + 2.0) / 4.0) ** (-1.0 / (silverman.shape[0] + 4.0)))
+      silverman = 1.0 / silverman
       
       if isinstance(low, float):
         low = silverman * low
