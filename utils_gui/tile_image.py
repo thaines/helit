@@ -41,6 +41,7 @@ class TileImage(Layer):
     # So we can hide it...
     self.visible = True
 
+
   def load(self, fn):
     """Replaces the current image with a new one. You can provide none to get a default image, as standin until you load a real image."""
     # Load the image and convert it into a cairo surface...
@@ -61,6 +62,17 @@ class TileImage(Layer):
       del pixbuf
     
     # Reset the cache...
+    self.cache = OrderedDict()
+  
+  
+  def set_blank(self, width = 640, height = 480, r = 1.0, g = 1.0, b = 1.0, a = 1.0):
+    """Allows you to set it up to contain a blank image, with the given colours and alpha."""
+    self.original = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+      
+    ctx = cairo.Context(self.original)
+    ctx.set_source_rgba(r, g, b, a)
+    ctx.paint()
+    
     self.cache = OrderedDict()
   
   
