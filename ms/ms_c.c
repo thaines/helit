@@ -35,7 +35,7 @@ void MeanShift_new(MeanShift * this)
  this->quality = 0.5;
  this->epsilon = 1e-3;
  this->iter_cap = 1024;
- this->spatial_param = 1e-3;
+ this->spatial_param = 0.1;
  this->ident_dist = 0.0;
  this->merge_range = 0.5;
  this->merge_check_step = 4;
@@ -486,6 +486,7 @@ static PyObject * MeanShift_copy_all_py(MeanShift * self, PyObject * args)
   self->quality = other->quality;
   self->epsilon = other->epsilon;
   self->iter_cap = other->iter_cap;
+  self->spatial_param = other->spatial_param;
   self->ident_dist = other->ident_dist;
   self->merge_range = other->merge_range;
   self->merge_check_step = other->merge_check_step;
