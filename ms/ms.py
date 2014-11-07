@@ -21,7 +21,9 @@ except: pass
 # Import the compiled module into this space, so we can pretend they are one and the same, just with automatic compilation...
 from ms_c import MeanShift as MeanShiftC
 
+import re
 import numpy
+from collections import defaultdict
 
 
 
@@ -144,3 +146,166 @@ class MeanShift(MeanShiftC):
       ret.append([clusters, None, sizes])
     
     return ret
+
+
+
+class MeanShiftCompositeScale:
+  """This optimises the scale of MeanShift objects that use the composite kernel type - designed to support all cases, including directional kernels, assuming its a single composite kernel containing a list of other kernels (child kernels can be composite, but would all be fixed to share the same scale if that is being optimised). Optimises each part of the outer composite kernel seperatly, rather than considering a single linear scale parameter as the built in methods do. After construction you call the add_param_* methods to add all parameters you want to optimise over and then the object pretends its a function - simply call on any mean shift object (no parameters) and it does a drunk gradient decent (not sure what to call this - stupid simplex sort) from the closest point in the parameter space of the object until it hits a local maximum. Note that this means that the provided object should have sensible parameters when you start."""
+  def __init__(self, kernel):
+    """You provide a kernel configuration that must start 'composite(' (it will extract dimension counts from this, hence the requirement). Any parameters you want to control within it should be replaced with %(key)s (yes, s for string! you can tie parameters together by giving them the same key) so they can be set via the parameter system."""
+    self.kernel = kernel
+    
+    start = 'composite('
+    assert(self.kernel.startswith(start) and self.kernel[-1]==')')
+    
+    # Extract the terms from the outer kernel - need to handle the possibility of commas within a kernel definition...
+    parts = self.kernel[len(start):-1].split(',')
+    bits = []
+    
+    excess = 0
+    for part in parts:
+      if excess==0:
+        bits.append(part)
+      else:
+        bits[-1] = bits[-1] + part
+        
+      excess += part.count('(')
+      excess -= part.count(')')
+    assert(excess==0)
+    
+    # Seperate out sizes, also generate offsets...
+    self.sizes = numpy.array([int(bit.split(':')[0]) for bit in bits])
+    self.offsets = numpy.concatenate((numpy.array([0]), numpy.cumsum(self.sizes)))
+    
+    # Generate a dummy data matrix, to use when creating MS objects to copy kernels and scale from...
+    self.dummy = numpy.zeros(sum(self.sizes), dtype=numpy.float32)
+        
+    # List of parameters which it is going to optimise - recorded as tuples of (influence, log of low, log of high, steps [, re]). influence is a number indexing a internal kernel, or a string indexing a kernel parameter. For kernel ones a compiled regular expression for extracting the value from a kernel string is provided...
+    self.params = []
+    
+    # Create the cache, to contain each MS object considered - for Fisher kernels this avoids creating the (expensive and large) cache repeatedly...
+    self.cache = dict()
+
+
+  def add_param_scale(self, index, low = 1.0/512, high = 1024.0, steps = 20):
+    """Allows you to add a parameter to optimise on the scale parameters - you provide the index of the sub-kernel of the composite kernel to scale, a low and high scale and the number of steps. Last three have defaults. Interpolation to get the discrete values is inclusive and logarithmic."""
+    assert(index<self.sizes.shape[0] and index>=0)
+    self.params.append((index, numpy.log(low), numpy.log(high), steps))
+  
+  def add_param_kernel(self, key, low = 4.0, high = 8192.0, steps = 12):
+    """Allows you to add a parameter to optimise on the kernel construction - you provide the key for the kernel string to twiddle, a low and high scale and the number of steps. Last three have defaults. Interpolation to get the discrete values is inclusive and logarithmic."""
+    assert(('%%(%s)s' % key) in self.kernel)
+    
+    fnum = '[0-9]+\.?[0-9]*' # Matches a floating point number.
+    reps = defaultdict(lambda: fnum)
+    reps[key] = '<$$$>' # This should never occur in a kernel spec!
+    
+    reg = (self.kernel % reps).replace('(', '\(').replace(')', '\)').replace('<$$$>', '(' + fnum + ')') # Escape brackets in string, putting code to match a float into each parameter except for the one we are after where we surround the float matching expression with brackets, so we can extract it. The repeated use of brackets is what makes this so fucking painful:-/
+    reg = re.compile(reg)
+    
+    self.params.append((key, numpy.log(low), numpy.log(high), steps, reg))
+  
+  
+  def __set_pos(self, loc, ms):
+    """Internal method to set the parameters of a mean shift object to those at the given location in the search space."""
+    kdic = None
+    key = []
+    
+    scale = ms.get_scale()
+    
+    for i, param in enumerate(self.params):
+      val = numpy.exp((loc[i] / float(param[3]-1)) * (param[2]-param[1]) + param[1])
+      
+      if len(param)<5:
+        offset = self.offsets[param[0]]
+        scale[offset:offset + self.sizes[param[0]]] = val
+      else:
+        if kdic==None:
+          kdic = dict()
+        kdic[param[0]] = str(val)
+        key.append('%s=%i' % (param[1], loc[i]))
+        
+    ms.set_scale(scale)
+    
+    if kdic!=None:
+      key = ';'.join(key)
+      
+      if key not in self.cache:
+        source = MeanShift()
+        source.set_data(self.dummy, 'f')
+        source.set_kernel(self.kernel % kdic)
+        self.cache[key] = source
+        
+      else:
+        source = self.cache[key]
+      
+      ms.copy_kernel(source)
+
+
+  def __call__(self, ms, max_tries = None):
+    """Optimise the given MeanShift object; the optional max tries parameter is how many steps (step == trying both directions for a single dimension) to try before stopping - it defaults to None which means it will go until every possible step results in a higher cost. Returns the number of tries it did."""
+    
+    ## First figure out its current parameter coordinates - easy for scale, whilst kernel parameters get a little weird...
+    scale = ms.get_scale()
+    
+    def value(param):
+      if len(param)<5:
+        # Standard scale parameter - easy...
+        val = numpy.log(scale[self.offsets[param[0]]])
+      else:
+        # Kernel parameter - use the re...
+        val = numpy.log(float(param[4].match(ms.get_kernel()).group(1)))
+    
+      pos = int((param[3]-1) * (val - param[1]) / (param[2] - param[1]) + 0.5)
+      
+      if pos<0:
+        pos = 0
+      elif pos>=param[3]:
+        pos = param[3] - 1
+      
+      return pos
+    
+    loc = numpy.array([value(param) for param in self.params])
+    
+    ## Record its score at the starting location...
+    self.__set_pos(loc, ms)
+    current = ms.loo_nll()
+    
+    ## Loop and try 'random' directions, noting that it avoids duplicate attempts, which is also helpful for minima detection...
+    tries = 0
+    index = -1
+    since_last_step = 0
+    
+    while tries!=max_tries:
+      # 'Randomly' select the dimension to optimise...
+      index = (index + 1) % len(self.params)
+      tries += 1
+      
+      # Try both directions, making the jump if either is an improvement...
+      if loc[index] > 0:
+        loc[index] -= 1
+        self.__set_pos(loc, ms)
+        option = ms.loo_nll()
+        if option<current:
+          current = option
+          since_last_step = 0
+          continue
+        else:
+          loc[index] += 1
+      
+      if loc[index]+1 < self.params[index][3]:
+        loc[index] += 1
+        self.__set_pos(loc, ms)
+        option = ms.loo_nll()
+        if option<current:
+          current = option
+          since_last_step = 0
+          continue
+        else:
+          loc[index] -= 1
+      
+      since_last_step += 1
+      if since_last_step >= len(self.params):
+        return tries
+    
+    return tries

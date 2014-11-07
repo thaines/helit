@@ -145,3 +145,22 @@ for i in xrange(clusters.max()+1):
 ## Save it...
 image = array2cv(255.0 * image)
 cv.SaveImage('fisher_mercator_ms.png', image)
+
+
+
+# Print out a memory analysis...
+print
+print 'Memory breakdown:'
+mem = ms.memory()
+
+for key, value in mem.iteritems():
+  if key=='kernel_ref_count' or key=='total':
+    continue
+  
+  if key=='kernel':
+    print '  %s: %i bytes (ref count = %i)' % (key, value, mem['kernel_ref_count'])
+  else:
+    print '  %s: %i bytes' % (key, value)
+
+print 'total = %i bytes' % mem['total']
+print
