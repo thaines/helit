@@ -31,6 +31,13 @@ from collections import defaultdict
 class MeanShift(MeanShiftC):
   __doc__ = MeanShiftC.__doc__
   
+  def best_mode(self):
+    """Calculates all the modes of the contained data (from a mean shift clustering), then the probability of each mode - returns the mode with the highest probability. A conveniance function basically, typically used for robust estimation problems."""
+    clusters, _ = self.cluster()
+    probs = self.probs(clusters)
+    return clusters[numpy.argmax(probs),:]
+    
+    
   def scale_loo_nll(self, low = 0.01, high = 2.0, steps = 64, callback = None):
     """Does a sweep of the scale, from low to high, on a logarithmic scale with the given number of steps. Sets the scale to the one with the lowest loo_nll score. If low/high are provided as multipliers then these are multipliers of the silverman scale; otherwise they can by arbitrary vectors."""
     
