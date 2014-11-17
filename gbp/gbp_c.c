@@ -18,33 +18,44 @@
 
 
 
-// Returns the offset of a half edge, going from source to destination...
-static inline float HalfEdge_offset_pmean(HalfEdge * he)
+// Given a HalfEdge returns its Edge object...
+static inline Edge * HalfEdge_edge(HalfEdge * this)
 {
- if (he < he->reverse) return  he->pairwise;
-                  else return -he->reverse->pairwise;
-}
-
-// Returns the precision of the half edge...
-static inline float HalfEdge_offset_prec(HalfEdge * he)
-{
- if (he > he->reverse) return he->pairwise;
-                  else return he->reverse->pairwise;
-}
-
-// Allows you to multiply the existing offset with another one - this is equivalent to set in the first instance when its initialised to a zero precision...
-static void HalfEdge_offset_mult(HalfEdge * he, float offset, float prec)
-{
- if (he < he->reverse)
+ if (this<this->reverse)
  {
-  he->pairwise += offset * prec;
-  he->reverse->pairwise += prec;
+  return (Edge*)this;
  }
  else
  {
-  he->pairwise += prec;
-  he->reverse->pairwise -= offset * prec; 
+  return (Edge*)(this->reverse);
  }
+}
+
+// Returns the sign of an edge - +1 if its the forward edge, -1 if its the negative edge; happens to be the value to multiply the pmean by to get the right value for message passing...
+static inline float HalfEdge_sign(HalfEdge * this)
+{
+ if (this<this->reverse) return 1.0;
+                    else return -1.0;
+}
+
+// Returns the offset of a half edge, going from source to destination...
+static inline float HalfEdge_offset_pmean(HalfEdge * this)
+{
+ return HalfEdge_sign(this) * HalfEdge_edge(this)->pmean;
+}
+
+// Returns the precision of the half edge...
+static inline float HalfEdge_offset_prec(HalfEdge * this)
+{
+ return HalfEdge_edge(this)->prec;
+}
+
+// Allows you to multiply the existing offset with another one - this is equivalent to set in the first instance when its initialised to a zero precision...
+static void HalfEdge_offset_mult(HalfEdge * this, float offset, float prec)
+{
+ Edge * edge = HalfEdge_edge(this);
+ edge->pmean += HalfEdge_sign(this) * offset * prec;
+ edge->prec += prec;
 }
 
 
@@ -54,38 +65,36 @@ static HalfEdge * GBP_new_edge(GBP * this)
  // Get one half edge (we know we always deal with HalfEdge-s in pairs, hence why the below is safe)...
   if (this->gc==NULL)
   {
-   Block * nb = (Block*)malloc(sizeof(Block) + sizeof(HalfEdge) * 2 * this->block_size);
+   Block * nb = (Block*)malloc(sizeof(Block) + sizeof(Edge) * this->block_size);
    nb->next = this->storage;
    this->storage = nb;
    
    int i;
-   for (i=this->block_size*2-1; i>=0; i--)
+   for (i=this->block_size-1; i>=0; i--)
    {
     nb->data[i].next = this->gc;
     this->gc = nb->data + i;
    }
   }
 
-  HalfEdge * a = this->gc;
-  this->gc = a->next;
-  
-  HalfEdge * b = this->gc;
-  this->gc = b->next;
+  Edge * e = this->gc;
+  this->gc = e->next;
   
  // Do a basic initialisation on them...
-  a->reverse = b;
-  a->pairwise = 0.0;
-  a->pmean = 0.0;
-  a->prec = 0.0;
+  e->forward.reverse = &(e->backward);
+  e->forward.pmean = 0.0;
+  e->forward.prec = 0.0;
   
-  b->reverse = a;
-  b->pairwise = 0.0;
-  b->pmean = 0.0;
-  b->prec = 0.0;
+  e->backward.reverse = &(e->forward);
+  e->backward.pmean = 0.0;
+  e->backward.prec = 0.0;
+  
+  e->pmean = 0.0;
+  e->prec = 0.0;
   
  // Return a...
   this->edge_count += 1;
-  return a;
+  return &(e->forward);
 }
 
 
@@ -136,7 +145,7 @@ static HalfEdge * GBP_always_get_edge(GBP * this, int a, int b)
 
 
 
-void GBP_new(GBP * this, int node_count)
+void GBP_new(GBP * this, int node_count, int block_size)
 {
  this->node_count = node_count;
  this->node = (Node*)malloc(this->node_count * sizeof(Node));
@@ -155,7 +164,7 @@ void GBP_new(GBP * this, int node_count)
  
  this->gc = NULL;
  
- this->block_size = 512;
+ this->block_size = block_size;
  this->storage = NULL;
 }
 
@@ -176,13 +185,14 @@ static PyObject * GBP_new_py(PyTypeObject * type, PyObject * args, PyObject * kw
 {
  // Get the args...
   int node_count;
-  if (!PyArg_ParseTuple(args, "i", &node_count)) return NULL;
+  int block_size = 512;
+  if (!PyArg_ParseTuple(args, "i|i", &node_count, &block_size)) return NULL;
   
  // Allocate the object...
   GBP * self = (GBP*)type->tp_alloc(type, 0);
 
  // On success construct it...
-  if (self!=NULL) GBP_new(self, node_count);
+  if (self!=NULL) GBP_new(self, node_count, block_size);
 
  // Return the new object...
   return (PyObject*)self;
@@ -290,7 +300,7 @@ static PyObject * GBP_reset_unary_py(GBP * self, PyObject * args)
    
    // Store some zeroes...
     self->node[iii].unary_pmean = 0.0;
-    self->node[iii].unary_prec   = 0.0;
+    self->node[iii].unary_prec  = 0.0;
   }
   
  // Clean up and return None...
@@ -299,6 +309,7 @@ static PyObject * GBP_reset_unary_py(GBP * self, PyObject * args)
   Py_INCREF(Py_None);
   return Py_None;
 }
+
 
 
 static PyObject * GBP_reset_pairwise_py(GBP * self, PyObject * args)
@@ -314,18 +325,17 @@ static PyObject * GBP_reset_pairwise_py(GBP * self, PyObject * args)
    int i;
    for (i=0; i<self->node_count; i++)
    {
-    if (self->node[i].first!=NULL)
+    while (self->node[i].first!=NULL)
     {
-     HalfEdge * targ = self->node[i].first;
-     while (targ->next!=NULL)
+     HalfEdge * he = self->node[i].first;
+     Edge * victim = HalfEdge_edge(he);
+     self->node[i].first = he->next;
+     
+     if (he < he->reverse) // Only delete each pair of half edges once by only doing pointers in the forward direction and ignoring pointers in the backwards direction.
      {
-      targ = targ->next; 
+      victim->next = self->gc;
+      self->gc = victim;
      }
-     
-     targ->next = self->gc;
-     self->gc = self->node[i].first;
-     
-     self->node[i].first = NULL;
     }
    }
    
@@ -384,13 +394,13 @@ static PyObject * GBP_reset_pairwise_py(GBP * self, PyObject * args)
        }
        
       // Remove it...
-       HalfEdge * to_die = targ->first;
-       targ->first = to_die->next;
+       HalfEdge * he = targ->first;
+       targ->first = he->next;
        
-      // Dump both into the rubish, update the edge count...
-       to_die->reverse->next = self->gc;
-       to_die->next = to_die->reverse;
-       self->gc = to_die;
+      // Dump the edge into the rubish, update the edge count...
+       Edge * victim = HalfEdge_edge(he);
+       victim->next = self->gc;
+       self->gc = victim;
        
        self->edge_count -= 1;
      }
@@ -497,9 +507,9 @@ static PyObject * GBP_reset_pairwise_py(GBP * self, PyObject * args)
       }
       
      // Deposite them both down the garbage chute; decriment the edge count...
-      atob->next = self->gc;
-      btoa->next = atob;
-      self->gc = btoa;
+      Edge * victim = HalfEdge_edge(atob);
+      victim->next = self->gc;
+      self->gc = victim;
        
       self->edge_count -= 1;
    }
@@ -933,7 +943,7 @@ static PyMemberDef GBP_members[] =
 {
  {"node_count", T_INT, offsetof(GBP, node_count), READONLY, "Number of nodes in the graph"},
  {"edge_count", T_INT, offsetof(GBP, edge_count), READONLY, "Number of edges in the graph"},
- {"block_size", T_INT, offsetof(GBP, block_size), 0, "Number of edges worth of memory to allocate each time it runs out of space for more."},
+ {"block_size", T_INT, offsetof(GBP, block_size), 0, "Number of edges worth of memory to allocate each time it runs out of space for more. Can be editted whenever you want."},
  {NULL}
 };
 
@@ -979,7 +989,7 @@ static PyTypeObject GBPType =
  0,                                /*tp_setattro*/
  0,                                /*tp_as_buffer*/
  Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE, /*tp_flags*/
- "A fairly straight forward implimentation of Gaussian belief propagation, with univariate random variables for each node, with unary and pairwise terms, where pairwise terms are specified in terms of offsets. Works with inverse precision throughout, so it can represent 'no information' with a value of zero and avoid the awkward variance of zero, which it does not support. Note that for GBP the MAP and the marginal are the same, so this is calculating both.", /* tp_doc */
+ "A fairly straight forward implimentation of Gaussian belief propagation, with univariate random variables for each node, with unary and pairwise terms, where pairwise terms are specified in terms of offsets. Works with inverse precision throughout, so it can represent 'no information' with a value of zero and avoid the awkward variance of zero, which it does not support. Note that for GBP the MAP and the marginal are the same, so this is calculating both. Constructed with the number of random variables, which remains constant; number of random edges can change at will, and the constructor takes an optional second parameter for the block size, as in the number of new edges to allocate each time it runs out of memory.", /* tp_doc */
  0,                                /* tp_traverse */
  0,                                /* tp_clear */
  0,                                /* tp_richcompare */

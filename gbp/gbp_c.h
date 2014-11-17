@@ -14,6 +14,7 @@
 // Pre-declerations...
 typedef struct Node Node;
 typedef struct HalfEdge HalfEdge;
+typedef struct Edge Edge;
 typedef struct Block Block;
 typedef struct GBP GBP;
 
@@ -40,19 +41,33 @@ struct HalfEdge
  HalfEdge * reverse; // Its partner in crime, going in the other direction.
  HalfEdge * next; // Next in the list of edges leaving a given node.
  
- float pairwise; // Contains either the p-mean or precision - see accessor functions for details of this rather convoluted attempt to save 8 bytes/avoid storing the same information twice.
- 
  float pmean; // p-mean of its message.
  float prec; // precision of its message.
 };
 
 
 
-// A block - a big lump of HalfEdge structures so we don't malloc too often.
+// An edge - contains the details of the relationship, in terms of the two HalfEdge objects that define the directions and the pmean and precision of the avaliable information going in the forward direction...
+struct Edge
+{
+ union
+ {
+  Edge * next; // For when in the gc list.
+  HalfEdge forward; // for normal usage!
+ };
+ HalfEdge backward;
+ 
+ float pmean;
+ float prec;
+};
+
+
+
+// A block - a big lump of Edge structures so we don't malloc too often.
 struct Block
 {
  Block * next;
- HalfEdge data[0]; 
+ Edge data[0];
 };
 
 
@@ -67,7 +82,7 @@ struct GBP
  
  int edge_count; // No list - access by looping nodes.
  
- HalfEdge * gc; // Linked list of half edge pairs that can be recycled; use next pointer.
+ Edge * gc; // Linked list of edges that can be recycled; use next pointer on forward HalfEdge.
  
  int block_size; // Number of half edge pairs to malloc at a time.
  Block * storage;
