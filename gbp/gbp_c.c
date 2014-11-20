@@ -423,6 +423,15 @@ static PyObject * GBP_reset_pairwise_py(GBP * self, PyObject * args)
    Py_XDECREF(arr_a);
    return NULL; 
   }
+  
+  if (length_a!=length_b)
+  {
+   Py_XDECREF(arr_a);
+   Py_XDECREF(arr_b);
+   
+   PyErr_SetString(PyExc_IndexError, "Pairwise reset when given two lists expects them to be the same length.");
+   return NULL; 
+  }
  
  // Do the loop - above means we only have to code one double loop...
   int i, ii, iii;  
@@ -443,76 +452,74 @@ static PyObject * GBP_reset_pairwise_py(GBP * self, PyObject * args)
    
    Node * targ_a = self->node + iii;
    
-   int j, jj, jjj;
-   for (j=0, jj=start_b; j<length_b; j++,jj+=step_b)
+   int jj = start_b + i * step_b;
+   int jjj = jj;
+   if (arr_b!=NULL)
    {
-    jjj = jj;
-    if (arr_b!=NULL)
+    jjj = *(int*)PyArray_GETPTR1(arr_b, jj);
+    if ((jjj<0)||(jjj>=self->node_count))
     {
-     jjj = *(int*)PyArray_GETPTR1(arr_b, jj);
-     if ((jjj<0)||(jjj>=self->node_count))
-     {
-      Py_XDECREF(arr_a);
-      Py_DECREF(arr_b);
-      PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
-      return NULL;
-     }
+     Py_XDECREF(arr_a);
+     Py_DECREF(arr_b);
+     PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+     return NULL;
     }
-    
-    if (jjj==iii) continue; // Don't error out as that would be inconveniant.
-   
-    Node * targ_b = self->node + jjj;
-    
-    // Ok - we have two nodes - targ_a and targ_b - see if we can find a pair of half edges that make up an edge between them, and terminate if found...
-     // Find and remove from targ_a - if it does not exist then we have nothing to do and can stop...
-      HalfEdge * atob = NULL;
-      if (targ_a->first->dest==targ_b)
-      {
-       atob = targ_a->first;
-       targ_a->first = atob->next;
-      }
-      else
-      {
-       HalfEdge * t = targ_a->first;
-       while ((t->next!=NULL)&&(t->next->dest!=targ_b))
-       {
-        t = t->next;  
-       }
-       
-       if (t->next!=NULL)
-       {
-        atob = t->next;
-        t->next = atob->next;
-       }
-      }
-      if (atob==NULL) continue;
-      
-     // We know there must be one in targ_b - simpler find and remove...
-      HalfEdge * btoa = NULL;
-      if (targ_b->first->dest==targ_a)
-      {
-       btoa = targ_b->first;
-       targ_b->first = btoa->next;
-      }
-      else
-      {
-       HalfEdge * t = targ_b->first;
-       while (t->next->dest!=targ_a)
-       {
-        t = t->next;  
-       }
-       
-       btoa = t->next;
-       t->next = btoa->next;
-      }
-      
-     // Deposite them both down the garbage chute; decriment the edge count...
-      Edge * victim = HalfEdge_edge(atob);
-      victim->next = self->gc;
-      self->gc = victim;
-       
-      self->edge_count -= 1;
    }
+    
+   if (jjj==iii) continue; // Don't error out as that would be inconveniant - just skip.
+   
+   Node * targ_b = self->node + jjj;
+    
+   // Ok - we have two nodes - targ_a and targ_b - see if we can find a pair of half edges that make up an edge between them, and terminate if found...
+    // Find and remove from targ_a - if it does not exist then we have nothing to do and can stop...
+     HalfEdge * atob = NULL;
+     if (targ_a->first==NULL) continue;
+     if (targ_a->first->dest==targ_b)
+     {
+      atob = targ_a->first;
+      targ_a->first = atob->next;
+     }
+     else
+     {
+      HalfEdge * t = targ_a->first;
+      while ((t->next!=NULL)&&(t->next->dest!=targ_b))
+      {
+       t = t->next;  
+      }
+       
+      if (t->next!=NULL)
+      {
+       atob = t->next;
+       t->next = atob->next;
+      }
+     }
+     if (atob==NULL) continue;
+      
+    // We know there must be one in targ_b - simpler find and remove...
+     HalfEdge * btoa = NULL;
+     if (targ_b->first->dest==targ_a)
+     {
+      btoa = targ_b->first;
+      targ_b->first = btoa->next;
+     }
+     else
+     {
+      HalfEdge * t = targ_b->first;
+      while (t->next->dest!=targ_a)
+      {
+       t = t->next;  
+      }
+       
+      btoa = t->next;
+      t->next = btoa->next;
+     }
+      
+    // Deposite them both down the garbage chute; decriment the edge count...
+     Edge * victim = HalfEdge_edge(atob);
+     victim->next = self->gc;
+     self->gc = victim;
+       
+     self->edge_count -= 1;
   }
  
  // Clean up and return None...
@@ -939,6 +946,102 @@ static PyObject * GBP_result_py(GBP * self, PyObject * args)
 
 
 
+static PyObject * GBP_result_raw_py(GBP * self, PyObject * args)
+{
+ // Convert the parameter to something we can dance with...
+  PyObject * index = NULL;
+  PyArrayObject * pmean = NULL;
+  PyArrayObject * prec = NULL;
+  if (!PyArg_ParseTuple(args, "|OO!O!", &index, &PyArray_Type, &pmean, &PyArray_Type, &prec)) return NULL;
+ 
+  Py_ssize_t start;
+  Py_ssize_t step;
+  Py_ssize_t length;
+  PyArrayObject * arr;
+  int singular;
+  
+  if (GBP_index(self, index, &start, &step, &length, &arr, &singular)!=0) return NULL;
+  
+ // Special case a singular scenario...
+  if ((singular!=0)&&(pmean==NULL)&&(prec==NULL))
+  {
+   float p = self->node[start].prec;
+   float m = self->node[start].pmean;
+   
+   Py_XDECREF(arr);
+   return Py_BuildValue("(f,f)", m, p); 
+  }
+  
+ // Create the return arrays, or validate the existing ones... 
+  if (pmean==NULL)
+  {
+   npy_intp len = length;
+   pmean = (PyArrayObject*)PyArray_SimpleNew(1, &len, NPY_FLOAT32);
+  }
+  else
+  {
+   if ((PyArray_NDIM(pmean)!=1)||(PyArray_DIMS(pmean)[0]!=length)||(PyArray_DESCR(pmean)->kind!='f')||(PyArray_DESCR(pmean)->elsize!=sizeof(float)))
+   {
+    PyErr_SetString(PyExc_TypeError, "Provided p-mean array did not satisfy the requirements");
+    Py_XDECREF(arr);
+    return NULL; 
+   }
+    
+   Py_INCREF(pmean); 
+  }
+  
+  if (prec==NULL)
+  {
+   npy_intp len = length;
+   prec = (PyArrayObject*)PyArray_SimpleNew(1, &len, NPY_FLOAT32);
+  }
+  else
+  {
+   if ((PyArray_NDIM(prec)!=1)||(PyArray_DIMS(prec)[0]!=length)||(PyArray_DESCR(prec)->kind!='f')||(PyArray_DESCR(prec)->elsize!=sizeof(float)))
+   {
+    PyErr_SetString(PyExc_TypeError, "Provided prec array did not satisfy the requirements");
+    Py_XDECREF(arr);
+    Py_DECREF(pmean);
+    return NULL; 
+   }
+    
+   Py_INCREF(prec); 
+  }
+  
+ // Loop and store each value in turn...
+  int i, ii, iii;
+  for (i=0,ii=start; i<length; i++,ii+=step)
+  {
+   // Handle if an array has been passed...
+    iii = ii;
+    if (arr!=NULL)
+    {
+     iii = *(int*)PyArray_GETPTR1(arr, ii);
+     if ((iii<0)||(iii>=self->node_count))
+     {
+      Py_DECREF(arr);
+      Py_DECREF(pmean);
+      Py_DECREF(prec);
+      PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+      return NULL;
+     }
+    }
+    
+   // Store the relevant values for this entry...
+    float p = self->node[iii].prec;
+    *(float*)PyArray_GETPTR1(prec, i) = p;
+
+    float m = self->node[iii].pmean;
+    *(float*)PyArray_GETPTR1(pmean, i) = m;
+  }
+ 
+ // Clean up and return... 
+  Py_XDECREF(arr);
+  return Py_BuildValue("(N,N)", pmean, prec); 
+}
+
+
+
 static PyMemberDef GBP_members[] =
 {
  {"node_count", T_INT, offsetof(GBP, node_count), READONLY, "Number of nodes in the graph"},
@@ -960,6 +1063,7 @@ static PyMethodDef GBP_methods[] =
  {"solve", (PyCFunction)GBP_solve_py, METH_VARARGS, "Solves the model. Optionally given two parameters - the iteration cap and the epsilon, which default to 1024 and 1e-4 respectivly. Returns how many iterations have been performed."},
  
  {"result", (PyCFunction)GBP_result_py, METH_VARARGS, "Given a standard array index (integer, slice, numpy array, equiv. to numpy array) this returns the marginal of the indexed nodes, as a tuple (mean, precision), noting that as precision approaches zero the mean will arbitrarily veer towards zero, to avoid instability (Equivalent to being regularised with a really wide distribution when below an epsilon). The output can be either a tuple of floats or arrays, depending on the request. There are two optional parameters where you can provide the return arrays, to avoid it doing memory allocation - they must be the correct size and floaty, and must be arrays even if you are requesting a single variable."},
+ {"result_raw", (PyCFunction)GBP_result_raw_py, METH_VARARGS, "Identical to result(...), except it outputs the p-mean instead of the mean. The p-mean is the precision multiplied by the mean, and is the internal representation used - this allows you to avoid the regularisation that result(...) applies to low precision values (to avoid divide by zeros) and get at the raw data."},
  
  {NULL}
 };
