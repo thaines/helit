@@ -57,8 +57,16 @@ struct Edge
  };
  HalfEdge backward;
  
- float pmean;
- float prec;
+ // Final relationship between the two nodes is defined as:
+ // pmean = [-poffset, poffset]
+ // precision = [diag, co-diag; co-diag, diag]
+ // i.e.
+ // poffset is diag multiplied by the offset between the random variables.
+ // diag is the precision of the offset between variables.
+ // co is the precision between the random variables if your thinking of the GBP model as a Gaussian with a sparse precision.
+  float poffset;
+  float diag;
+  float co;
 };
 
 

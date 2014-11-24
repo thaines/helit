@@ -16,8 +16,8 @@ from gbp import GBP
 print 'Stretching to hit endpoints:'
 solver = GBP(8)
 
-solver.unary(0, 0.0, 5.0)
-solver.unary(7, 10.0, 5.0)
+solver.unary(0, 0.0, 15.0)
+solver.unary(7, 10.0, 15.0)
 solver.pairwise(slice(None,-1), slice(1, None), 0.0, 1.0)
 
 iters = solver.solve()

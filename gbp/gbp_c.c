@@ -38,24 +38,19 @@ static inline float HalfEdge_sign(HalfEdge * this)
                     else return -1.0;
 }
 
-// Returns the offset of a half edge, going from source to destination...
+// Returns the precision multiplied by the offset of a half edge, going from source to destination...
 static inline float HalfEdge_offset_pmean(HalfEdge * this)
 {
- return HalfEdge_sign(this) * HalfEdge_edge(this)->pmean;
+ return HalfEdge_sign(this) * HalfEdge_edge(this)->poffset;
 }
 
-// Returns the precision of the half edge...
-static inline float HalfEdge_offset_prec(HalfEdge * this)
-{
- return HalfEdge_edge(this)->prec;
-}
 
 // Allows you to multiply the existing offset with another one - this is equivalent to set in the first instance when its initialised to a zero precision...
 static void HalfEdge_offset_mult(HalfEdge * this, float offset, float prec)
 {
  Edge * edge = HalfEdge_edge(this);
- edge->pmean += HalfEdge_sign(this) * offset * prec;
- edge->prec += prec;
+ edge->poffset += HalfEdge_sign(this) * offset * prec;
+ edge->diag += prec;
 }
 
 
@@ -89,8 +84,9 @@ static HalfEdge * GBP_new_edge(GBP * this)
   e->backward.pmean = 0.0;
   e->backward.prec = 0.0;
   
-  e->pmean = 0.0;
-  e->prec = 0.0;
+  e->poffset = 0.0;
+  e->diag = 0.0;
+  e->co = 0.0;
   
  // Return a...
   this->edge_count += 1;
@@ -624,8 +620,8 @@ static PyObject * GBP_pairwise_py(GBP * self, PyObject * args)
   PyObject * index_from;
   PyObject * index_to;
   PyObject * offset_obj;
-  PyObject * prec_obj;
-  if (!PyArg_ParseTuple(args, "OOOO", &index_from, &index_to, &offset_obj, &prec_obj)) return NULL;
+  PyObject * prec_obj = NULL;
+  if (!PyArg_ParseTuple(args, "OOO|O", &index_from, &index_to, &offset_obj, &prec_obj)) return NULL;
 
  // Analyse the two node indices...
   Py_ssize_t start_from;
@@ -670,7 +666,7 @@ static PyObject * GBP_pairwise_py(GBP * self, PyObject * args)
   }
    
   PyArrayObject * prec = NULL;
-  if ((PyInt_Check(prec_obj)==0)&&(PyFloat_Check(prec_obj)==0))
+  if ((prec_obj!=NULL) && (PyInt_Check(prec_obj)==0) && (PyFloat_Check(prec_obj)==0))
   {
    prec = (PyArrayObject*)PyArray_ContiguousFromAny(prec_obj, NPY_DOUBLE, 1, 1);
    if (prec==NULL)
@@ -685,7 +681,7 @@ static PyObject * GBP_pairwise_py(GBP * self, PyObject * args)
  // Loop through and set the required values...
   int i, from_ii, to_ii, from_iii, to_iii;
   float os = (offset==NULL) ? PyFloat_AsDouble(offset_obj) : 0.0;
-  float pr = (prec==NULL)   ? PyFloat_AsDouble(prec_obj)   : 0.0;
+  float pr = ((prec==NULL)&&(prec_obj!=NULL))   ? PyFloat_AsDouble(prec_obj)   : 0.0;
   
   for (i=0,from_ii=start_from,to_ii=start_to; i<length_to; i++,from_ii+=step_from,to_ii+=step_to)
   {
@@ -746,7 +742,16 @@ static PyObject * GBP_pairwise_py(GBP * self, PyObject * args)
     HalfEdge * targ = GBP_always_get_edge(self, from_iii, to_iii);
     
    // Apply the update...
-    HalfEdge_offset_mult(targ, os, pr);
+    if (prec_obj!=NULL)
+    {
+     // Offset with precision case...
+      HalfEdge_offset_mult(targ, os, pr);
+    }
+    else
+    {
+     // Precision only case...
+      HalfEdge_edge(targ)->co += os;
+    }
   }
   
  // Cleanup and return None...
@@ -766,7 +771,9 @@ static PyObject * GBP_solve_py(GBP * self, PyObject * args)
  // Fetch the maximum iterations and desired epsilon...
   int max_iters = 1024;
   float epsilon = 1e-4;
-  if (!PyArg_ParseTuple(args, "|if", &max_iters, &epsilon)) return NULL;
+  float momentum = 0.1;
+  if (!PyArg_ParseTuple(args, "|iff", &max_iters, &epsilon, &momentum)) return NULL;
+  float rev_momentum = 1.0 - momentum;
   
  // Loop through passing, alternating between forwards and backwards throught he node order...
   int dir = 1;
@@ -798,23 +805,40 @@ static PyObject * GBP_solve_py(GBP * self, PyObject * args)
       msg = targ->first;
       while (msg!=NULL)
       {
-       float rel_oset = HalfEdge_offset_pmean(msg);
-       float rel_prec = HalfEdge_offset_prec(msg);
+       float oset_pmean = HalfEdge_offset_pmean(msg);
+       float oset_prec = HalfEdge_edge(msg)->diag;
+       float gauss_prec = HalfEdge_edge(msg)->co;
        
-       float div = rel_prec + targ->prec - msg->reverse->prec;
-       if (div<1e-6) div = 1e-6;
+       float div = oset_prec + targ->prec - msg->reverse->prec;
+       if (fabs(div)<1e-6) div = copysign(1e-6, div);
+       float diag = gauss_prec - oset_prec;
        
-       float new_prec  = rel_prec - rel_prec * rel_prec / div;
-       float new_pmean = rel_oset + rel_prec * (targ->pmean - msg->reverse->pmean - rel_oset) / div;
+       float new_prec  = oset_prec - diag * diag / div;
+       float new_pmean = oset_pmean - diag * (targ->pmean - msg->reverse->pmean - oset_pmean) / div;
        
-       float dm = fabs(new_pmean - msg->pmean);
-       if (dm>delta) delta = dm;
+       new_prec = momentum*msg->prec + rev_momentum*new_prec;
+       new_pmean = momentum*msg->pmean + rev_momentum*new_pmean;
+       
+       if (((new_pmean<0.0)==(new_pmean>=0.0))&&(!((msg->pmean<0.0)==(msg->pmean>=0.0))))
+       {
+        printf("transition to NaN - msg from %i to %i (iters = %i)\n", i, msg->dest - self->node, iters);
+        printf("old: %f %f\n", msg->pmean, msg->prec);
+        printf("new: %f %f\n", new_pmean, new_prec);
+        printf("oset_pmean = %f\n", oset_pmean);
+        printf("oset_prec = %f\n", oset_prec);
+        printf("gauss_prec = %f\n", gauss_prec);
+        printf("div = %f\n", div);
+        printf("diag = %f\n", diag);
+       }
        
        float dp = fabs(new_prec - msg->prec);
        if (dp>delta) delta = dp;
        
-       msg->pmean = new_pmean;
+       float dm = fabs(new_pmean - msg->pmean);
+       if (dm>delta) delta = dm;
+       
        msg->prec = new_prec;
+       msg->pmean = new_pmean;
     
        msg = msg->next; 
       }
@@ -934,8 +958,11 @@ static PyObject * GBP_result_py(GBP * self, PyObject * args)
    // Store the relevant values for this entry...
     float p = self->node[iii].prec;
     *(float*)PyArray_GETPTR1(prec, i) = p;
-
-    float m = self->node[iii].pmean / ((p>1e-6)?(p):(1e-6));
+    
+    float div = p;
+    if (fabs(div)<1e-6) div = copysign(1e-6, div);
+    
+    float m = self->node[iii].pmean / div;
     *(float*)PyArray_GETPTR1(mean, i) = m;
   }
  
@@ -1058,9 +1085,11 @@ static PyMethodDef GBP_methods[] =
  {"reset_pairwise", (PyCFunction)GBP_reset_pairwise_py, METH_VARARGS, "Given two inputs, as indices of nodes between an edge this resets that edge to provide 'no relationship' between the nodes. Can do one edge with two integers or a set of edges with two numpy arrays. Can give one input as an integer and another as a numpy array to do a list of edges that all include the same node. Can omit the second parameter to wipe out all edges for a given node or set of nodes, or both to wipe them all up."},
  
  {"unary", (PyCFunction)GBP_unary_py, METH_VARARGS, "Given three parameters - the node indices, then the means and then the precision values (inverse variance/inverse squared standard deviation). It then updates the nodes by multiplying the unary term already in the node with the given, noting that this is a set for a node that has not yet had unary called on it/been reset. For the node indicies it accepts an integer, a slice, a numpy array or something that can be converted into a numpy array. For the mean and precision it accepts either floats or a numpy array, noting that if an array is too small it will be accessed modulus the number of nodes provided. Note that it accepts negative precision, which allows you to divide through rather than multiply - can be used to remove previously provided information for instance."},
- {"pairwise", (PyCFunction)GBP_pairwise_py, METH_VARARGS, "Given four parameters - the from node index, the too node index, the expected offset in the implied direction and the precision. Has the same amount of flexability as the unary method, except it insists that the two node index objects have the same length. This includes the negative precision insanity, the multiplication of pre-existing stuff etc."},
+ {"unary_raw", (PyCFunction)GBP_unary_py, METH_VARARGS, "Identical to unary, except you pass in the precision multiplied by the mean instead of just the mean - this is the actual internal representation, and so saves a multiplication (maybe a division) if you already have that."},
  
- {"solve", (PyCFunction)GBP_solve_py, METH_VARARGS, "Solves the model. Optionally given two parameters - the iteration cap and the epsilon, which default to 1024 and 1e-4 respectivly. Returns how many iterations have been performed."},
+ {"pairwise", (PyCFunction)GBP_pairwise_py, METH_VARARGS, "Given three or four parameters - the first is the from node index, the second the too node index. If there are three parameters then the third is the precision between the two unary terms (in this use case you are defining a sparse Gaussian distributon to marginalise), if four parameters then it is the expected offset in the implied direction followed by the precision of that offset (in this use case your solving a linear equation of differences between random variables). Has the same amount of flexability as the unary method, except it insists that the two node index objects have the same length. This supports the negative precision insanity (well, perfectly reasonable in the three parameter case), the multiplication of pre-existing stuff etc."},
+ 
+ {"solve", (PyCFunction)GBP_solve_py, METH_VARARGS, "Solves the model. Optionally given three parameters - the iteration cap, the epsilon and the momentum, which default to 1024, 1e-4 and 0.1 respectivly. Returns how many iterations have been performed."},
  
  {"result", (PyCFunction)GBP_result_py, METH_VARARGS, "Given a standard array index (integer, slice, numpy array, equiv. to numpy array) this returns the marginal of the indexed nodes, as a tuple (mean, precision), noting that as precision approaches zero the mean will arbitrarily veer towards zero, to avoid instability (Equivalent to being regularised with a really wide distribution when below an epsilon). The output can be either a tuple of floats or arrays, depending on the request. There are two optional parameters where you can provide the return arrays, to avoid it doing memory allocation - they must be the correct size and floaty, and must be arrays even if you are requesting a single variable."},
  {"result_raw", (PyCFunction)GBP_result_raw_py, METH_VARARGS, "Identical to result(...), except it outputs the p-mean instead of the mean. The p-mean is the precision multiplied by the mean, and is the internal representation used - this allows you to avoid the regularisation that result(...) applies to low precision values (to avoid divide by zeros) and get at the raw data."},

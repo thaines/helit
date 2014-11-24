@@ -1,6 +1,8 @@
 Gaussian Belief Propagation
 
-Simple linear solver that has an interface that proves convenient for certain problems. Allows you to construct an arbitrary graph of univariate Gaussian random variables. For each node you can specify a unary term, as a Gaussian over its value. For each edge a pairwise term, as a Gaussian over the offset between them. It outputs the marginals for each node, the means of which happen to also be the maximum likelihood assignment. Note that the entire system is implemented in terms of precision, which is defined as the inverse of the variance, or the inverse of the standard deviation squared.
+Simple linear solver that has an interface that proves convenient for certain problems. Allows you to construct an arbitrary graph of univariate Gaussian random variables. For each node you can specify a unary term, as a Gaussian over its value. For each edge a pairwise term, as a Gaussian over the offset between them and/or a simple precision between them. It outputs the marginals for each node, the means of which happen to also be the maximum likelihood assignment. Note that the entire system is implemented in terms of precision, which is defined as the inverse of the variance, or the inverse of the standard deviation squared.
+
+It additionally includes a linear solver for symmetric ax=b problems, more as a demonstration than code you would actually use as it only makes sense for sparse problems and yet does not utilise a sparse matrix class!
 
 This is an implementation of the core technique I used in the paper 'Integrating Stereo with Shape-from-Shading derived Orientation Information', by Tom S.F. Haines and Richard C. Wilson, but I was not the first to use it. (There is an old C++ implementation in my PhD code repository.)
 
@@ -11,10 +13,12 @@ Note that this module includes a setup.py that allows you to package/install it 
 Contains the following key files:
 
 gbp.py - The file a user imports - provides a single class - GBP.
+linear.py - Contains the symmetric ax=b solver.
 
 
-test_*.py - Some basic test scripts.
+test_*.py - Some basic test scripts; also good examples of usage.
 
 readme.txt - This file, which is included in the html documentation.
 make_doc.py - Builds the html documentation.
 setup.py - Allows you to create a package/build/install this module.
+
