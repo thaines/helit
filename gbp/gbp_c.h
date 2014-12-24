@@ -30,6 +30,8 @@ struct Node
  
  float pmean; // Estimated p-mean for this random variable.
  float prec; // Estimated precision for this random variable.
+ 
+ int chain_count; // Number of chains that include this node, or -1 if not calculated.
 };
 
 

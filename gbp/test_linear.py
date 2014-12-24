@@ -25,8 +25,15 @@ b = a.dot(x)
 
 # Solve using a GBP object...
 gbp = solve_sym(a, b)
-iters = gbp.solve()
+iters = gbp.solve_trws()
 x_calc, x_prec = gbp.result()
+
+
+
+# Determine if the matrix is diagonally dominant...
+diag = numpy.fabs(a[xrange(dim),xrange(dim)])
+offdiag = numpy.fabs(a).sum(axis=0) - diag
+diag_dom = numpy.all(diag>offdiag)
 
 
 
@@ -35,6 +42,7 @@ print 'a ='
 print a
 print 'b =', b
 print
+print 'diagonally dominant =', diag_dom
 print 'det =', numpy.linalg.det(a)
 print 'iters =', iters
 print
