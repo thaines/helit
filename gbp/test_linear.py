@@ -23,8 +23,20 @@ b = a.dot(x)
 
 
 
+# Solve using Jacobi iterations, as they are very similar to what we are doing here...
+jacobi_x = numpy.zeros(x.shape, dtype=numpy.float32)
+diag = a[range(dim), range(dim)]
+zero_diag = a.copy()
+zero_diag[range(dim), range(dim)] = 0.0
+
+for _ in xrange(1024):
+  jacobi_x = (b - zero_diag.dot(jacobi_x)) / diag
+
+
+
 # Solve using a GBP object...
 gbp = solve_sym(a, b)
+#iters = gbp.solve()
 iters = gbp.solve_trws()
 x_calc, x_prec = gbp.result()
 
@@ -35,6 +47,9 @@ diag = numpy.fabs(a[xrange(dim),xrange(dim)])
 offdiag = numpy.fabs(a).sum(axis=0) - diag
 diag_dom = numpy.all(diag>offdiag)
 
+# Calculate its spectral radius...
+spec_rad = numpy.linalg.eig(numpy.eye(dim) - a)[0].max()
+
 
 
 # Print out the details...
@@ -43,10 +58,12 @@ print a
 print 'b =', b
 print
 print 'diagonally dominant =', diag_dom
+print 'spectral radius =', spec_rad, '(too large)' if spec_rad>=1.0 else ''
 print 'det =', numpy.linalg.det(a)
 print 'iters =', iters
 print
 print 'true x =', x
 print 'lina x =', numpy.linalg.solve(a,b)
+print 'Jacobi =', jacobi_x
 print 'calc x =', x_calc
 print '    prec =', x_prec
