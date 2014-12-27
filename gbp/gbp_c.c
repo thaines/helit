@@ -84,12 +84,20 @@ static inline float HalfEdge_offset_pmean(HalfEdge * this)
 }
 
 
-// Allows you to multiply the existing offset with another one - this is equivalent to set in the first instance when its initialised to a zero precision...
-static void HalfEdge_offset_mult(HalfEdge * this, float offset, float prec)
+// Allows you to multiply the existing offset with another one - this is equivalent to set in the first instance when its initialised to a zero precision; includes an exponent for the previous value...
+static void HalfEdge_offset_mult(HalfEdge * this, float offset, float prec, float prev_weight)
 {
  Edge * edge = HalfEdge_edge(this);
- edge->poffset += HalfEdge_sign(this) * offset * prec;
- edge->diag += prec;
+ edge->poffset = prev_weight*edge->poffset + HalfEdge_sign(this) * offset * prec;
+ edge->diag = prev_weight*edge->diag + prec;
+}
+
+// For when you have the poffset...
+static void HalfEdge_offset_mult_raw(HalfEdge * this, float poffset, float prec, float prev_weight)
+{
+ Edge * edge = HalfEdge_edge(this);
+ edge->poffset = prev_weight*edge->poffset + HalfEdge_sign(this) * poffset;
+ edge->diag = prev_weight*edge->diag + prec;
 }
 
 
@@ -571,13 +579,16 @@ static PyObject * GBP_reset_pairwise_py(GBP * self, PyObject * args)
 
 
 
-static PyObject * GBP_unary_py(GBP * self, PyObject * args)
+static PyObject * GBP_unary_py(GBP * self, PyObject * args, PyObject * kw)
 {
  // We expect three parameters...
   PyObject * index;
   PyObject * mean_obj;
   PyObject * prec_obj;
-  if (!PyArg_ParseTuple(args, "OOO", &index, &mean_obj, &prec_obj)) return NULL;
+  float prev_weight = 1.0;
+  
+  static char * kw_list[] = {"index", "mean", "prec", "prev_exp", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kw, "OOO|f", kw_list, &index, &mean_obj, &prec_obj, &prev_weight)) return NULL;
   
  // Interprete all of the inputs...
   Py_ssize_t start;
@@ -644,8 +655,8 @@ static PyObject * GBP_unary_py(GBP * self, PyObject * args)
     }
    
    // Store the extracted values...
-    self->node[iii].unary_pmean += m * p;
-    self->node[iii].unary_prec  += p;
+    self->node[iii].unary_pmean = prev_weight*self->node[iii].unary_pmean + m * p;
+    self->node[iii].unary_prec  = prev_weight*self->node[iii].unary_prec + p;
   }
 
  // Clean up and return None...
@@ -657,13 +668,16 @@ static PyObject * GBP_unary_py(GBP * self, PyObject * args)
 }
 
 
-static PyObject * GBP_unary_raw_py(GBP * self, PyObject * args)
+static PyObject * GBP_unary_raw_py(GBP * self, PyObject * args, PyObject * kw)
 {
  // We expect three parameters...
   PyObject * index;
   PyObject * pmean_obj;
   PyObject * prec_obj;
-  if (!PyArg_ParseTuple(args, "OOO", &index, &pmean_obj, &prec_obj)) return NULL;
+  float prev_weight = 1.0;
+  
+  static char * kw_list[] = {"index", "pmean", "prec", "prev_exp", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kw, "OOO|f", kw_list, &index, &pmean_obj, &prec_obj, &prev_weight)) return NULL;
   
  // Interprete all of the inputs...
   Py_ssize_t start;
@@ -730,8 +744,8 @@ static PyObject * GBP_unary_raw_py(GBP * self, PyObject * args)
     }
    
    // Store the extracted values...
-    self->node[iii].unary_pmean += pm;
-    self->node[iii].unary_prec  += p;
+    self->node[iii].unary_pmean = prev_weight*self->node[iii].unary_pmean + pm;
+    self->node[iii].unary_prec  = prev_weight*self->node[iii].unary_prec + p;
   }
 
  // Clean up and return None...
@@ -743,15 +757,110 @@ static PyObject * GBP_unary_raw_py(GBP * self, PyObject * args)
 }
 
 
-
-static PyObject * GBP_pairwise_py(GBP * self, PyObject * args)
+static PyObject * GBP_unary_sd_py(GBP * self, PyObject * args, PyObject * kw)
 {
- // Four parameters please...
+ // We expect three parameters...
+  PyObject * index;
+  PyObject * mean_obj;
+  PyObject * sd_obj;
+  float prev_weight = 1.0;
+  
+  static char * kw_list[] = {"index", "mean", "sd", "prev_exp", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kw, "OOO|f", kw_list, &index, &mean_obj, &sd_obj, &prev_weight)) return NULL;
+  
+ // Interprete all of the inputs...
+  Py_ssize_t start;
+  Py_ssize_t step;
+  Py_ssize_t length;
+  PyArrayObject * arr;
+  
+  if (GBP_index(self, index, &start, &step, &length, &arr, NULL)!=0) return NULL;
+  
+  PyArrayObject * mean = NULL;
+  if ((PyInt_Check(mean_obj)==0)&&(PyFloat_Check(mean_obj)==0))
+  {
+   mean = (PyArrayObject*)PyArray_ContiguousFromAny(mean_obj, NPY_DOUBLE, 1, 1);
+   if (mean==NULL)
+   {
+    Py_XDECREF(arr);
+    return NULL;
+   }
+  }
+  
+  PyArrayObject * sd = NULL;
+  if ((PyInt_Check(sd_obj)==0)&&(PyFloat_Check(sd_obj)==0))
+  {
+   sd = (PyArrayObject*)PyArray_ContiguousFromAny(sd_obj, NPY_DOUBLE, 1, 1); 
+   if (sd==NULL)
+   {
+    Py_XDECREF(arr);
+    Py_XDECREF(mean);
+    return NULL;
+   }
+  }
+  
+ // Loop through and set the required values...
+  int i, ii, iii;
+  float m = (mean==NULL) ? PyFloat_AsDouble(mean_obj) : 0.0;
+  float d = (sd==NULL) ? PyFloat_AsDouble(sd_obj) : 0.0;
+  
+  for (i=0,ii=start; i<length; i++,ii+=step)
+  {
+   // Handle array indexing...
+    iii = ii;
+    if (arr!=NULL)
+    {
+     iii = *(int*)PyArray_GETPTR1(arr, ii);
+     if ((iii<0)||(iii>=self->node_count))
+     {
+      Py_DECREF(arr);
+      Py_XDECREF(mean);
+      Py_XDECREF(sd);
+      PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+      return NULL;
+     }
+    }
+    
+   // Extract the mean and precision...
+    if (mean!=NULL)
+    {
+     m = *(double*)PyArray_GETPTR1(mean, i % PyArray_DIMS(mean)[0]);
+    }
+    
+    if (sd!=NULL)
+    {
+     d = *(double*)PyArray_GETPTR1(sd, i % PyArray_DIMS(sd)[0]);
+    }
+   
+   // Store the extracted values...
+    float var = d*d;
+    self->node[iii].unary_pmean = prev_weight*self->node[iii].unary_pmean + m/var;
+    self->node[iii].unary_prec  = prev_weight*self->node[iii].unary_prec + 1.0/var;
+  }
+
+ // Clean up and return None...
+  Py_XDECREF(mean);
+  Py_XDECREF(sd);
+ 
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+
+static PyObject * GBP_pairwise_py(GBP * self, PyObject * args, PyObject * kw)
+{
+ // Three or four parameters please, with keywords as optional...
   PyObject * index_from;
   PyObject * index_to;
   PyObject * offset_obj;
   PyObject * prec_obj = NULL;
-  if (!PyArg_ParseTuple(args, "OOO|O", &index_from, &index_to, &offset_obj, &prec_obj)) return NULL;
+  float prev_weight = 1.0;
+  
+  static char * kw_list[] = {"from", "to", "offset", "prec", "prev_exp", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kw, "OOO|Of", kw_list, &index_from, &index_to, &offset_obj, &prec_obj, &prev_weight)) return NULL;
+  
+  if (prec_obj==Py_None) prec_obj = NULL;
 
  // Analyse the two node indices...
   Py_ssize_t start_from;
@@ -875,12 +984,13 @@ static PyObject * GBP_pairwise_py(GBP * self, PyObject * args)
     if (prec_obj!=NULL)
     {
      // Offset with precision case...
-      HalfEdge_offset_mult(targ, os, pr);
+      HalfEdge_offset_mult(targ, os, pr, prev_weight);
     }
     else
     {
      // Precision only case...
-      HalfEdge_edge(targ)->co += os;
+     float * co = &(HalfEdge_edge(targ)->co);
+     *co = (*co) * prev_weight + os;
     }
   }
   
@@ -889,6 +999,320 @@ static PyObject * GBP_pairwise_py(GBP * self, PyObject * args)
   Py_XDECREF(arr_to);
   Py_XDECREF(offset);
   Py_XDECREF(prec);
+ 
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+static PyObject * GBP_pairwise_raw_py(GBP * self, PyObject * args, PyObject * kw)
+{
+ // Three or four parameters please, with keywords as optional...
+  PyObject * index_from;
+  PyObject * index_to;
+  PyObject * poffset_obj;
+  PyObject * prec_obj = NULL;
+  float prev_weight = 1.0;
+  
+  static char * kw_list[] = {"from", "to", "poffset", "prec", "prev_exp", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kw, "OOO|Of", kw_list, &index_from, &index_to, &poffset_obj, &prec_obj, &prev_weight)) return NULL;
+  
+  if (prec_obj==Py_None) prec_obj = NULL;
+
+ // Analyse the two node indices...
+  Py_ssize_t start_from;
+  Py_ssize_t step_from;
+  Py_ssize_t length_from;
+  PyArrayObject * arr_from;
+  if (GBP_index(self, index_from, &start_from, &step_from, &length_from, &arr_from, NULL)!=0)
+  {
+   return NULL;
+  }
+  
+  Py_ssize_t start_to;
+  Py_ssize_t step_to;
+  Py_ssize_t length_to;
+  PyArrayObject * arr_to;
+  if (GBP_index(self, index_to, &start_to, &step_to, &length_to, &arr_to, NULL)!=0)
+  {
+   Py_XDECREF(arr_from);
+   return NULL;
+  }
+  
+  if (length_from!=length_to)
+  {
+   Py_XDECREF(arr_from);
+   Py_XDECREF(arr_to);
+   
+   PyErr_SetString(PyExc_IndexError, "from and to must have the same number of node indices");
+   return NULL;
+  }
+
+ // Now offset and precision...
+  PyArrayObject * poffset = NULL;
+  if ((PyInt_Check(poffset_obj)==0)&&(PyFloat_Check(poffset_obj)==0))
+  {
+   poffset = (PyArrayObject*)PyArray_ContiguousFromAny(poffset_obj, NPY_DOUBLE, 1, 1);
+   if (poffset==NULL)
+   {
+    Py_XDECREF(arr_from);
+    Py_XDECREF(arr_to);
+    return NULL;
+   }
+  }
+   
+  PyArrayObject * prec = NULL;
+  if ((prec_obj!=NULL) && (PyInt_Check(prec_obj)==0) && (PyFloat_Check(prec_obj)==0))
+  {
+   prec = (PyArrayObject*)PyArray_ContiguousFromAny(prec_obj, NPY_DOUBLE, 1, 1);
+   if (prec==NULL)
+   {
+    Py_XDECREF(arr_from);
+    Py_XDECREF(arr_to);
+    Py_XDECREF(poffset);
+    return NULL;
+   }
+  }
+  
+ // Loop through and set the required values...
+  int i, from_ii, to_ii, from_iii, to_iii;
+  float pos = (poffset==NULL) ? PyFloat_AsDouble(poffset_obj) : 0.0;
+  float pr  = ((prec==NULL)&&(prec_obj!=NULL))   ? PyFloat_AsDouble(prec_obj)   : 0.0;
+  
+  for (i=0,from_ii=start_from,to_ii=start_to; i<length_to; i++,from_ii+=step_from,to_ii+=step_to)
+  {
+   // Handle array indexing for both from and to...
+    from_iii = from_ii;
+    if (arr_from!=NULL)
+    {
+     from_iii = *(int*)PyArray_GETPTR1(arr_from, from_ii);
+     if ((from_iii<0)||(from_iii>=self->node_count))
+     {
+      Py_DECREF(arr_from);
+      Py_XDECREF(arr_to);
+      Py_XDECREF(poffset);
+      Py_XDECREF(prec);
+      PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+      return NULL;
+     }
+    }
+    
+    to_iii = to_ii;
+    if (arr_to!=NULL)
+    {
+     to_iii = *(int*)PyArray_GETPTR1(arr_to, to_ii);
+     if ((to_iii<0)||(to_iii>=self->node_count))
+     {
+      Py_XDECREF(arr_from);
+      Py_DECREF(arr_to);
+      Py_XDECREF(poffset);
+      Py_XDECREF(prec);
+      PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+      return NULL;
+     }
+    }
+    
+   // Fetch the offset and precision values as needed...
+    if (poffset!=NULL)
+    {
+     pos = *(double*)PyArray_GETPTR1(poffset, i % PyArray_DIMS(poffset)[0]);
+    }
+    
+    if (prec!=NULL)
+    {
+     pr = *(double*)PyArray_GETPTR1(prec, i % PyArray_DIMS(prec)[0]);
+    }
+    
+   // Test the user is not stupid...
+    if (from_iii==to_iii)
+    {
+     Py_XDECREF(arr_from);
+     Py_XDECREF(arr_to);
+     Py_XDECREF(poffset);
+     Py_XDECREF(prec);
+     PyErr_SetString(PyExc_IndexError, "Edges connecting a node to itself are not permitted");
+     return NULL;
+    }
+    
+   // Fetch the relevant edge, creating it if need be...
+    HalfEdge * targ = GBP_always_get_edge(self, from_iii, to_iii);
+    
+   // Apply the update...
+    if (prec_obj!=NULL)
+    {
+     // Offset with precision case...
+      HalfEdge_offset_mult_raw(targ, pos, pr, prev_weight);
+    }
+    else
+    {
+     // Precision only case...
+     float * co = &(HalfEdge_edge(targ)->co);
+     *co = (*co) * prev_weight + pos;
+    }
+  }
+  
+ // Cleanup and return None...
+  Py_XDECREF(arr_from);
+  Py_XDECREF(arr_to);
+  Py_XDECREF(poffset);
+  Py_XDECREF(prec);
+ 
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+static PyObject * GBP_pairwise_sd_py(GBP * self, PyObject * args, PyObject * kw)
+{
+ // Three or four parameters please, with keywords as optional...
+  PyObject * index_from;
+  PyObject * index_to;
+  PyObject * offset_obj;
+  PyObject * sd_obj = NULL;
+  float prev_weight = 1.0;
+  
+  static char * kw_list[] = {"from", "to", "offset", "sd", "prev_exp", NULL};
+  if (!PyArg_ParseTupleAndKeywords(args, kw, "OOO|Of", kw_list, &index_from, &index_to, &offset_obj, &sd_obj, &prev_weight)) return NULL;
+  
+  if (sd_obj==Py_None) sd_obj = NULL;
+
+ // Analyse the two node indices...
+  Py_ssize_t start_from;
+  Py_ssize_t step_from;
+  Py_ssize_t length_from;
+  PyArrayObject * arr_from;
+  if (GBP_index(self, index_from, &start_from, &step_from, &length_from, &arr_from, NULL)!=0)
+  {
+   return NULL;
+  }
+  
+  Py_ssize_t start_to;
+  Py_ssize_t step_to;
+  Py_ssize_t length_to;
+  PyArrayObject * arr_to;
+  if (GBP_index(self, index_to, &start_to, &step_to, &length_to, &arr_to, NULL)!=0)
+  {
+   Py_XDECREF(arr_from);
+   return NULL;
+  }
+  
+  if (length_from!=length_to)
+  {
+   Py_XDECREF(arr_from);
+   Py_XDECREF(arr_to);
+   
+   PyErr_SetString(PyExc_IndexError, "from and to must have the same number of node indices");
+   return NULL;
+  }
+
+ // Now offset and precision...
+  PyArrayObject * offset = NULL;
+  if ((PyInt_Check(offset_obj)==0)&&(PyFloat_Check(offset_obj)==0))
+  {
+   offset = (PyArrayObject*)PyArray_ContiguousFromAny(offset_obj, NPY_DOUBLE, 1, 1);
+   if (offset==NULL)
+   {
+    Py_XDECREF(arr_from);
+    Py_XDECREF(arr_to);
+    return NULL;
+   }
+  }
+   
+  PyArrayObject * sd = NULL;
+  if ((sd_obj!=NULL) && (PyInt_Check(sd_obj)==0) && (PyFloat_Check(sd_obj)==0))
+  {
+   sd = (PyArrayObject*)PyArray_ContiguousFromAny(sd_obj, NPY_DOUBLE, 1, 1);
+   if (sd==NULL)
+   {
+    Py_XDECREF(arr_from);
+    Py_XDECREF(arr_to);
+    Py_XDECREF(offset);
+    return NULL;
+   }
+  }
+  
+ // Loop through and set the required values...
+  int i, from_ii, to_ii, from_iii, to_iii;
+  float os = (offset==NULL) ? PyFloat_AsDouble(offset_obj) : 0.0;
+  float d = ((sd==NULL)&&(sd_obj!=NULL))   ? PyFloat_AsDouble(sd_obj)   : 0.0;
+  
+  for (i=0,from_ii=start_from,to_ii=start_to; i<length_to; i++,from_ii+=step_from,to_ii+=step_to)
+  {
+   // Handle array indexing for both from and to...
+    from_iii = from_ii;
+    if (arr_from!=NULL)
+    {
+     from_iii = *(int*)PyArray_GETPTR1(arr_from, from_ii);
+     if ((from_iii<0)||(from_iii>=self->node_count))
+     {
+      Py_DECREF(arr_from);
+      Py_XDECREF(arr_to);
+      Py_XDECREF(offset);
+      Py_XDECREF(sd);
+      PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+      return NULL;
+     }
+    }
+    
+    to_iii = to_ii;
+    if (arr_to!=NULL)
+    {
+     to_iii = *(int*)PyArray_GETPTR1(arr_to, to_ii);
+     if ((to_iii<0)||(to_iii>=self->node_count))
+     {
+      Py_XDECREF(arr_from);
+      Py_DECREF(arr_to);
+      Py_XDECREF(offset);
+      Py_XDECREF(sd);
+      PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+      return NULL;
+     }
+    }
+    
+   // Fetch the offset and precision values as needed...
+    if (offset!=NULL)
+    {
+     os = *(double*)PyArray_GETPTR1(offset, i % PyArray_DIMS(offset)[0]);
+    }
+    
+    if (sd!=NULL)
+    {
+     d = *(double*)PyArray_GETPTR1(sd, i % PyArray_DIMS(sd)[0]);
+    }
+    
+   // Test the user is not stupid...
+    if (from_iii==to_iii)
+    {
+     Py_XDECREF(arr_from);
+     Py_XDECREF(arr_to);
+     Py_XDECREF(offset);
+     Py_XDECREF(sd);
+     PyErr_SetString(PyExc_IndexError, "Edges connecting a node to itself are not permitted");
+     return NULL;
+    }
+    
+   // Fetch the relevant edge, creating it if need be...
+    HalfEdge * targ = GBP_always_get_edge(self, from_iii, to_iii);
+    
+   // Apply the update...
+    if (sd_obj!=NULL)
+    {
+     // Offset with precision case...
+      HalfEdge_offset_mult(targ, os, 1.0/(d*d), prev_weight);
+    }
+    else
+    {
+     // Precision only case...
+     float * co = &(HalfEdge_edge(targ)->co);
+     *co = (*co) * prev_weight + 1.0/(os*os);
+    }
+  }
+  
+ // Cleanup and return None...
+  Py_XDECREF(arr_from);
+  Py_XDECREF(arr_to);
+  Py_XDECREF(offset);
+  Py_XDECREF(sd);
  
   Py_INCREF(Py_None);
   return Py_None;
@@ -1287,12 +1711,115 @@ static PyObject * GBP_result_raw_py(GBP * self, PyObject * args)
 }
 
 
+static PyObject * GBP_result_sd_py(GBP * self, PyObject * args)
+{
+ // Convert the parameter to something we can dance with...
+  PyObject * index = NULL;
+  PyArrayObject * mean = NULL;
+  PyArrayObject * sd = NULL;
+  if (!PyArg_ParseTuple(args, "|OO!O!", &index, &PyArray_Type, &mean, &PyArray_Type, &sd)) return NULL;
+ 
+  Py_ssize_t start;
+  Py_ssize_t step;
+  Py_ssize_t length;
+  PyArrayObject * arr;
+  int singular;
+  
+  if (GBP_index(self, index, &start, &step, &length, &arr, &singular)!=0) return NULL;
+  
+ // Special case a singular scenario...
+  if ((singular!=0)&&(mean==NULL)&&(sd==NULL))
+  {
+   float p = self->node[start].prec;
+   float div = p;
+   if (fabs(div)<1e-6) div = copysign(1e-6, div);
+    
+   float m = self->node[start].pmean / div;
+   float d = 1.0 / sqrt((p>=0.0)?p:0.0);
+   
+   Py_XDECREF(arr);
+   return Py_BuildValue("(f,f)", m, d); 
+  }
+  
+ // Create the return arrays, or validate the existing ones... 
+  if (mean==NULL)
+  {
+   npy_intp len = length;
+   mean = (PyArrayObject*)PyArray_SimpleNew(1, &len, NPY_FLOAT32);
+  }
+  else
+  {
+   if ((PyArray_NDIM(mean)!=1)||(PyArray_DIMS(mean)[0]!=length)||(PyArray_DESCR(mean)->kind!='f')||(PyArray_DESCR(mean)->elsize!=sizeof(float)))
+   {
+    PyErr_SetString(PyExc_TypeError, "Provided mean array did not satisfy the requirements");
+    Py_XDECREF(arr);
+    return NULL; 
+   }
+    
+   Py_INCREF(mean); 
+  }
+  
+  if (sd==NULL)
+  {
+   npy_intp len = length;
+   sd = (PyArrayObject*)PyArray_SimpleNew(1, &len, NPY_FLOAT32);
+  }
+  else
+  {
+   if ((PyArray_NDIM(sd)!=1)||(PyArray_DIMS(sd)[0]!=length)||(PyArray_DESCR(sd)->kind!='f')||(PyArray_DESCR(sd)->elsize!=sizeof(float)))
+   {
+    PyErr_SetString(PyExc_TypeError, "Provided sd array did not satisfy the requirements");
+    Py_XDECREF(arr);
+    Py_DECREF(mean);
+    return NULL; 
+   }
+    
+   Py_INCREF(sd); 
+  }
+  
+ // Loop and store each value in turn...
+  int i, ii, iii;
+  for (i=0,ii=start; i<length; i++,ii+=step)
+  {
+   // Handle if an array has been passed...
+    iii = ii;
+    if (arr!=NULL)
+    {
+     iii = *(int*)PyArray_GETPTR1(arr, ii);
+     if ((iii<0)||(iii>=self->node_count))
+     {
+      Py_DECREF(arr);
+      Py_DECREF(mean);
+      Py_DECREF(sd);
+      PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+      return NULL;
+     }
+    }
+    
+   // Store the relevant values for this entry...
+    float p = self->node[iii].prec;
+    float div = p;
+    if (fabs(div)<1e-6) div = copysign(1e-6, div);
+    
+    float m = self->node[iii].pmean / div;
+    *(float*)PyArray_GETPTR1(mean, i) = m;
+    
+    float d = 1.0 / sqrt((p>=0.0)?p:0.0);
+    *(float*)PyArray_GETPTR1(sd, i) = d;
+  }
+ 
+ // Clean up and return... 
+  Py_XDECREF(arr);
+  return Py_BuildValue("(N,N)", mean, sd); 
+}
+
+
 
 static PyMemberDef GBP_members[] =
 {
  {"node_count", T_INT, offsetof(GBP, node_count), READONLY, "Number of nodes in the graph"},
  {"edge_count", T_INT, offsetof(GBP, edge_count), READONLY, "Number of edges in the graph"},
- {"block_size", T_INT, offsetof(GBP, block_size), 0, "Number of edges worth of memory to allocate each time it runs out of space for more. Can be editted whenever you want."},
+ {"block_size", T_INT, offsetof(GBP, block_size), 0, "Number of edges worth of memory to allocate each time it runs out of space for more. Can be editted whenever you want, but will only affect future allocations."},
  {NULL}
 };
 
@@ -1303,17 +1830,21 @@ static PyMethodDef GBP_methods[] =
  {"reset_unary", (PyCFunction)GBP_reset_unary_py, METH_VARARGS, "Given array indexing (integer, slice, numpy array or something that can be interpreted as an array) this resets the unary term for all of the given node indices, back to 'no information'."},
  {"reset_pairwise", (PyCFunction)GBP_reset_pairwise_py, METH_VARARGS, "Given two inputs, as indices of nodes between an edge this resets that edge to provide 'no relationship' between the nodes. Can do one edge with two integers or a set of edges with two numpy arrays. Can give one input as an integer and another as a numpy array to do a list of edges that all include the same node. Can omit the second parameter to wipe out all edges for a given node or set of nodes, or both to wipe them all up."},
  
- {"unary", (PyCFunction)GBP_unary_py, METH_VARARGS, "Given three parameters - the node indices, then the means and then the precision values (inverse variance/inverse squared standard deviation). It then updates the nodes by multiplying the unary term already in the node with the given, noting that this is a set for a node that has not yet had unary called on it/been reset. For the node indicies it accepts an integer, a slice, a numpy array or something that can be converted into a numpy array. For the mean and precision it accepts either floats or a numpy array, noting that if an array is too small it will be accessed modulus the number of nodes provided. Note that it accepts negative precision, which allows you to divide through rather than multiply - can be used to remove previously provided information for instance."},
- {"unary_raw", (PyCFunction)GBP_unary_raw_py, METH_VARARGS, "Identical to unary, except you pass in the precision multiplied by the mean instead of just the mean (other arguments remain the same) - this is the actual internal representation, and so saves a multiplication (maybe a division) if you already have that."},
+ {"unary", (PyCFunction)GBP_unary_py, METH_KEYWORDS | METH_VARARGS, "Given three parameters - the node indices, then the means and then the precision values (inverse variance/inverse squared standard deviation). It then updates the nodes by multiplying the unary term already in the node with the given, noting that this is a set for a node that has not yet had unary called on it/been reset. For the node indicies it accepts an integer, a slice, a numpy array or something that can be converted into a numpy array. For the mean and precision it accepts either floats or a numpy array, noting that if an array is too small it will be accessed modulus the number of nodes provided. Note that it accepts negative precision, which allows you to divide through rather than multiply - can be used to remove previously provided information for instance. Also accepts a fourth parameter, an exponent of the previous pdf before multiplication - it defaults to 1, which is multiplying the preexisting distribution with the new distribution provided by this call; a typical alternate value is to set it to 0 to replace the old information entirly. Also support keyword arguments: {index, mean, prec, prev_exp}."},
+ {"unary_raw", (PyCFunction)GBP_unary_raw_py, METH_KEYWORDS | METH_VARARGS, "Identical to unary, except you pass in the precision multiplied by the mean instead of just the mean (other arguments remain the same) - this is the actual internal representation, and so saves a multiplication (maybe a division) if you already have that. The keyword arguments are: {index, pmean, prec, prev_exp}."},
+ {"unary_sd", (PyCFunction)GBP_unary_sd_py, METH_KEYWORDS | METH_VARARGS, "Identical to unary, except you pass in the normal mean and satndard deviation (other arguments remain the same). A conveniance interface. The keyword arguments are: {index, mean, sd, prev_exp}."},
  
- {"pairwise", (PyCFunction)GBP_pairwise_py, METH_VARARGS, "Given three or four parameters - the first is the from node index, the second the too node index. If there are three parameters then the third is the precision between the two unary terms (in this use case you are defining a sparse Gaussian distributon to marginalise), if four parameters then it is the expected offset in the implied direction followed by the precision of that offset (in this use case your solving a linear equation of differences between random variables). Has the same amount of flexability as the unary method, except it insists that the two node index objects have the same length. This supports the negative precision insanity (well, perfectly reasonable in the three parameter case), the multiplication of pre-existing stuff etc."},
+ {"pairwise", (PyCFunction)GBP_pairwise_py, METH_KEYWORDS | METH_VARARGS, "Given three or four parameters - the first is the from node index, the second the too node index. If there are three parameters then the third is the precision between the two unary terms (in this use case you are defining a sparse Gaussian distributon to marginalise), if four parameters then it is the expected offset in the implied direction followed by the precision of that offset (in this use case your solving a linear equation of differences between random variables). Has the same amount of flexability as the unary method, except it insists that the two node index objects have the same length. This supports the negative precision insanity (well, perfectly reasonable in the three parameter case), the multiplication of pre-existing stuff etc. Also accepts a fifth parameter (can set the fourth to None if required), an exponent of the previous pdf before multiplication - it defaults to 1, which is multiplying the preexisting distribution with the new distribution provided by this call; a typical alternate value is to set it to 0 to replace the old information entirly. Also support keyword arguments: {from, to, offset, prec, prev_exp}."},
+ {"pairwise_raw", (PyCFunction)GBP_pairwise_raw_py, METH_KEYWORDS | METH_VARARGS, "Identical to pairwise except you provide the offset multiplied by the mean instead of just the offset - this is the internal representation and so saves a little time. In the three parameter case of providing a precision between variables it makes no difference if you call this or pairwise. The keyword arguments are: {from, to, poffset, prec, prev_exp}."},
+ {"pairwise_sd", (PyCFunction)GBP_pairwise_sd_py, METH_KEYWORDS | METH_VARARGS, "Identical to pairwise except it takes the standard deviation instead of the precision - a conveniance method. In the three parameter case you are again providing the standard deviation, though this is a bit weird and I can't think of an actual use case. The keyword arguments are: {from, to, offset, sd, prev_exp}."},
  
  {"solve_bp", (PyCFunction)GBP_solve_bp_py, METH_VARARGS, "Solves the model using BP. Optionally given three parameters - the iteration cap, the epsilon and the momentum, which default to 1024, 1e-6 and 0.1 respectivly. Returns how many iterations have been performed."},
  {"solve_trws", (PyCFunction)GBP_solve_trws_py, METH_VARARGS, "Solves the model, using TRW-S. Optionally given two parameters - the iteration cap and the epsilon, which default to 1024 and 1e-6 respectivly. Returns how many iterations have been performed."},
  {"solve", (PyCFunction)GBP_solve_bp_py, METH_VARARGS, "Synonym for a default solver, specifically the solve_bp method."},
  
  {"result", (PyCFunction)GBP_result_py, METH_VARARGS, "Given a standard array index (integer, slice, numpy array, equiv. to numpy array) this returns the marginal of the indexed nodes, as a tuple (mean, precision), noting that as precision approaches zero the mean will arbitrarily veer towards zero, to avoid instability (Equivalent to being regularised with a really wide distribution when below an epsilon). The output can be either a tuple of floats or arrays, depending on the request. There are two optional parameters where you can provide the return arrays, to avoid it doing memory allocation - they must be the correct size and floaty, and must be arrays even if you are requesting a single variable."},
- {"result_raw", (PyCFunction)GBP_result_raw_py, METH_VARARGS, "Identical to result(...), except it outputs the p-mean instead of the mean. The p-mean is the precision multiplied by the mean, and is the internal representation used - this allows you to avoid the regularisation that result(...) applies to low precision values (to avoid divide by zeros) and get at the raw data."},
+ {"result_raw", (PyCFunction)GBP_result_raw_py, METH_VARARGS, "Identical to result(...), except it outputs the p-mean instead of the mean. The p-mean is the precision multiplied by the mean, and is the internal representation used - this allows you to avoid the regularisation that result(...) applies to low precision values (to avoid divide by zeros) and get at the raw result."},
+ {"result_sd", (PyCFunction)GBP_result_sd_py, METH_VARARGS, "Identical to result(...), except it outputs standard deviation instead of precision - a conveniance method. Note that it can output a satndard deviation of infinity, indicating a precision of zero."},
  
  {NULL}
 };
