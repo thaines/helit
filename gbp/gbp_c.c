@@ -18,6 +18,11 @@
 
 
 
+// Any precision value larger than this is assumed to be infinity, and sent through an alternate code path...
+static const float infinity_and_beyond = 1e32;
+
+
+
 // Given a node this returns its chain count, calculating it if need be...
 static inline int Node_chain_count(Node * this)
 {
@@ -655,8 +660,16 @@ static PyObject * GBP_unary_py(GBP * self, PyObject * args, PyObject * kw)
     }
    
    // Store the extracted values...
-    self->node[iii].unary_pmean = prev_weight*self->node[iii].unary_pmean + m * p;
-    self->node[iii].unary_prec  = prev_weight*self->node[iii].unary_prec + p;
+    if (p>infinity_and_beyond) // For infinity its a straight replace, using mean rather than pmean.
+    {
+     self->node[iii].unary_pmean = m;
+     self->node[iii].unary_prec = p;
+    }
+    else
+    {
+     self->node[iii].unary_pmean = prev_weight*self->node[iii].unary_pmean + m * p;
+     self->node[iii].unary_prec  = prev_weight*self->node[iii].unary_prec + p;
+    }
   }
 
  // Clean up and return None...
@@ -744,8 +757,16 @@ static PyObject * GBP_unary_raw_py(GBP * self, PyObject * args, PyObject * kw)
     }
    
    // Store the extracted values...
-    self->node[iii].unary_pmean = prev_weight*self->node[iii].unary_pmean + pm;
-    self->node[iii].unary_prec  = prev_weight*self->node[iii].unary_prec + p;
+    if (p>infinity_and_beyond)
+    {
+     self->node[iii].unary_pmean = pm;
+     self->node[iii].unary_prec = p;
+    }
+    else
+    {
+     self->node[iii].unary_pmean = prev_weight*self->node[iii].unary_pmean + pm;
+     self->node[iii].unary_prec  = prev_weight*self->node[iii].unary_prec + p;
+    }
   }
 
  // Clean up and return None...
@@ -834,8 +855,17 @@ static PyObject * GBP_unary_sd_py(GBP * self, PyObject * args, PyObject * kw)
    
    // Store the extracted values...
     float var = d*d;
-    self->node[iii].unary_pmean = prev_weight*self->node[iii].unary_pmean + m/var;
-    self->node[iii].unary_prec  = prev_weight*self->node[iii].unary_prec + 1.0/var;
+    float prec = 1.0/var;
+    if (prec>infinity_and_beyond)
+    {
+     self->node[iii].unary_pmean = m;
+     self->node[iii].unary_prec = prec;
+    }
+    else
+    {
+     self->node[iii].unary_pmean = prev_weight*self->node[iii].unary_pmean + m/var;
+     self->node[iii].unary_prec  = prev_weight*self->node[iii].unary_prec + prec;
+    }
   }
 
  // Clean up and return None...
@@ -1341,52 +1371,74 @@ static PyObject * GBP_solve_bp_py(GBP * self, PyObject * args)
    // Loop and parse each node inturn...
     for (i=((dir>0)?(0):(self->node_count-1)); (i>=0)&&(i<self->node_count); i+=dir)
     {
-     // Sumarise the incomming messages for the node, as the total sum thus far...
-      Node * targ = self->node + i;
-      targ->pmean = targ->unary_pmean;
-      targ->prec = targ->unary_prec;
+     Node * targ = self->node + i;
+     if (targ->unary_prec>infinity_and_beyond)
+     {
+      // Only process infinite nodes once - no information flows through them so this works...
+       if (iters==0)
+       {
+        // Pass the messages, which are constant...
+         HalfEdge * msg = targ->first;
+         while (msg!=NULL)
+         {
+          float oset_pmean = HalfEdge_offset_pmean(msg);
+          float oset_prec = HalfEdge_edge(msg)->diag;
+         
+          msg->prec = oset_prec;
+          msg->pmean = oset_pmean + targ->unary_pmean * oset_prec;
+          
+          msg = msg->next;
+         }
+       }
+     }
+     else
+     {
+      // Sumarise the incomming messages for the node, as the total sum thus far...
+       targ->pmean = targ->unary_pmean;
+       targ->prec = targ->unary_prec;
       
-      HalfEdge * msg = targ->first;
-      while (msg!=NULL)
-      {
-       targ->pmean += msg->reverse->pmean;
-       targ->prec  += msg->reverse->prec;
+       HalfEdge * msg = targ->first;
+       while (msg!=NULL)
+       {
+        targ->pmean += msg->reverse->pmean;
+        targ->prec  += msg->reverse->prec;
     
-       msg = msg->next; 
-      }
+        msg = msg->next; 
+       }
       
-     // Go through and calculate the output of each message by subtracting from the summary this one message and then calculating the message to send...
-      msg = targ->first;
-      while (msg!=NULL)
-      {
-       float oset_pmean = HalfEdge_offset_pmean(msg);
-       float oset_prec = HalfEdge_edge(msg)->diag;
-       float gauss_prec = HalfEdge_edge(msg)->co;
+      // Go through and calculate the output of each message by subtracting from the summary this one message and then calculating the message to send...
+       msg = targ->first;
+       while (msg!=NULL)
+       {
+        float oset_pmean = HalfEdge_offset_pmean(msg);
+        float oset_prec = HalfEdge_edge(msg)->diag;
+        float gauss_prec = HalfEdge_edge(msg)->co;
        
-       float msg_prec = targ->prec - msg->reverse->prec;
-       float msg_pmean = targ->pmean - msg->reverse->pmean;
+        float msg_prec = targ->prec - msg->reverse->prec;
+        float msg_pmean = targ->pmean - msg->reverse->pmean;
        
-       float div = oset_prec + msg_prec;
-       if (fabs(div)<1e-6) div = copysign(1e-6, div);
-       float diag = gauss_prec - oset_prec;
+        float div = oset_prec + msg_prec;
+        if (fabs(div)<1e-6) div = copysign(1e-6, div);
+        float diag = gauss_prec - oset_prec;
        
-       float new_prec  = oset_prec - diag * diag / div;
-       float new_pmean = oset_pmean - (msg_pmean - oset_pmean) * diag / div;
+        float new_prec  = oset_prec - diag * diag / div;
+        float new_pmean = oset_pmean - (msg_pmean - oset_pmean) * diag / div;
        
-       new_prec = momentum*msg->prec + rev_momentum*new_prec;
-       new_pmean = momentum*msg->pmean + rev_momentum*new_pmean;
+        new_prec = momentum*msg->prec + rev_momentum*new_prec;
+        new_pmean = momentum*msg->pmean + rev_momentum*new_pmean;
        
-       float dp = fabs(new_prec - msg->prec);
-       if (dp>delta) delta = dp;
+        float dp = fabs(new_prec - msg->prec);
+        if (dp>delta) delta = dp;
        
-       float dm = fabs(new_pmean - msg->pmean);
-       if (dm>delta) delta = dm;
+        float dm = fabs(new_pmean - msg->pmean);
+        if (dm>delta) delta = dm;
        
-       msg->prec = new_prec;
-       msg->pmean = new_pmean;
+        msg->prec = new_prec;
+        msg->pmean = new_pmean;
     
-       msg = msg->next; 
-      }
+        msg = msg->next;
+       }
+     }
     }
     
    // Check epsilon, update iteration count, break if done and swap the direction...
@@ -1402,14 +1454,17 @@ static PyObject * GBP_solve_bp_py(GBP * self, PyObject * args)
    Node * targ = self->node + i;
    targ->pmean = targ->unary_pmean; 
    targ->prec = targ->unary_prec;
-      
-   HalfEdge * msg = targ->first;
-   while (msg!=NULL)
+   
+   if (targ->prec<=infinity_and_beyond)
    {
-    targ->pmean += msg->reverse->pmean;
-    targ->prec  += msg->reverse->prec;
+    HalfEdge * msg = targ->first;
+    while (msg!=NULL)
+    {
+     targ->pmean += msg->reverse->pmean;
+     targ->prec  += msg->reverse->prec;
     
-    msg = msg->next; 
+     msg = msg->next; 
+    }
    }
   }
   
@@ -1437,54 +1492,76 @@ static PyObject * GBP_solve_trws_py(GBP * self, PyObject * args)
    // Loop and parse each node inturn...
     for (i=((dir>0)?(0):(self->node_count-1)); (i>=0)&&(i<self->node_count); i+=dir)
     {
-     // Summarise the incomming messages for the node, as the total sum thus far...
-      Node * targ = self->node + i;
-      targ->pmean = targ->unary_pmean;
-      targ->prec = targ->unary_prec;
-      
-      HalfEdge * msg = targ->first;
-      while (msg!=NULL)
-      {
-       targ->pmean += msg->reverse->pmean;
-       targ->prec  += msg->reverse->prec;
-    
-       msg = msg->next; 
-      }
-      
-     // Go through and calculate the output of each message by subtracting from the summary this one message and then calculating the message to send...
-      msg = targ->first;
-      while (msg!=NULL)
-      {
-       // Only do the edge if its going in the correct direction for this pass (dir is 1 for positive direction, -1 for negative direction, values of pointers to nodes define the ordering)...
-        if (((msg->dest - targ) * dir)>0)
-        {
-         float oset_pmean = HalfEdge_offset_pmean(msg);
-         float oset_prec = HalfEdge_edge(msg)->diag;
-         float gauss_prec = HalfEdge_edge(msg)->co;
+     Node * targ = self->node + i;
+     if (targ->unary_prec>infinity_and_beyond)
+     {
+      // Only process infinite nodes once - no information flows through them so this works...
+       if (iters==0)
+       {
+        // Pass the messages, which are constant...
+         HalfEdge * msg = targ->first;
+         while (msg!=NULL)
+         {
+          float oset_pmean = HalfEdge_offset_pmean(msg);
+          float oset_prec = HalfEdge_edge(msg)->diag;
          
-         int chain_count = Node_chain_count(targ);
-         float msg_prec = (targ->prec / chain_count) - msg->reverse->prec;
-         float msg_pmean = (targ->pmean / chain_count) - msg->reverse->pmean;
+          msg->prec = oset_prec;
+          msg->pmean = oset_pmean + targ->unary_pmean * oset_prec;
+          
+          msg = msg->next;
+         }
+       }
+     }
+     else
+     {
+      // Summarise the incomming messages for the node, as the total sum thus far... 
+       targ->pmean = targ->unary_pmean;
+       targ->prec = targ->unary_prec;
+      
+       HalfEdge * msg = targ->first;
+       while (msg!=NULL)
+       {
+        targ->pmean += msg->reverse->pmean;
+        targ->prec  += msg->reverse->prec;
+    
+        msg = msg->next; 
+       }
+      
+      // Go through and calculate the output of each message by subtracting from the summary this one message and then calculating the message to send...
+       msg = targ->first;
+       while (msg!=NULL)
+       {
+        // Only do the edge if its going in the correct direction for this pass (dir is 1 for positive direction, -1 for negative direction, values of pointers to nodes define the ordering)...
+         if (((msg->dest - targ) * dir)>0)
+         {
+          float oset_pmean = HalfEdge_offset_pmean(msg);
+          float oset_prec = HalfEdge_edge(msg)->diag;
+          float gauss_prec = HalfEdge_edge(msg)->co;
+         
+          int chain_count = Node_chain_count(targ);
+          float msg_prec = (targ->prec / chain_count) - msg->reverse->prec;
+          float msg_pmean = (targ->pmean / chain_count) - msg->reverse->pmean;
        
-         float div = oset_prec + msg_prec;
-         if (fabs(div)<1e-6) div = copysign(1e-6, div);
-         float diag = gauss_prec - oset_prec;
+          float div = oset_prec + msg_prec;
+          if (fabs(div)<1e-6) div = copysign(1e-6, div);
+          float diag = gauss_prec - oset_prec;
        
-         float new_prec  = oset_prec - diag * diag / div;
-         float new_pmean = oset_pmean - (msg_pmean - oset_pmean) * diag / div;
+          float new_prec  = oset_prec - diag * diag / div;
+          float new_pmean = oset_pmean - (msg_pmean - oset_pmean) * diag / div;
        
-         float dp = fabs(new_prec - msg->prec);
-         if (dp>delta) delta = dp;
+          float dp = fabs(new_prec - msg->prec);
+          if (dp>delta) delta = dp;
        
-         float dm = fabs(new_pmean - msg->pmean);
-         if (dm>delta) delta = dm;
+          float dm = fabs(new_pmean - msg->pmean);
+          if (dm>delta) delta = dm;
        
-         msg->prec = new_prec;
-         msg->pmean = new_pmean;
-        }
+          msg->prec = new_prec;
+          msg->pmean = new_pmean;
+         }
         
-       msg = msg->next;
-      }
+        msg = msg->next;
+       }
+     }
     }
     
    // Check epsilon, update iteration count, break if done and swap the direction...
@@ -1537,7 +1614,15 @@ static PyObject * GBP_result_py(GBP * self, PyObject * args)
   if ((singular!=0)&&(mean==NULL)&&(prec==NULL))
   {
    float p = self->node[start].prec;
-   float m = self->node[start].pmean / ((p>1e-6)?(p):(1e-6));
+   float m = self->node[start].pmean;
+   
+   if (p<=infinity_and_beyond)
+   {
+    float div = p;
+    if (fabs(div)<1e-6) div = copysign(1e-6, div);
+    
+    m /= div;
+   }
    
    Py_XDECREF(arr);
    return Py_BuildValue("(f,f)", m, p); 
@@ -1600,12 +1685,17 @@ static PyObject * GBP_result_py(GBP * self, PyObject * args)
     
    // Store the relevant values for this entry...
     float p = self->node[iii].prec;
+    float m = self->node[iii].pmean;
+    
+    if (p<=infinity_and_beyond)
+    {
+     float div = p;
+     if (fabs(div)<1e-6) div = copysign(1e-6, div);
+    
+     m /= div;
+    }
+    
     *(float*)PyArray_GETPTR1(prec, i) = p;
-    
-    float div = p;
-    if (fabs(div)<1e-6) div = copysign(1e-6, div);
-    
-    float m = self->node[iii].pmean / div;
     *(float*)PyArray_GETPTR1(mean, i) = m;
   }
  
@@ -1731,10 +1821,14 @@ static PyObject * GBP_result_sd_py(GBP * self, PyObject * args)
   if ((singular!=0)&&(mean==NULL)&&(sd==NULL))
   {
    float p = self->node[start].prec;
-   float div = p;
-   if (fabs(div)<1e-6) div = copysign(1e-6, div);
-    
-   float m = self->node[start].pmean / div;
+   float m = self->node[start].pmean;
+   
+   if (p<=infinity_and_beyond)
+   {
+    float div = p;
+    if (fabs(div)<1e-6) div = copysign(1e-6, div);
+    m /= div;
+   }
    float d = 1.0 / sqrt((p>=0.0)?p:0.0);
    
    Py_XDECREF(arr);
@@ -1798,14 +1892,18 @@ static PyObject * GBP_result_sd_py(GBP * self, PyObject * args)
     
    // Store the relevant values for this entry...
     float p = self->node[iii].prec;
-    float div = p;
-    if (fabs(div)<1e-6) div = copysign(1e-6, div);
+    float m = self->node[iii].pmean;
     
-    float m = self->node[iii].pmean / div;
-    *(float*)PyArray_GETPTR1(mean, i) = m;
-    
+    if (p<=infinity_and_beyond)
+    {
+     float div = p;
+     if (fabs(div)<1e-6) div = copysign(1e-6, div);
+     m /= div;
+    }
     float d = 1.0 / sqrt((p>=0.0)?p:0.0);
-    *(float*)PyArray_GETPTR1(sd, i) = d;
+    
+    *(float*)PyArray_GETPTR1(mean, i) = m;
+    *(float*)PyArray_GETPTR1(sd, i)   = d;
   }
  
  // Clean up and return... 
@@ -1830,9 +1928,9 @@ static PyMethodDef GBP_methods[] =
  {"reset_unary", (PyCFunction)GBP_reset_unary_py, METH_VARARGS, "Given array indexing (integer, slice, numpy array or something that can be interpreted as an array) this resets the unary term for all of the given node indices, back to 'no information'."},
  {"reset_pairwise", (PyCFunction)GBP_reset_pairwise_py, METH_VARARGS, "Given two inputs, as indices of nodes between an edge this resets that edge to provide 'no relationship' between the nodes. Can do one edge with two integers or a set of edges with two numpy arrays. Can give one input as an integer and another as a numpy array to do a list of edges that all include the same node. Can omit the second parameter to wipe out all edges for a given node or set of nodes, or both to wipe them all up."},
  
- {"unary", (PyCFunction)GBP_unary_py, METH_KEYWORDS | METH_VARARGS, "Given three parameters - the node indices, then the means and then the precision values (inverse variance/inverse squared standard deviation). It then updates the nodes by multiplying the unary term already in the node with the given, noting that this is a set for a node that has not yet had unary called on it/been reset. For the node indicies it accepts an integer, a slice, a numpy array or something that can be converted into a numpy array. For the mean and precision it accepts either floats or a numpy array, noting that if an array is too small it will be accessed modulus the number of nodes provided. Note that it accepts negative precision, which allows you to divide through rather than multiply - can be used to remove previously provided information for instance. Also accepts a fourth parameter, an exponent of the previous pdf before multiplication - it defaults to 1, which is multiplying the preexisting distribution with the new distribution provided by this call; a typical alternate value is to set it to 0 to replace the old information entirly. Also support keyword arguments: {index, mean, prec, prev_exp}."},
- {"unary_raw", (PyCFunction)GBP_unary_raw_py, METH_KEYWORDS | METH_VARARGS, "Identical to unary, except you pass in the precision multiplied by the mean instead of just the mean (other arguments remain the same) - this is the actual internal representation, and so saves a multiplication (maybe a division) if you already have that. The keyword arguments are: {index, pmean, prec, prev_exp}."},
- {"unary_sd", (PyCFunction)GBP_unary_sd_py, METH_KEYWORDS | METH_VARARGS, "Identical to unary, except you pass in the normal mean and satndard deviation (other arguments remain the same). A conveniance interface. The keyword arguments are: {index, mean, sd, prev_exp}."},
+ {"unary", (PyCFunction)GBP_unary_py, METH_KEYWORDS | METH_VARARGS, "Given three parameters - the node indices, then the means and then the precision values (inverse variance/inverse squared standard deviation). It then updates the nodes by multiplying the unary term already in the node with the given, noting that this is a set for a node that has not yet had unary called on it/been reset. For the node indicies it accepts an integer, a slice, a numpy array or something that can be converted into a numpy array. For the mean and precision it accepts either floats or a numpy array, noting that if an array is too small it will be accessed modulus the number of nodes provided. Note that it accepts negative precision, which allows you to divide through rather than multiply - can be used to remove previously provided information for instance. Also accepts a fourth parameter, an exponent of the previous pdf before multiplication - it defaults to 1, which is multiplying the preexisting distribution with the new distribution provided by this call; a typical alternate value is to set it to 0 to replace the old information entirly. Also support keyword arguments: {index, mean, prec, prev_exp}. Supports infinity as the precision value, for when you want a delta distribution."},
+ {"unary_raw", (PyCFunction)GBP_unary_raw_py, METH_KEYWORDS | METH_VARARGS, "Identical to unary, except you pass in the precision multiplied by the mean instead of just the mean (other arguments remain the same) - this is the actual internal representation, and so saves a multiplication (maybe a division) if you already have that. The keyword arguments are: {index, pmean, prec, prev_exp}. Support for infinite precision is a bit weird - you can pass it in, but if precision is infinite then you provide the mean, not the p-mean."},
+ {"unary_sd", (PyCFunction)GBP_unary_sd_py, METH_KEYWORDS | METH_VARARGS, "Identical to unary, except you pass in the normal mean and standard deviation (other arguments remain the same). A conveniance interface. The keyword arguments are: {index, mean, sd, prev_exp}. A sd of zero means infinite precision, which will be handled correctly."},
  
  {"pairwise", (PyCFunction)GBP_pairwise_py, METH_KEYWORDS | METH_VARARGS, "Given three or four parameters - the first is the from node index, the second the too node index. If there are three parameters then the third is the precision between the two unary terms (in this use case you are defining a sparse Gaussian distributon to marginalise), if four parameters then it is the expected offset in the implied direction followed by the precision of that offset (in this use case your solving a linear equation of differences between random variables). Has the same amount of flexability as the unary method, except it insists that the two node index objects have the same length. This supports the negative precision insanity (well, perfectly reasonable in the three parameter case), the multiplication of pre-existing stuff etc. Also accepts a fifth parameter (can set the fourth to None if required), an exponent of the previous pdf before multiplication - it defaults to 1, which is multiplying the preexisting distribution with the new distribution provided by this call; a typical alternate value is to set it to 0 to replace the old information entirly. Also support keyword arguments: {from, to, offset, prec, prev_exp}."},
  {"pairwise_raw", (PyCFunction)GBP_pairwise_raw_py, METH_KEYWORDS | METH_VARARGS, "Identical to pairwise except you provide the offset multiplied by the mean instead of just the offset - this is the internal representation and so saves a little time. In the three parameter case of providing a precision between variables it makes no difference if you call this or pairwise. The keyword arguments are: {from, to, poffset, prec, prev_exp}."},
@@ -1843,7 +1941,7 @@ static PyMethodDef GBP_methods[] =
  {"solve", (PyCFunction)GBP_solve_bp_py, METH_VARARGS, "Synonym for a default solver, specifically the solve_bp method."},
  
  {"result", (PyCFunction)GBP_result_py, METH_VARARGS, "Given a standard array index (integer, slice, numpy array, equiv. to numpy array) this returns the marginal of the indexed nodes, as a tuple (mean, precision), noting that as precision approaches zero the mean will arbitrarily veer towards zero, to avoid instability (Equivalent to being regularised with a really wide distribution when below an epsilon). The output can be either a tuple of floats or arrays, depending on the request. There are two optional parameters where you can provide the return arrays, to avoid it doing memory allocation - they must be the correct size and floaty, and must be arrays even if you are requesting a single variable."},
- {"result_raw", (PyCFunction)GBP_result_raw_py, METH_VARARGS, "Identical to result(...), except it outputs the p-mean instead of the mean. The p-mean is the precision multiplied by the mean, and is the internal representation used - this allows you to avoid the regularisation that result(...) applies to low precision values (to avoid divide by zeros) and get at the raw result."},
+ {"result_raw", (PyCFunction)GBP_result_raw_py, METH_VARARGS, "Identical to result(...), except it outputs the p-mean instead of the mean. The p-mean is the precision multiplied by the mean, and is the internal representation used - this allows you to avoid the regularisation that result(...) applies to low precision values (to avoid divide by zeros) and get at the raw result. Note that if the precision is sufficiently high (greater than 1e32) to be considered as infinity then the pmean is replaced by the mean - its an internal hack to support infinite precision values."},
  {"result_sd", (PyCFunction)GBP_result_sd_py, METH_VARARGS, "Identical to result(...), except it outputs standard deviation instead of precision - a conveniance method. Note that it can output a satndard deviation of infinity, indicating a precision of zero."},
  
  {NULL}
