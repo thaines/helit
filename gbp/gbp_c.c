@@ -365,6 +365,50 @@ static PyObject * GBP_reset_unary_py(GBP * self, PyObject * args)
 
 
 
+static PyObject * GBP_add_py(GBP * self, PyObject * args)
+{
+ // Fetch the parameter...
+  int count = 1;
+  if (!PyArg_ParseTuple(args, "|i", &count)) return NULL;
+  
+ // Realloc the storage, and initialise the new nodes...
+  int index_first = self->node_count;
+  void * old_ptr = self->node;
+  
+  self->node_count += count;
+  void * new_ptr = realloc(old_ptr, self->node_count * sizeof(Node));
+  self->node = (Node*)new_ptr;
+  
+  int i;
+  for (i=index_first; i<self->node_count; i++)
+  {
+   self->node[i].first = NULL;
+   self->node[i].unary_pmean = 0.0;
+   self->node[i].unary_prec = 0.0;
+   self->node[i].pmean = 0.0;
+   self->node[i].prec = 0.0;
+   self->node[i].chain_count = -1;
+   self->node[i].on = 1;
+  }
+  
+ // Loop through and correct all the pointers to nodes in the edges...
+  size_t offset = new_ptr - old_ptr;
+  for (i=0; i<index_first; i++)
+  {
+   HalfEdge * msg = self->node[i].first;
+   while (msg!=NULL)
+   {
+    msg->dest = (Node*)((void*)msg->dest + offset);
+    msg = msg->next; 
+   }
+  }
+ 
+ // Return the index of the first...
+  return Py_BuildValue("i", index_first);
+}
+
+
+
 static PyObject * GBP_enable_py(GBP * self, PyObject * args)
 {
  // Fetch the parameter...
@@ -2034,6 +2078,8 @@ static PyMethodDef GBP_methods[] =
 {
  {"reset_unary", (PyCFunction)GBP_reset_unary_py, METH_VARARGS, "Given array-like indexing (integer, slice, numpy array or something that can be interpreted as an array) this resets the unary term for all of the given node indices, back to 'no information'."},
  {"reset_pairwise", (PyCFunction)GBP_reset_pairwise_py, METH_VARARGS, "Given two inputs, as indices of nodes between an edge this resets that edge to provide 'no relationship' between the nodes. Can do one edge with two integers or a set of edges with two numpy arrays. Can give one input as an integer and another as a numpy array to do a list of edges that all include the same node. Can omit the second parameter to wipe out all edges for a given node or set of nodes, or both to wipe them all up."},
+ 
+ {"add", (PyCFunction)GBP_add_py, METH_VARARGS, "Adds new random variables to the graph - you optionally provide the number to add, which defaults to 1. It returns the index of the first random variable, with them being contiguous so you can infer the rest. Note that this is slow, as it involves a realloc and a lot of pointer twiddlng - best avoided, and best done with large blocks at once - repeated calls with the default parameter would be stupid."},
  
  {"enable", (PyCFunction)GBP_enable_py, METH_VARARGS, "Given array-like indexing (integer, slice, numpy array or something that can be interpreted as an array) this enables the given nodes, reverting their status from being disabled if that has been done. (Nodes are enabled by default)"},
  {"disable", (PyCFunction)GBP_disable_py, METH_VARARGS, "Given array-like indexing (integer, slice, numpy array or something that can be interpreted as an array) this disables the given nodes. A disabled node effectivly does not exist for the purpose of inference, but can be easily reenabled as required. Note that disabling a node only removes its influence - it remains in the system and does generate some inefficiency (messages are still sent to it, just not sent from it) compared to not having the node at all."},
