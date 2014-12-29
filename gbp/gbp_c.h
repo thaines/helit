@@ -32,6 +32,7 @@ struct Node
  float prec; // Estimated precision for this random variable.
  
  int chain_count; // Number of chains that include this node, or -1 if not calculated.
+ int on; // Non-zero if its to be processed, otherwise as though it doesn't exist.
 };
 
 

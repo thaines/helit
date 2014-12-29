@@ -210,6 +210,7 @@ void GBP_new(GBP * this, int node_count, int block_size)
   this->node[i].pmean = 0.0;
   this->node[i].prec = 0.0;
   this->node[i].chain_count = -1;
+  this->node[i].on = 1;
  }
  
  this->edge_count = 0;
@@ -353,6 +354,103 @@ static PyObject * GBP_reset_unary_py(GBP * self, PyObject * args)
    // Store some zeroes...
     self->node[iii].unary_pmean = 0.0;
     self->node[iii].unary_prec  = 0.0;
+  }
+  
+ // Clean up and return None...
+  Py_XDECREF(arr);
+  
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+
+static PyObject * GBP_enable_py(GBP * self, PyObject * args)
+{
+ // Fetch the parameter...
+  PyObject * index = NULL;
+  if (!PyArg_ParseTuple(args, "|O", &index)) return NULL;
+  
+ // Convert the input into something we can dance with...
+  Py_ssize_t start;
+  Py_ssize_t step;
+  Py_ssize_t length;
+  PyArrayObject * arr;
+  
+  if (GBP_index(self, index, &start, &step, &length, &arr, NULL)!=0) return NULL; 
+  
+ // Do the loop...
+  int i, ii, iii; // I need better names for these!..
+  for (i=0, ii=start; i<length; i++, ii+=step)
+  {
+   // Handle the array scenario...
+    iii = ii;
+    if (arr!=NULL)
+    {
+     iii = *(int*)PyArray_GETPTR1(arr, ii);
+     if ((iii<0)||(iii>=self->node_count))
+     {
+      Py_DECREF(arr);
+      PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+      return NULL;
+     }
+    }
+   
+   // Switch node on...
+    self->node[iii].on = 1;
+  }
+  
+ // Clean up and return None...
+  Py_XDECREF(arr);
+  
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+
+static PyObject * GBP_disable_py(GBP * self, PyObject * args)
+{
+ // Fetch the parameter...
+  PyObject * index = NULL;
+  if (!PyArg_ParseTuple(args, "|O", &index)) return NULL;
+  
+ // Convert the input into something we can dance with...
+  Py_ssize_t start;
+  Py_ssize_t step;
+  Py_ssize_t length;
+  PyArrayObject * arr;
+  
+  if (GBP_index(self, index, &start, &step, &length, &arr, NULL)!=0) return NULL; 
+  
+ // Do the loop...
+  int i, ii, iii; // I need better names for these!..
+  for (i=0, ii=start; i<length; i++, ii+=step)
+  {
+   // Handle the array scenario...
+    iii = ii;
+    if (arr!=NULL)
+    {
+     iii = *(int*)PyArray_GETPTR1(arr, ii);
+     if ((iii<0)||(iii>=self->node_count))
+     {
+      Py_DECREF(arr);
+      PyErr_SetString(PyExc_IndexError, "Index out of bounds.");
+      return NULL;
+     }
+    }
+   
+   // Switch node off...
+    self->node[iii].on = 0;
+    
+   // Zero out all messages exiting it, so it has no future influence...
+    HalfEdge * msg = self->node[iii].first;
+    while (msg!=NULL)
+    {
+     msg->pmean = 0.0;
+     msg->prec = 0.0;
+    
+     msg = msg->next; 
+    }
   }
   
  // Clean up and return None...
@@ -1372,6 +1470,8 @@ static PyObject * GBP_solve_bp_py(GBP * self, PyObject * args)
     for (i=((dir>0)?(0):(self->node_count-1)); (i>=0)&&(i<self->node_count); i+=dir)
     {
      Node * targ = self->node + i;
+     if (targ->on==0) continue; // Skip nodes that have been switched off.
+     
      if (targ->unary_prec>infinity_and_beyond)
      {
       // Only process infinite nodes once - no information flows through them so this works...
@@ -1484,15 +1584,16 @@ static PyObject * GBP_solve_trws_py(GBP * self, PyObject * args)
   int dir = 1;
   int iters = 0;
   int i;
+  float delta = 0.0;
   
   while (1)
   {
-   float delta = 0.0;
-   
    // Loop and parse each node inturn...
     for (i=((dir>0)?(0):(self->node_count-1)); (i>=0)&&(i<self->node_count); i+=dir)
     {
      Node * targ = self->node + i;
+     if (targ->on==0) continue; // Skip nodes that have been switched off.
+
      if (targ->unary_prec>infinity_and_beyond)
      {
       // Only process infinite nodes once - no information flows through them so this works...
@@ -1566,8 +1667,14 @@ static PyObject * GBP_solve_trws_py(GBP * self, PyObject * args)
     
    // Check epsilon, update iteration count, break if done and swap the direction...
     ++iters;
-    if (delta<epsilon) break;
     if (iters>=max_iters) break;
+    
+    if ((iters%2)==0)
+    {
+     if (delta<epsilon) break;
+     delta = 0.0;
+    }
+    
     dir *= -1;
   }
   
@@ -1925,8 +2032,11 @@ static PyMemberDef GBP_members[] =
 
 static PyMethodDef GBP_methods[] =
 {
- {"reset_unary", (PyCFunction)GBP_reset_unary_py, METH_VARARGS, "Given array indexing (integer, slice, numpy array or something that can be interpreted as an array) this resets the unary term for all of the given node indices, back to 'no information'."},
+ {"reset_unary", (PyCFunction)GBP_reset_unary_py, METH_VARARGS, "Given array-like indexing (integer, slice, numpy array or something that can be interpreted as an array) this resets the unary term for all of the given node indices, back to 'no information'."},
  {"reset_pairwise", (PyCFunction)GBP_reset_pairwise_py, METH_VARARGS, "Given two inputs, as indices of nodes between an edge this resets that edge to provide 'no relationship' between the nodes. Can do one edge with two integers or a set of edges with two numpy arrays. Can give one input as an integer and another as a numpy array to do a list of edges that all include the same node. Can omit the second parameter to wipe out all edges for a given node or set of nodes, or both to wipe them all up."},
+ 
+ {"enable", (PyCFunction)GBP_enable_py, METH_VARARGS, "Given array-like indexing (integer, slice, numpy array or something that can be interpreted as an array) this enables the given nodes, reverting their status from being disabled if that has been done. (Nodes are enabled by default)"},
+ {"disable", (PyCFunction)GBP_disable_py, METH_VARARGS, "Given array-like indexing (integer, slice, numpy array or something that can be interpreted as an array) this disables the given nodes. A disabled node effectivly does not exist for the purpose of inference, but can be easily reenabled as required. Note that disabling a node only removes its influence - it remains in the system and does generate some inefficiency (messages are still sent to it, just not sent from it) compared to not having the node at all."},
  
  {"unary", (PyCFunction)GBP_unary_py, METH_KEYWORDS | METH_VARARGS, "Given three parameters - the node indices, then the means and then the precision values (inverse variance/inverse squared standard deviation). It then updates the nodes by multiplying the unary term already in the node with the given, noting that this is a set for a node that has not yet had unary called on it/been reset. For the node indicies it accepts an integer, a slice, a numpy array or something that can be converted into a numpy array. For the mean and precision it accepts either floats or a numpy array, noting that if an array is too small it will be accessed modulus the number of nodes provided. Note that it accepts negative precision, which allows you to divide through rather than multiply - can be used to remove previously provided information for instance. Also accepts a fourth parameter, an exponent of the previous pdf before multiplication - it defaults to 1, which is multiplying the preexisting distribution with the new distribution provided by this call; a typical alternate value is to set it to 0 to replace the old information entirly. Also support keyword arguments: {index, mean, prec, prev_exp}. Supports infinity as the precision value, for when you want a delta distribution."},
  {"unary_raw", (PyCFunction)GBP_unary_raw_py, METH_KEYWORDS | METH_VARARGS, "Identical to unary, except you pass in the precision multiplied by the mean instead of just the mean (other arguments remain the same) - this is the actual internal representation, and so saves a multiplication (maybe a division) if you already have that. The keyword arguments are: {index, pmean, prec, prev_exp}. Support for infinite precision is a bit weird - you can pass it in, but if precision is infinite then you provide the mean, not the p-mean."},

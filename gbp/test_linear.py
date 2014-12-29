@@ -34,11 +34,14 @@ for _ in xrange(1024):
 
 
 
-# Solve using a GBP object...
+# Solve using a GBP object, both approaches...
 gbp = solve_sym(a, b)
-#iters = gbp.solve()
-iters = gbp.solve_trws()
-x_calc, x_prec = gbp.result()
+bp_iters = gbp.solve()
+bp_x_calc, bp_x_prec = gbp.result()
+
+gbp = solve_sym(a, b)
+trws_iters = gbp.solve_trws()
+trws_x_calc, trws_x_prec = gbp.result()
 
 
 
@@ -60,10 +63,13 @@ print
 print 'diagonally dominant =', diag_dom
 print 'spectral radius =', spec_rad, '(too large)' if spec_rad>=1.0 else ''
 print 'det =', numpy.linalg.det(a)
-print 'iters =', iters
+print 'bp iters =', bp_iters
+print 'trws iters =', trws_iters
 print
 print 'true x =', x
 print 'lina x =', numpy.linalg.solve(a,b)
-print 'Jacobi =', jacobi_x
-print 'calc x =', x_calc
-print '    prec =', x_prec
+print 'Jacobi x =', jacobi_x
+print 'bp calc x =', bp_x_calc
+#print '  bp prec =', bp_x_prec
+print 'trws calc x =', trws_x_calc
+#print '  trws prec =', trws_x_prec
