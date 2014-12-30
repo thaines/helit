@@ -48,6 +48,7 @@ print
 
 # Change the configuration...
 print 'Tail gone...'
+solver = solver.clone() # Sneak in a test of clone.
 solver.enable(2)
 solver.disable(4)
 

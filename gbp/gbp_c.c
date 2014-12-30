@@ -259,6 +259,96 @@ static void GBP_dealloc_py(GBP * self)
 
 
 
+static PyTypeObject GBPType; // Preallocation for below...
+
+static PyObject * GBP_clone_py(GBP * self, PyObject * args)
+{
+ // Allocate the new object...
+  GBP * other = (GBP*)GBPType.tp_alloc(&GBPType, 0);
+  if (other==NULL) return NULL;
+  
+ // Copy over all the basic details, though take care to allocate the right number of edges...
+  other->node_count = self->node_count;
+  other->node = (Node*)malloc(other->node_count * sizeof(Node));
+ 
+  int i;
+  for (i=0; i<other->node_count; i++)
+  {
+   other->node[i].first = NULL;
+   other->node[i].unary_pmean = self->node[i].unary_pmean;
+   other->node[i].unary_prec = self->node[i].unary_prec;
+   other->node[i].pmean = self->node[i].pmean;
+   other->node[i].prec = self->node[i].prec;
+   other->node[i].chain_count = self->node[i].chain_count;
+   other->node[i].on = self->node[i].on;
+  }
+ 
+  other->edge_count = 0;
+
+  other->storage = (Block*)malloc(sizeof(Block) + sizeof(Edge) * self->edge_count);
+  other->storage->next = NULL;
+
+  other->gc = NULL;
+  for (i=self->edge_count-1; i>=0; i--)
+  {
+   other->storage->data[i].next = other->gc;
+   other->gc = other->storage->data + i;
+  }
+  
+  other->block_size = self->block_size;
+   
+ // From here on in the object is coherant!
+  
+ // Now do the edges, which are extra hairy...
+  for (i=0; i<self->node_count; i++)
+  {
+   HalfEdge * targ = self->node[i].first;
+   while (targ!=NULL)
+   {
+    // Only want to do each edge once...
+     if (targ < targ->reverse) // Check if this half edge is the forward direction - makes sure we only do each once, and allows for some assumptions below.
+     {
+      // Figure out the second index, create an edge...
+       int j = targ->dest - self->node;
+     
+       Edge * e = other->gc;
+       other->gc = e->next;
+       other->edge_count += 1;
+
+       e->forward.reverse = &(e->backward);
+       e->backward.reverse = &(e->forward);
+
+      // Copy over the correct values...
+       e->forward.dest = other->node + j;
+       e->forward.next = other->node[i].first;
+       other->node[i].first = &(e->forward);
+     
+       e->backward.dest = other->node + i;
+       e->backward.next = other->node[j].first;
+       other->node[j].first = &(e->backward);
+     
+       e->forward.pmean = targ->pmean;
+       e->forward.prec = targ->prec;
+       e->backward.pmean = targ->reverse->pmean;
+       e->backward.prec =  targ->reverse->prec;
+       
+       Edge * source = HalfEdge_edge(targ);
+       e->poffset = source->poffset;
+       e->diag = source->diag;
+       e->co = source->co;
+     }
+     
+    // To the next...
+     targ = targ->next;
+   }
+  }
+  
+ // Return the new object...
+  return (PyObject*)other;
+}
+
+
+
 // Helper function - given a numpy object to mean a range of nodes this outputs information to allow that loop to be done. Allways outputs a standard set of slice details (start, step, length), and also optionally outputs an numpy array to be checked at each position in the slice loop if its not NULL. Note that if the array is output it must be reference decrimented after use. Returns 0 on success, -1 on failure (in which case an error will have been set and arr will definitely be NULL). Note that it doesn't range check if an array is involved, Singular can be optional be passed, adn will be set nonzero if the request was a single number...
 int GBP_index(GBP * this, PyObject * arg, Py_ssize_t * start, Py_ssize_t * step, Py_ssize_t * length, PyArrayObject ** arr, int * singular)
 {
@@ -2076,6 +2166,8 @@ static PyMemberDef GBP_members[] =
 
 static PyMethodDef GBP_methods[] =
 {
+ {"clone", (PyCFunction)GBP_clone_py, METH_NOARGS, "Returns a clone of this object - everything is exactly the same, though all memory allocations will have been adjusted to be tight, rather than having spare space for future edges."},
+ 
  {"reset_unary", (PyCFunction)GBP_reset_unary_py, METH_VARARGS, "Given array-like indexing (integer, slice, numpy array or something that can be interpreted as an array) this resets the unary term for all of the given node indices, back to 'no information'."},
  {"reset_pairwise", (PyCFunction)GBP_reset_pairwise_py, METH_VARARGS, "Given two inputs, as indices of nodes between an edge this resets that edge to provide 'no relationship' between the nodes. Can do one edge with two integers or a set of edges with two numpy arrays. Can give one input as an integer and another as a numpy array to do a list of edges that all include the same node. Can omit the second parameter to wipe out all edges for a given node or set of nodes, or both to wipe them all up."},
  

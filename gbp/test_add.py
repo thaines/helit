@@ -63,5 +63,5 @@ more_indices = [base + i for i in xrange(5)]
 solver.pairwise(indices, more_indices, 5.0, 1e1)
 solver.pairwise(more_indices[:-1], more_indices[1:], 0.0, 1e3)
 
-print 'Yet another row:'
+print 'Yet another row, with constraints through it:'
 present(solver)

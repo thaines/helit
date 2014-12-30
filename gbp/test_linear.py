@@ -35,13 +35,14 @@ for _ in xrange(1024):
 
 
 # Solve using a GBP object, both approaches...
-gbp = solve_sym(a, b)
-bp_iters = gbp.solve()
-bp_x_calc, bp_x_prec = gbp.result()
+gbp1 = solve_sym(a, b)
+gbp2 = gbp1.clone()
 
-gbp = solve_sym(a, b)
-trws_iters = gbp.solve_trws()
-trws_x_calc, trws_x_prec = gbp.result()
+bp_iters = gbp1.solve()
+bp_x_calc, bp_x_prec = gbp1.result()
+
+trws_iters = gbp2.solve_trws()
+trws_x_calc, trws_x_prec = gbp2.result()
 
 
 
