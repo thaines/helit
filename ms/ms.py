@@ -38,7 +38,7 @@ class MeanShift(MeanShiftC):
     return clusters[numpy.argmax(probs),:]
     
     
-  def scale_loo_nll(self, low = 0.01, high = 2.0, steps = 64, callback = None):
+  def scale_loo_nll(self, low = 0.01, high = 2.0, steps = 64, callback = None, prob_limit = 1e-6, sample_limit = None):
     """Does a sweep of the scale, from low to high, on a logarithmic scale with the given number of steps. Sets the scale to the one with the lowest loo_nll score. If low/high are provided as multipliers then these are multipliers of the silverman scale; otherwise they can by arbitrary vectors."""
     
     # Select values for low and high as needed...
@@ -70,7 +70,7 @@ class MeanShift(MeanShiftC):
       scale = numpy.exp(log_low + i*log_step)
       
       self.set_scale(scale)
-      score = self.loo_nll()
+      score = self.loo_nll(prob_limit, sample_limit if isinstance(sample_limit, int) else -1)
       
       if best_score==None or score < best_score:
         best_score = score

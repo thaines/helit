@@ -39,9 +39,9 @@ void draw(DataMatrix * dm, const Kernel * kernel, KernelConfig config, PhiloxRNG
 
 
 
-// Calculates the log probability of all the items in the data set, leave one out style - allows for model comparison so you can optimise any of the parameters, such as scale or kernel type. Parameters match up with the prob function, except it gets the feature vectors from spatial and returns a negative log probability. It includes one extra parameter - a minimum probability to assign to any given exemplar, to limit the damage of outliers...
+// Calculates the log probability of all the items in the data set, leave one out style - allows for model comparison so you can optimise any of the parameters, such as scale or kernel type. Parameters match up with the prob function, except it gets the feature vectors from spatial and returns a negative log probability. It includes three extra parameters - a minimum probability to assign to any given exemplar, to limit the damage of outliers, and a sample clamp - if less than the exemplar count it will randomly select this many (with repetition) and return that instead. In this case the provided rng is needed...
 // (Note that it does not correctly adjust the total weight for each exemplar probability calculation, which technically can bias things a bit if they all have different weights, but not really enough to worry about, and it would prevent the use of the norm optimisation.)
-float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality, float limit);
+float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality, float limit, int sample_clamp, PhiloxRNG * rng);
 
 
 

@@ -94,7 +94,7 @@ void draw(DataMatrix * dm, const Kernel * kernel, KernelConfig config, PhiloxRNG
 
 
 
-float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality, float limit)
+float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality, float limit, int sample_clamp, PhiloxRNG * rng)
 {
  // Extract a bunch of things...
   DataMatrix * dm = Spatial_dm(spatial);
@@ -103,17 +103,39 @@ float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float
   int features = DataMatrix_features(dm);
   float range = kernel->range(features, config, quality);
   
+  int sample_count;
+  if (exemplars<=sample_clamp)
+  {
+   rng = NULL;
+   sample_count = exemplars;
+  }
+  else
+  {
+   if (rng!=NULL)
+   {
+    sample_count = sample_clamp; 
+   }
+   else
+   {
+    sample_count = exemplars;
+   }
+  }
+  
  // Loop and do each exemplar in the data set in turn... 
   float ret = 0.0;
   
   float * fvi = (float*)malloc(features * sizeof(float));
   
-  int i, j;
-  for (i=0; i<exemplars; i++)
+  int i, ii, j;
+  for (i=0; i<sample_count; i++)
   {
+   // Handle if we are doing random selection...
+    if (rng==NULL) ii = i;
+              else ii = (int)(exemplars * PhiloxRNG_uniform(rng));
+   
    // Get exemplar i, so we can play with it...
     float wi;
-    float * fv = DataMatrix_fv(dm, i, &wi);
+    float * fv = DataMatrix_fv(dm, ii, &wi);
     for (j=0; j<features; j++) fvi[j] = fv[j];
     
    // Calculate the probability of exemplar i, ignoring entry i...
@@ -124,7 +146,7 @@ float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float
     {
      int targ = Spatial_next(spatial);
      if (targ<0) break;
-     if (targ==i) continue; // Skip the one we are currently analysing.
+     if (targ==ii) continue; // Skip the one we are currently analysing!
    
      float w;
      float * fv = DataMatrix_fv(dm, targ, &w);

@@ -1173,7 +1173,8 @@ static PyObject * MeanShift_loo_nll_py(MeanShift * self, PyObject * args)
 {
  // Extract the limit from the parameters...
   float limit = 1e-16;
-  if (!PyArg_ParseTuple(args, "|f", &limit)) return NULL;
+  int sample_limit = -1;
+  if (!PyArg_ParseTuple(args, "|fi", &limit, &sample_limit)) return NULL;
  
  // If spatial is null create it...
   if (self->spatial==NULL)
@@ -1188,7 +1189,18 @@ static PyObject * MeanShift_loo_nll_py(MeanShift * self, PyObject * args)
   }
   
  // Calculate the probability...
-  float nll = loo_nll(self->spatial, self->kernel, self->config, self->norm, self->quality, limit);
+  float nll;
+  if (sample_limit>0)
+  {
+   PhiloxRNG rng;
+   PhiloxRNG_init(&rng, (self->rng_link!=NULL)?self->rng_link->rng:self->rng);
+ 
+   nll = loo_nll(self->spatial, self->kernel, self->config, self->norm, self->quality, limit, sample_limit, &rng);
+  }
+  else
+  {
+   nll = loo_nll(self->spatial, self->kernel, self->config, self->norm, self->quality, limit, 0, NULL);
+  }
  
  // Return it...
   return Py_BuildValue("f", nll);
@@ -2571,7 +2583,7 @@ static PyMethodDef MeanShift_methods[] =
 
  {"scale_silverman", (PyCFunction)MeanShift_scale_silverman_py, METH_NOARGS, "Sets the scale for the current data using Silverman's rule of thumb, generalised to multidimensional data (Multidimensional version often attributed to Wand & Jones.). Note that this is assuming you are using Gaussian kernels and that the samples have been drawn from a Gaussian - if these asumptions are valid you should probably just fit a Gaussian in the first place, if they are not you should not use this method. Basically, do not use!"},
  {"scale_scott", (PyCFunction)MeanShift_scale_scott_py, METH_NOARGS, "Alternative to scale_silverman - assumptions are very similar and it is hence similarly crap - would recomend against this, though maybe prefered to Silverman."},
- {"loo_nll", (PyCFunction)MeanShift_loo_nll_py, METH_VARARGS, "Calculate the negative log liklihood of the model where it leaves out the sample whos probability is being calculated and then muliplies together the probability of all samples calculated independently. This can be used for model comparison, to see which is better out of several configurations, be that kernel size, kernel type etc. Takes one optional parameter, which is a lower bound on probability, to avoid outliers causing problems - defaults to 1e-16"},
+ {"loo_nll", (PyCFunction)MeanShift_loo_nll_py, METH_VARARGS, "Calculate the negative log liklihood of the model where it leaves out the sample whos probability is being calculated and then muliplies together the probability of all samples calculated independently. This can be used for model comparison, to see which is better out of several configurations, be that kernel size, kernel type etc. Takes two optional parameters: First, the lower bound on probability, to avoid outliers causing problems - defaults to 1e-16. Second, a limit on how many exemplars to use, rather than the default of using all of them (a negative value) - allows for an even more approximate calculation in considerably less time. The exemplars are drawn with uniform probability and replacement."},
  
  {"entropy", (PyCFunction)MeanShift_entropy_py, METH_NOARGS, "Calculates and returns an approximation of the entropy of the distribution represented by this object. As it uses the samples contained within its accuracy will improve with the number of them, much like for the rest of the system. Uses the natural logarithm, so the return is measured in nats."},
  {"kl", (PyCFunction)MeanShift_kl_py, METH_VARARGS, "Calculates and returns an approximation of the kullback leibler divergance, of the first parameter from self - D(self||arg1). In other words, it returns the average number of extra nats for encoding draws from p if you encode them optimally under the assumption they come from the density estimate of the mean shift object given as the first parameter. Uses the samples within self and solves using them as a sample from the distribution - consequntially the constraint the the KL-divergance be positive is broken by this estimate and you can get negative values out. What to do about this is left to the user. And optional second parameter provides a clamp on how low probability calculations for arg1 values are allowed to get, to avoid divide by zero - it defaults to 1e-16."},
