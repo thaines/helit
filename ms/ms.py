@@ -39,7 +39,7 @@ class MeanShift(MeanShiftC):
     
     
   def scale_loo_nll(self, low = 0.01, high = 2.0, steps = 64, callback = None, prob_limit = 1e-6, sample_limit = None):
-    """Does a sweep of the scale, from low to high, on a logarithmic scale with the given number of steps. Sets the scale to the one with the lowest loo_nll score. If low/high are provided as multipliers then these are multipliers of the silverman scale; otherwise they can by arbitrary vectors."""
+    """Does a sweep of the scale, from low to high, on a logarithmic scale with the given number of steps. Sets the scale to the one with the lowest loo_nll score. If low/high are provided as multipliers then these are multipliers of the silverman scale; otherwise they can by arbitrary vectors. After the main parameters there is callback, for reporting progress, prob_limit and sample_limit, which are passed though to loo_nll and control outlier robustness and a sub-sampling speed optimisation respectivly."""
     
     # Select values for low and high as needed...
     if isinstance(low, float) or isinstance(high, float):
@@ -81,8 +81,8 @@ class MeanShift(MeanShiftC):
     return best_score
   
   
-  def scale_loo_nll_array(self, choices, callback = None):
-    """Given an array of MS objects this copies in the configuration of each object in turn into this object and finds the one that minimises the leave one out error. Quite simple really - mostly for use in cases when the kernel type doesn't support scale in the usual way, i.e. the directional kernels. For copying across it uses a call to copy_all and a call to copy_scale, which between them get near as everything. Note that the array of choices will need some dummy data set, so the system knows the number of dimensions."""
+  def scale_loo_nll_array(self, choices, callback = None, prob_limit = 1e-6, sample_limit = None):
+    """Given an array of MS objects this copies in the configuration of each object in turn into this object and finds the one that minimises the leave one out error. Quite simple really - mostly for use in cases when the kernel type doesn't support scale in the usual way, i.e. the directional kernels. For copying across it uses a call to copy_all and a call to copy_scale, which between them get near as everything. Note that the array of choices will need some dummy data set, so the system knows the number of dimensions. After the main parameters there is callback, for reporting progress, prob_limit and sample_limit, which are passed though to loo_nll and control outlier robustness and a sub-sampling speed optimisation respectivly."""
     best_choice = None
     best_score = None
     
@@ -93,7 +93,7 @@ class MeanShift(MeanShiftC):
       self.copy_all(choice)
       self.copy_scale(choice)
       
-      score = self.loo_nll()
+      score = self.loo_nll(prob_limit, sample_limit if isinstance(sample_limit, int) else -1)
       
       if best_score==None or score < best_score:
         best_choice = choice
@@ -158,9 +158,12 @@ class MeanShift(MeanShiftC):
 
 class MeanShiftCompositeScale:
   """This optimises the scale of MeanShift objects that use the composite kernel type - designed to support all cases, including directional kernels, assuming its a single composite kernel containing a list of other kernels (child kernels can be composite, but would all be fixed to share the same scale if that is being optimised). Optimises each part of the outer composite kernel seperatly, rather than considering a single linear scale parameter as the built in methods do. After construction you call the add_param_* methods to add all parameters you want to optimise over and then the object pretends its a function - simply call on any mean shift object (no parameters) and it does a drunk gradient decent (not sure what to call this - stupid simplex sort) from the closest point in the parameter space of the object until it hits a local maximum. Note that this means that the provided object should have sensible parameters when you start."""
-  def __init__(self, kernel):
-    """You provide a kernel configuration that must start 'composite(' (it will extract dimension counts from this, hence the requirement). Any parameters you want to control within it should be replaced with %(key)s (yes, s for string! you can tie parameters together by giving them the same key) so they can be set via the parameter system."""
+  def __init__(self, kernel, prob_limit = 1e-6, sample_limit = None):
+    """You provide a kernel configuration that must start 'composite(' (it will extract dimension counts from this, hence the requirement). Any parameters you want to control within it should be replaced with %(key)s (yes, s for string! you can tie parameters together by giving them the same key) so they can be set via the parameter system. There are two optional parameters, which are for passing straight through to calls to loo_nll, specifically the limit on how low probability can go to add robustness to outliers which defaults to 1e-6, and a limit on how many exemplars to use for the estimate, to avoid the computation of using all of them by using a bootstrap draw instead. Defaults to None, i.e. use all exemplars."""
     self.kernel = kernel
+    
+    self.prob_limit = prob_limit
+    self.sample_limit = sample_limit if isinstance(sample_limit, int) else -1
     
     start = 'composite('
     assert(self.kernel.startswith(start) and self.kernel[-1]==')')
@@ -276,7 +279,7 @@ class MeanShiftCompositeScale:
     
     ## Record its score at the starting location...
     self.__set_pos(loc, ms)
-    current = ms.loo_nll()
+    current = ms.loo_nll(self.prob_limit, self.sample_limit)
     
     ## Loop and try 'random' directions, noting that it avoids duplicate attempts, which is also helpful for minima detection...
     tries = 0
@@ -292,7 +295,7 @@ class MeanShiftCompositeScale:
       if loc[index] > 0:
         loc[index] -= 1
         self.__set_pos(loc, ms)
-        option = ms.loo_nll()
+        option = ms.loo_nll(self.prob_limit, self.sample_limit)
         if option<current:
           current = option
           since_last_step = 0
@@ -303,7 +306,7 @@ class MeanShiftCompositeScale:
       if loc[index]+1 < self.params[index][3]:
         loc[index] += 1
         self.__set_pos(loc, ms)
-        option = ms.loo_nll()
+        option = ms.loo_nll(self.prob_limit, self.sample_limit)
         if option<current:
           current = option
           since_last_step = 0

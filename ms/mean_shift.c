@@ -170,7 +170,7 @@ float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float
 
 
 
-float entropy(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality)
+float entropy(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality, int sample_clamp, PhiloxRNG * rng)
 {
  // Extract a bunch of things...
   DataMatrix * dm = Spatial_dm(spatial);
@@ -179,18 +179,40 @@ float entropy(Spatial spatial, const Kernel * kernel, KernelConfig config, float
   int features = DataMatrix_features(dm);
   float range = kernel->range(features, config, quality);
   
+  int sample_count;
+  if (exemplars<=sample_clamp)
+  {
+   rng = NULL;
+   sample_count = exemplars;
+  }
+  else
+  {
+   if (rng!=NULL)
+   {
+    sample_count = sample_clamp; 
+   }
+   else
+   {
+    sample_count = exemplars;
+   }
+  }
+
  // Loop and do each exemplar in the data set in turn... 
   float ret = 0.0;
   float samples = 0.0;
   
   float * fvi = (float*)malloc(features * sizeof(float));
   
-  int i, j;
-  for (i=0; i<exemplars; i++)
+  int i, ii, j;
+  for (i=0; i<sample_count; i++)
   {
+   // Handle if we are doing random selection...
+    if (rng==NULL) ii = i;
+              else ii = (int)(exemplars * PhiloxRNG_uniform(rng));
+
    // Get exemplar i, so we can play with it...
     float wi;
-    float * fv = DataMatrix_fv(dm, i, &wi);
+    float * fv = DataMatrix_fv(dm, ii, &wi);
     for (j=0; j<features; j++) fvi[j] = fv[j];
     
    // Calculate the probability of exemplar i...
@@ -224,7 +246,7 @@ float entropy(Spatial spatial, const Kernel * kernel, KernelConfig config, float
 
 
 
-float kl_divergence(Spatial spatial_p, const Kernel * kernel_p, KernelConfig config_p, float norm_p, float quality_p, Spatial spatial_q, const Kernel * kernel_q, KernelConfig config_q, float norm_q, float quality_q, float limit)
+float kl_divergence(Spatial spatial_p, const Kernel * kernel_p, KernelConfig config_p, float norm_p, float quality_p, Spatial spatial_q, const Kernel * kernel_q, KernelConfig config_q, float norm_q, float quality_q, float limit, int sample_clamp, PhiloxRNG * rng)
 {
  // Extract a bunch of things...
   DataMatrix * dm_p = Spatial_dm(spatial_p);
@@ -235,18 +257,40 @@ float kl_divergence(Spatial spatial_p, const Kernel * kernel_p, KernelConfig con
   float range_p = kernel_p->range(features, config_p, quality_p);
   float range_q = kernel_q->range(features, config_q, quality_q);
 
+  int sample_count;
+  if (exemplars<=sample_clamp)
+  {
+   rng = NULL;
+   sample_count = exemplars;
+  }
+  else
+  {
+   if (rng!=NULL)
+   {
+    sample_count = sample_clamp; 
+   }
+   else
+   {
+    sample_count = exemplars;
+   }
+  }
+  
 // Loop and do each exemplar from p in turn... 
   float ret = 0.0;
   float samples = 0.0;
   
   float * fvi = (float*)malloc(features * sizeof(float));
   
-  int i, j;
-  for (i=0; i<exemplars; i++)
+  int i, ii, j;
+  for (i=0; i<sample_count; i++)
   {
+   // Handle if we are doing random selection...
+    if (rng==NULL) ii = i;
+              else ii = (int)(exemplars * PhiloxRNG_uniform(rng));
+
    // Get exemplar i, so we can play with it...
     float wi;
-    float * fv = DataMatrix_fv(dm_p, i, &wi);
+    float * fv = DataMatrix_fv(dm_p, ii, &wi);
     for (j=0; j<features; j++) fvi[j] = fv[j];
     
    // Calculate the probability of exemplar i in p...

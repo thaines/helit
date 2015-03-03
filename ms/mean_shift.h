@@ -45,12 +45,12 @@ float loo_nll(Spatial spatial, const Kernel * kernel, KernelConfig config, float
 
 
 
-// Calculates and returns an approximation of the entropy of the distribution, using the samples that the datamatrix contains as a sample from the distribution so its super efficient to calculate...
-float entropy(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality);
+// Calculates and returns an approximation of the entropy of the distribution, using the samples that the datamatrix contains as a sample from the distribution so its super efficient to calculate. Has the same sample_clamp/rng idea as loo_nll...
+float entropy(Spatial spatial, const Kernel * kernel, KernelConfig config, float norm, float quality, int sample_clamp, PhiloxRNG * rng);
 
 
-// Calculates the Kullback-Leibler divergance of q from p D(P||Q), as in the average number of extra nats required to encode draws from p given an encoder that assumes draws from q. Same approach as entropy, using the samples in the KDE as both samples and to define the distribution. Note that the constraint the the KL-divergance be positive is broken by this estimate - you can get negative values out. What to do about this is left to the user. limit is a clamp on how low probability of q values are allowed to get, to avoid divide by zero...
-float kl_divergence(Spatial spatial_p, const Kernel * kernel_p, KernelConfig config_p, float norm_p, float quality_p, Spatial spatial_q, const Kernel * kernel_q, KernelConfig config_q, float norm_q, float quality_q, float limit);
+// Calculates the Kullback-Leibler divergance of q from p D(P||Q), as in the average number of extra nats required to encode draws from p given an encoder that assumes draws from q. Same approach as entropy, using the samples in the KDE as both samples and to define the distribution. Note that the constraint the the KL-divergance be positive is broken by this estimate - you can get negative values out. What to do about this is left to the user. limit is a clamp on how low probability of q values are allowed to get, to avoid divide by zero. Supports the bootystrap optimisation of loo_nll...
+float kl_divergence(Spatial spatial_p, const Kernel * kernel_p, KernelConfig config_p, float norm_p, float quality_p, Spatial spatial_q, const Kernel * kernel_q, KernelConfig config_q, float norm_q, float quality_q, float limit, int sample_clamp, PhiloxRNG * rng);
 
 
 
