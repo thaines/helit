@@ -1,0 +1,318 @@
+# Gaussian Mixture Model (plus K-means) #
+
+## Overview ##
+**Gaussian mixture model implementation.**
+
+Implemented in python using numpy and scipy.weave.
+Only provides an isotropic distribution, but also includes BIC model selection.
+
+Interface consists of several classes - kMeans, KMeansShort, IsotropicGMM. Each provides the methods 'train' and 'getCluster'. Train is given a set of feature vectors and a cluster count, and fits the model. getCluster is given a set of feature vectors and returns the index of the cluster it is most likely from for each feature. saving/loading via pickling is supported, and extra features are provided, such as Bayesian information criterion model selection of cluster counts.
+
+If you are reading readme.txt then you can generate documentation by running make\_doc.py
+
+
+
+`gmm.py` - exports all the functionality.
+
+`kmeans.py` - provides just the k-means classes, if that is all that is required.
+
+
+`kmeans_shared.py` - Provides the interface used by all k-means implementations.
+
+`kmeans0.py` - wrapper around the scipy kmeans implimentation, so it can be used with the other parts of this system.
+
+`kmeans1.py` - first implementation, brute force with multiple restarts.
+
+`kmeans2.py` - second implementation, still brute force but instead of multiple restarts uses a scheme of running on multiple small data sets and then initialising with kmeans on the combined clusters from all these runs.
+
+`kmeans3.py` - third implementation, assumes that distance computations are slow and trys to avoid them by storing information about cluster centre movement. This is both fast and reliable.
+
+
+`mixture.py` - provides the interface for mixture models.
+
+`isotropic.py` - provides the only implementation of the Mixture interface - IsotropicGMM.
+
+
+`bic.py` - provides a function to do Bayesian information criterion (BIC) model selection on the number of clusters, given a mixture model.
+
+
+`readme.txt` - this file, which is copied into the start of gmm.html if generated.
+
+`make_doc.py` - creates the gmm.html help file.
+
+
+`test_identical.py` - simple test of algorithms on multiple identical clusters.
+
+`test_varied.py` - slightly more sophisticated test on clusters with different scales and sampling frequencies.
+
+`test_selection.py` - randomly generates a data set from fairly arbitrary Gaussians, with a random number of them, and uses BIC to select the best IsotropicGMM model.
+
+
+---
+
+
+# Variables #
+
+**`KMeans`**
+> The prefered k-means implimentation can be referenced as KMeans
+
+**`KMeansShort`**
+> The prefered k-means implimentation is choosen on the assumption of long feature vectors - if the feature vectors are in fact short then this is a synonym of a more appropriate fitter. (By short think less than 20, though this is somewhat computer dependent.)
+
+
+# Functions #
+
+**`modelSelectBIC(feats, model, maxCount = -1)`**
+> Provides model selection, i.e. selection of the number of clusters, using the bayesian information criterion (BIC). You provide it with the features, and a model to train with (It just reuses it.) and the maximum size to consider (It starts at 2.). When it returns the given model will be left trained with the optimal result. If maxSize is less than 2, the default, it goes up to twice the logarithm of the feature vector count, rounded up and inclusive. if this is 2 or less you will get back the model trained with just two clusters.
+
+
+# Classes #
+
+## KMeansShared() ##
+> Provides a standard interface for k-means, so that all implimentations provide the same one. key issue is that features can be provided in 3 ways - an array where each row is a feature, a list of feature vectors, a list of tuples where the last entry of each tuple is the feature vector. These are then passed through to return values, but the actual implimentation only has to deal with one interface.
+
+**`__init__(self)`**
+> None
+
+**`clusterCount(self)`**
+> returns how many clusters it has been trained with, returns 0 if it has not been trainned.
+
+**`getCentre(self, i)`**
+> Returns the centre of the indexed cluster.
+
+**`getCluster(self, feats)`**
+> Converts the feature vectors of the input into integers, which represent the cluster which each feature is most likelly a member of. Output will be the same form as the input, but with the features converted to integers. In the case of a feature matrix it will become a vector of integers. For a list of feature vectors it will become a list of integers. For a list of tuples with the last element a feature vector it will return a list of tuples where the last element has been replaced with an integer.
+
+**`getData(self)`**
+> Returns the data contained within, so it can be serialised with other data. (You can of course serialise this class directly if you want, but the returned object is a numpy array, so less likely to be an issue for any program that loads it.)
+
+**`getNLL(self, feats)`**
+> Given a set of features returns the negative log likelihood of the given features being generated by the model. Note that as the k-means model is not probabilistic this is technically wrong, but it hacks it by treating each cluster as a symmetric Gaussian with a standard deviation calculated using the provided features, with equal probability of selecting each cluster.
+
+**`load(self, filename)`**
+> Loads the learned parameters from a file.
+
+**`parameters(self)`**
+> Returns how many parameters the currently fitted model has, used for model selection.
+
+**`save(self, filename)`**
+> Saves the learned parameters to a file.
+
+**`setData(self, data)`**
+> Sets the data for the object, should be same form as returned from getData.
+
+**`train(self, feats, clusters, *listArgs, **dictArgs)`**
+> Given the features and number of clusters, plus any implimentation specific arguments, this trains the model. Features can be provided as a data matrix, as a list of feature vectors or as a list of tuples where the last entry of each tuple is a feature vector.
+
+## KMeans0(KMeansShared) ##
+> Wraps the kmeans implimentation provided by scipy with the same interface as provided by the other kmeans implimentations in the system. My experiance shows that this is insanely slow - not sure why, but even my brute force C implimentation is faster (Best guess is its coded in python, and not optimised in any way.).
+
+**`__init__(self)`**
+> None
+
+**`clusterCount(self)`**
+> returns how many clusters it has been trained with, returns 0 if it has not been trainned.
+
+**`getCentre(self, i)`**
+> Returns the centre of the indexed cluster.
+
+**`getCluster(self, feats)`**
+> Converts the feature vectors of the input into integers, which represent the cluster which each feature is most likelly a member of. Output will be the same form as the input, but with the features converted to integers. In the case of a feature matrix it will become a vector of integers. For a list of feature vectors it will become a list of integers. For a list of tuples with the last element a feature vector it will return a list of tuples where the last element has been replaced with an integer.
+
+**`getData(self)`**
+> Returns the data contained within, so it can be serialised with other data. (You can of course serialise this class directly if you want, but the returned object is a numpy array, so less likely to be an issue for any program that loads it.)
+
+**`getNLL(self, feats)`**
+> Given a set of features returns the negative log likelihood of the given features being generated by the model. Note that as the k-means model is not probabilistic this is technically wrong, but it hacks it by treating each cluster as a symmetric Gaussian with a standard deviation calculated using the provided features, with equal probability of selecting each cluster.
+
+**`load(self, filename)`**
+> Loads the learned parameters from a file.
+
+**`parameters(self)`**
+> Returns how many parameters the currently fitted model has, used for model selection.
+
+**`save(self, filename)`**
+> Saves the learned parameters to a file.
+
+**`setData(self, data)`**
+> Sets the data for the object, should be same form as returned from getData.
+
+**`train(self, feats, clusters, *listArgs, **dictArgs)`**
+> Given the features and number of clusters, plus any implimentation specific arguments, this trains the model. Features can be provided as a data matrix, as a list of feature vectors or as a list of tuples where the last entry of each tuple is a feature vector.
+
+## KMeans1(KMeansShared) ##
+> The most basic implimentation of k-means possible - just brute force with multiple restarts.
+
+**`__init__(self)`**
+> None
+
+**`clusterCount(self)`**
+> returns how many clusters it has been trained with, returns 0 if it has not been trainned.
+
+**`getCentre(self, i)`**
+> Returns the centre of the indexed cluster.
+
+**`getCluster(self, feats)`**
+> Converts the feature vectors of the input into integers, which represent the cluster which each feature is most likelly a member of. Output will be the same form as the input, but with the features converted to integers. In the case of a feature matrix it will become a vector of integers. For a list of feature vectors it will become a list of integers. For a list of tuples with the last element a feature vector it will return a list of tuples where the last element has been replaced with an integer.
+
+**`getData(self)`**
+> Returns the data contained within, so it can be serialised with other data. (You can of course serialise this class directly if you want, but the returned object is a numpy array, so less likely to be an issue for any program that loads it.)
+
+**`getNLL(self, feats)`**
+> Given a set of features returns the negative log likelihood of the given features being generated by the model. Note that as the k-means model is not probabilistic this is technically wrong, but it hacks it by treating each cluster as a symmetric Gaussian with a standard deviation calculated using the provided features, with equal probability of selecting each cluster.
+
+**`load(self, filename)`**
+> Loads the learned parameters from a file.
+
+**`parameters(self)`**
+> Returns how many parameters the currently fitted model has, used for model selection.
+
+**`save(self, filename)`**
+> Saves the learned parameters to a file.
+
+**`setData(self, data)`**
+> Sets the data for the object, should be same form as returned from getData.
+
+**`train(self, feats, clusters, *listArgs, **dictArgs)`**
+> Given the features and number of clusters, plus any implimentation specific arguments, this trains the model. Features can be provided as a data matrix, as a list of feature vectors or as a list of tuples where the last entry of each tuple is a feature vector.
+
+## KMeans2(KMeansShared) ##
+> This version of kmeans gets clever with its initialisation, running k-means on a subset of points, repeatedly, then combining the various runs, before ultimatly only doing k-means on the full dataset just once. This optimisation is only valuable for large data sets, e.g. with at least 10k feature vectors, and will cause slow down for small data sets.
+
+**`__init__(self)`**
+> None
+
+**`clusterCount(self)`**
+> returns how many clusters it has been trained with, returns 0 if it has not been trainned.
+
+**`getCentre(self, i)`**
+> Returns the centre of the indexed cluster.
+
+**`getCluster(self, feats)`**
+> Converts the feature vectors of the input into integers, which represent the cluster which each feature is most likelly a member of. Output will be the same form as the input, but with the features converted to integers. In the case of a feature matrix it will become a vector of integers. For a list of feature vectors it will become a list of integers. For a list of tuples with the last element a feature vector it will return a list of tuples where the last element has been replaced with an integer.
+
+**`getData(self)`**
+> Returns the data contained within, so it can be serialised with other data. (You can of course serialise this class directly if you want, but the returned object is a numpy array, so less likely to be an issue for any program that loads it.)
+
+**`getNLL(self, feats)`**
+> Given a set of features returns the negative log likelihood of the given features being generated by the model. Note that as the k-means model is not probabilistic this is technically wrong, but it hacks it by treating each cluster as a symmetric Gaussian with a standard deviation calculated using the provided features, with equal probability of selecting each cluster.
+
+**`load(self, filename)`**
+> Loads the learned parameters from a file.
+
+**`parameters(self)`**
+> Returns how many parameters the currently fitted model has, used for model selection.
+
+**`save(self, filename)`**
+> Saves the learned parameters to a file.
+
+**`setData(self, data)`**
+> Sets the data for the object, should be same form as returned from getData.
+
+**`train(self, feats, clusters, *listArgs, **dictArgs)`**
+> Given the features and number of clusters, plus any implimentation specific arguments, this trains the model. Features can be provided as a data matrix, as a list of feature vectors or as a list of tuples where the last entry of each tuple is a feature vector.
+
+## KMeans3(KMeans2, KMeansShared) ##
+> Takes the initialisation improvememnts of KMeans2 and additionally makes improvements to the kmeans implimentation. Specifically it presumes that distance computations are expensive and avoids doing them where possible, by additionally storing how far each cluster centre moved since the last step. This allows a lot of such computations to be pruned, especially later on when cluster centres are not moving. It does not work if distance computations are cheap however, so only worth it for long feature vectors.
+
+**`_KMeans2__kmeans(self, centres, data, minSize = 3, maxIters = 1024, assignOut)`**
+> Internal method - does k-means on the data set as it is treated internally. Given the initial set of centres and a data matrix - the centres matrix is then updated to the new positions.
+
+**`__init__(self)`**
+> None
+
+**`clusterCount(self)`**
+> returns how many clusters it has been trained with, returns 0 if it has not been trainned.
+
+**`getCentre(self, i)`**
+> Returns the centre of the indexed cluster.
+
+**`getCluster(self, feats)`**
+> Converts the feature vectors of the input into integers, which represent the cluster which each feature is most likelly a member of. Output will be the same form as the input, but with the features converted to integers. In the case of a feature matrix it will become a vector of integers. For a list of feature vectors it will become a list of integers. For a list of tuples with the last element a feature vector it will return a list of tuples where the last element has been replaced with an integer.
+
+**`getData(self)`**
+> Returns the data contained within, so it can be serialised with other data. (You can of course serialise this class directly if you want, but the returned object is a numpy array, so less likely to be an issue for any program that loads it.)
+
+**`getNLL(self, feats)`**
+> Given a set of features returns the negative log likelihood of the given features being generated by the model. Note that as the k-means model is not probabilistic this is technically wrong, but it hacks it by treating each cluster as a symmetric Gaussian with a standard deviation calculated using the provided features, with equal probability of selecting each cluster.
+
+**`load(self, filename)`**
+> Loads the learned parameters from a file.
+
+**`parameters(self)`**
+> Returns how many parameters the currently fitted model has, used for model selection.
+
+**`save(self, filename)`**
+> Saves the learned parameters to a file.
+
+**`setData(self, data)`**
+> Sets the data for the object, should be same form as returned from getData.
+
+**`train(self, feats, clusters, *listArgs, **dictArgs)`**
+> Given the features and number of clusters, plus any implimentation specific arguments, this trains the model. Features can be provided as a data matrix, as a list of feature vectors or as a list of tuples where the last entry of each tuple is a feature vector.
+
+## Mixture() ##
+> Defines the basic interface to a mixture model - the methods to train, and then classify basically. Includes funky conversions to allow many forms of input/output, for conveniance.
+
+**`clusterCount(self)`**
+> To be implimented by the inheriting class - returns how many elements the mixture has, i.e. the cluster count.
+
+**`getCluster(self, feats)`**
+> Given a set of features returns for each feature the cluster with the highest probability of having generated it. Multiple input/output modes are supported. If a data matrix is input then the output will be an integer vector of cluster indices. If the input is a list of feature vectors the output will be a list of cluster indices. If the input is a list of tuples with the last elements a feature vector the output will be identical, but with the feature vectors replaced by cluster integers.
+
+**`getData(self)`**
+> Returns the data contained within, so it can be serialised with other data. (You can of course serialise this class directly if you want, but the returned object is a tuple of numpy arrays, so less likely to be an issue for any program that loads it.)
+
+**`getNLL(self, feats)`**
+> Given a set of features returns the negative log likelihood of the given features being generated by the model.
+
+**`getWeight(self, feats)`**
+> Given a set of features returns for each feature the probability of having been generated by each mixture member - this vector will sum to one. Multiple input/output modes are supported. If a data matrix is input then the output will be a matrix where each row has been replaced by the mixing vector. If the input is a list of feature vectors the output will be a list of mixing vectors. If the input is a list of tuples with the last elements a feature vector the output will be identical, but with the feature vectors replaced with mixing vectors.
+
+**`parameters(self)`**
+> To be implimented by the inheriting class - returns how many parameters the model has.
+
+**`setData(self, data)`**
+> Sets the data for the object, should be same form as returned from getData.
+
+**`train(self, feats, clusters, *listArgs, **dictArgs)`**
+> Accepts as input the features, how many clusters to use and any further implimentation specific variables. The features can be represented as a data matrix, a list of vectors or as a list of tuples where the last entry is a feature vector. Will then train the model on the given data set.
+
+## IsotropicGMM(Mixture) ##
+> Fits a gaussian mixture model to a data set, using isotropic Gaussians, i.e. so each is parameterised by only a single standard deviation, in addition to position and weight.
+
+**`__init__(self)`**
+> None
+
+**`clusterCount(self)`**
+> Returns how many clusters it has been fitted with, or 0 if it is yet to be trainned.
+
+**`getCentre(self, i)`**
+> Returns the mean/centre of the given cluster.
+
+**`getCluster(self, feats)`**
+> Given a set of features returns for each feature the cluster with the highest probability of having generated it. Multiple input/output modes are supported. If a data matrix is input then the output will be an integer vector of cluster indices. If the input is a list of feature vectors the output will be a list of cluster indices. If the input is a list of tuples with the last elements a feature vector the output will be identical, but with the feature vectors replaced by cluster integers.
+
+**`getData(self)`**
+> Returns the data contained within, so it can be serialised with other data. (You can of course serialise this class directly if you want, but the returned object is a tuple of numpy arrays, so less likely to be an issue for any program that loads it.)
+
+**`getMix(self, i)`**
+> Returns the mixing weight for the given cluster.
+
+**`getNLL(self, feats)`**
+> Given a set of features returns the negative log likelihood of the given features being generated by the model.
+
+**`getSD(self, i)`**
+> Returns the standard deviation for the given cluster.
+
+**`getWeight(self, feats)`**
+> Given a set of features returns for each feature the probability of having been generated by each mixture member - this vector will sum to one. Multiple input/output modes are supported. If a data matrix is input then the output will be a matrix where each row has been replaced by the mixing vector. If the input is a list of feature vectors the output will be a list of mixing vectors. If the input is a list of tuples with the last elements a feature vector the output will be identical, but with the feature vectors replaced with mixing vectors.
+
+**`parameters(self)`**
+> Returns how many parameters the currently fitted model has, used for model selection.
+
+**`setData(self, data)`**
+> Sets the data for the object, should be same form as returned from getData.
+
+**`train(self, feats, clusters, *listArgs, **dictArgs)`**
+> Accepts as input the features, how many clusters to use and any further implimentation specific variables. The features can be represented as a data matrix, a list of vectors or as a list of tuples where the last entry is a feature vector. Will then train the model on the given data set.
