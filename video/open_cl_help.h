@@ -6,7 +6,12 @@
 #include <sys/time.h>
 
 #include <Python.h>
+
+#ifdef __APPLE__
+#include <OpenCL/cl.h>
+#else
 #include <CL/cl.h>
+#endif
 
 
 // Sets up python to give a reasonable exception given a OpenCL error...
