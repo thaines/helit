@@ -15,6 +15,8 @@ import os.path
 import tempfile
 import shutil
 
+import numpy
+
 from distutils.core import setup, Extension
 import distutils.ccompiler
 import distutils.dep_util
@@ -50,10 +52,17 @@ def make_mod(name, base, source, openCL = False):
 
       comp_path = filter(lambda s: not s.endswith('.h'), source_path)
       depends = filter(lambda s: s.endswith('.h'), source_path)
+      inc_dirs = numpy.distutils.misc_util.get_numpy_include_dirs()
+      
       if openCL:
-        ext = Extension(name, comp_path, include_dirs=['/usr/local/cuda/include', '/opt/AMDAPP/include'], libraries = ['OpenCL'], library_dirs = ['/usr/lib64/nvidia', '/opt/AMDAPP/lib/x86_64'], depends=depends)
+        if sys.platform=='darwin':
+          ext = Extension(name, comp_path, include_dirs=inc_dirs, depends=depends, extra_compile_args=['-framework OpenCL'])
+        
+        else:
+          ext = Extension(name, comp_path, include_dirs=inc_dirs+['/usr/local/cuda/include', '/opt/AMDAPP/include'], libraries = ['OpenCL'], library_dirs = ['/usr/lib64/nvidia', '/opt/AMDAPP/lib/x86_64'], depends=depends)
+          
       else:
-        ext = Extension(name, comp_path, depends=depends)
+        ext = Extension(name, comp_path, include_dirs=inc_dirs, depends=depends)
 
       # Compile...
       setup(name=name, version='1.0.0', ext_modules=[ext])
