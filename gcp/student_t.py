@@ -89,7 +89,7 @@ class StudentT:
       self.norm = scipy.special.gammaln(0.5*(self.dof+d))
       self.norm -= scipy.special.gammaln(0.5*self.dof)
       self.norm -= math.log(self.dof*math.pi)*(0.5*d)
-      self.norm += 0.5*math.log(numpy.linalg.det(self.getInvScale()))
+      self.norm += 0.5*math.log(max(numpy.linalg.det(self.getInvScale()), numpy.finfo(numpy.float32).eps))
     return self.norm
 
   def prob(self, x):

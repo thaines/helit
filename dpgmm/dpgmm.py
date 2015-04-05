@@ -88,8 +88,8 @@ class DPGMM:
     return self.stickCap
 
 
-  def setPrior(self, mean = None, covar = None, weight = None, scale = 1.0):
-    """Sets a prior for the mixture components - basically a pass through for the addPrior method of the GaussianPrior class. If None (The default) is provided for the mean or the covar then it calculates these values for the currently contained sample set and uses them. Note that the prior defaults to nothing - this must be called before fitting the model, and if mean/covar are not provided then there must be enough data points to avoid problems. weight defaults to the number of dimensions if not specified. If covar is not given then scale is a multiplier for the covariance matrix - setting it high will soften the prior up and make it consider softer solutions when given less data. Returns True on success, False on failure - failure can happen if there is not enough data contained for automatic calculation (Think singular covariance matrix). This must be called before any solve methods are called."""
+  def setPrior(self, mean = None, covar = None, weight = None, scale = 1.0, safe = True):
+    """Sets a prior for the mixture components - basically a pass through for the addPrior method of the GaussianPrior class. If None (The default) is provided for the mean or the covar then it calculates these values for the currently contained sample set and uses them. Note that the prior defaults to nothing - this must be called before fitting the model, and if mean/covar are not provided then there must be enough data points to avoid problems. weight defaults to the number of dimensions if not specified. If covar is not given then scale is a multiplier for the covariance matrix - setting it high will soften the prior up and make it consider softer solutions when given less data. Returns True on success, False on failure - failure can happen if there is not enough data contained for automatic calculation (Think singular covariance matrix). This must be called before any solve methods are called. If safe is True, which it is by default, then failure can't happens - it will regularise the covariance matrix until it works."""
     # Handle mean/covar being None...
     if mean==None or covar==None:
       inc = gcp.GaussianInc(self.dims)
@@ -99,7 +99,11 @@ class DPGMM:
       if mean==None: mean = ggd.getMean()
       if covar==None: covar = ggd.getCovariance() * scale
 
-    if numpy.linalg.det(covar)<1e-12: return False
+    if numpy.linalg.det(covar)<1e-12:
+      if not safe:
+        return False
+      else:
+        covar += numpy.power(1e-12, 1.0/self.dims) * numpy.eye(self.dims, dtype=numpy.float32) # Makes sure the determinant is large enough due to Minkowski's determinant theorem; could tighten this correction, but at this point your hitting floating point accuracy issues anyway.
 
     # Update the prior...
     self.prior.reset()
@@ -110,7 +114,7 @@ class DPGMM:
 
 
   def setConcGamma(self, alpha, beta):
-    """Sets the parameters for the Gamma prior over the concentration. Note that whilst alpha and beta are used for the parameter names, in accordance with standard terminology for Gamma distributions, they are not related to the model variable names. Default values are (1,1). The concentration parameter controls how much information the model requires to justify using a stick, such that lower numbers result in fewer sticks, higher numbers in larger numbers of sticks. The concentration parameter is learnt from the data, under the Gamma distribution prior set with this method, but this prior can still have a strong effect. If your data is not producing as many clusters as you expect then adjust this parameter accordingly, (e.g. increase alpha or decrease beta, or both.), but don't go too high or it will start hallucinating patterns where none exist!"""
+    """Sets the parameters for the Gamma prior over the concentration. Note that whilst alpha and beta are used for the parameter names, in accordance with standard terminology for Gamma distributions, they are not related to the model variable names. Default values are (1,1). The concentration parameter controls how much information the model requires to justify using a stick, such that lower numbers result in fewer sticks, higher numbers in larger numbers of sticks. The concentration parameter is learnt from the data, under the Gamma distribution prior set with this method, but this prior can still have a strong effect. The default is (1,1), which means the model requires lots of data before it will create a cluster - this is a very conservative setting. My experience is that (1/8,1/8) is a better choice, as (1,1) tends to underestimate the number of clusters while (1/8,1/8) is much weaker, and matches my human perception of if a cluster exists/is noise much better. There is of course no guarantee that my human perception is a good predictor."""
     self.beta[0] = alpha
     self.beta[1] = beta
 
@@ -125,7 +129,7 @@ class DPGMM:
       self.data.append(numpy.reshape(sample, (1,self.dims)))
     else:
       assert(len(sample.shape)==2)
-      assert(sampler.shape[1]==self.dims)
+      assert(sample.shape[1]==self.dims)
       self.data.append(sample)
 
   def getDM(self):

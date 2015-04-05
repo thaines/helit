@@ -96,6 +96,7 @@ class GaussianPrior:
     
       mean = numpy.average(samples, axis=0)
       
+      delta = samples - mean[numpy.newaxis,:]
       scatter = numpy.tensordot(delta, delta, ([0],[0]))
 
     else:
@@ -107,7 +108,7 @@ class GaussianPrior:
       
       mean = numpy.average(samples, axis=0, weights=weight)
       
-      delta = samples - mean.reshape((1,-1))
+      delta = samples - mean[numpy.newaxis,:]
       scatter = numpy.tensordot(weight.reshape((-1,1))*delta, delta, ([0],[0]))
 
     # Update parameters...
