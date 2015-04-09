@@ -1409,9 +1409,7 @@ struct CompositeConfig
 
 
 KernelConfig Composite_config_new(int dims, const char * config)
-{
- int child;
- 
+{ 
  // First pass to count how many child kernels there are...
   int children = 0;
   char * targ = (char*)(config + 1); // Skip starting (
@@ -1420,7 +1418,7 @@ KernelConfig Composite_config_new(int dims, const char * config)
    children += 1;
    
    // Skip dims...
-    child = strtol(targ, &targ, 0); // Compiler warns if I don't assign it to something:-/
+    dims = strtol(targ, &targ, 0);
     ++targ; // Skip :
     
    // Skip kernel spec...
@@ -1457,6 +1455,7 @@ KernelConfig Composite_config_new(int dims, const char * config)
  // Second pass to fill in the data structure...
   targ = (char*)(config + 1); // Skip starting (
   
+  int child;
   for (child=0; child<children; child++)
   {
    ret->child[child].dims = strtol(targ, &targ, 0);
@@ -1469,7 +1468,7 @@ KernelConfig Composite_config_new(int dims, const char * config)
     if (strncmp(ListKernel[i]->name, targ, nlength)==0)
     {
      targ += nlength;
-     ListKernel[i]->config_verify(dims, targ, &nlength);
+     ListKernel[i]->config_verify(ret->child[child].dims, targ, &nlength);
      
      ret->child[child].kernel = ListKernel[i];
      ret->child[child].config = ListKernel[i]->config_new(ret->child[child].dims, targ);
@@ -1499,7 +1498,7 @@ const char * Composite_config_verify(int dims, const char * config, int * length
  while ((targ[0]!=')')&&(targ[0]!=0))
  {
   // Count how many dimensions this kernel covers...
-   int dims = strtol(targ, &targ, 0);
+   dims = strtol(targ, &targ, 0);
    if (dims<1) return "dimensions of child kernel must be at least 1.";
    if (targ==NULL) return "unexpected end of string.";
    if (targ[0]!=':') return "did not get an expected :.";
