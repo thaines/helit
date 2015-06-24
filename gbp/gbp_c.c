@@ -198,6 +198,8 @@ static HalfEdge * GBP_always_get_edge(GBP * this, int a, int b)
 
 void GBP_new(GBP * this, int node_count, int block_size)
 {
+ this->last_delta = -1.0;
+ 
  this->node_count = node_count;
  this->node = (Node*)malloc(this->node_count * sizeof(Node));
  
@@ -1677,6 +1679,7 @@ static PyObject * GBP_solve_bp_py(GBP * self, PyObject * args)
     
    // Check epsilon, update iteration count, break if done and swap the direction...
     ++iters;
+    self->last_delta = delta;
     if (delta<epsilon) break;
     if (iters>=max_iters) break;
     dir *= -1;
@@ -1805,6 +1808,7 @@ static PyObject * GBP_solve_trws_py(GBP * self, PyObject * args)
     
     if ((iters%2)==0)
     {
+     self->last_delta = delta;
      if (delta<epsilon) break;
      delta = 0.0;
     }
@@ -2156,6 +2160,7 @@ static PyObject * GBP_result_sd_py(GBP * self, PyObject * args)
 
 static PyMemberDef GBP_members[] =
 {
+ {"last_delta", T_FLOAT, offsetof(GBP, last_delta), READONLY, "Change of parameters that occured in the last iteration - the value compared to epsilon to decide if its converged."},
  {"node_count", T_INT, offsetof(GBP, node_count), READONLY, "Number of nodes in the graph"},
  {"edge_count", T_INT, offsetof(GBP, edge_count), READONLY, "Number of edges in the graph"},
  {"block_size", T_INT, offsetof(GBP, block_size), 0, "Number of edges worth of memory to allocate each time it runs out of space for more. Can be editted whenever you want, but will only affect future allocations."},

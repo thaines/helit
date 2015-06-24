@@ -88,6 +88,8 @@ struct GBP
 {
  PyObject_HEAD
  
+ float last_delta;
+ 
  int node_count;
  Node * node;
  
