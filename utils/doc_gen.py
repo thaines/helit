@@ -107,6 +107,37 @@ class DocGen:
     self.wiki.write('----\n\n')
   
   
+  def addOther(self, text, title, fls = True):
+    """Adds something else to the documentation - same as file but when the data is as a string within Python already."""
+    html = []
+    wiki = []
+    for i, line in enumerate(text.splitlines()):
+      hl = line.replace('\n', '')
+      if i==0 and fls:
+        hl = '<strong>' + hl + '</strong>'
+      for ext in ['py','txt']:
+        if '.%s - '%ext in hl:
+          s = hl.split('.%s - '%ext, 1)
+          hl = '<i>' + s[0] + '.%s</i> - '%ext + s[1]
+      html.append(hl)
+      
+      wl = line.strip()
+      if i==0 and fls:
+        wl = '*%s*'%wl
+      for ext in ['py','txt']:
+        if '.%s - '%ext in wl:
+          s = wl.split('.%s - '%ext, 1)
+          wl = '`' + s[0] + '.%s` - '%ext + s[1] + '\n'
+      wiki.append(wl)
+        
+
+    self.html.write(self.doc.bigsection(title, '#ffffff', '#7799ee', '<br/>'.join(html)))
+    
+    self.wiki.write('== %s ==\n'%title)
+    self.wiki.write('\n'.join(wiki))
+    self.wiki.write('----\n\n')
+ 
+ 
   def addVariable(self, var, desc):
     """Adds a variable to the documentation. Given the nature of this you provide it as a pair of strings - one referencing the variable, the other some kind of description of its use etc.."""
     self.html_variables += '<strong>%s</strong><br/>'%var

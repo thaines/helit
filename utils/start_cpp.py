@@ -22,9 +22,19 @@ def start_cpp(hash_str = None):
   frame = inspect.currentframe().f_back
   info = inspect.getframeinfo(frame)
   if hash_str==None:
-    return '#line %i "%s"\n'%(info[1],info[0])
+    return '#line %i "%s"\n' % (info[1], info[0])
   else:
     h = hashlib.md5()
     h.update(hash_str)
     hash_val = h.hexdigest()
-    return '#line %i "%s" // %s\n'%(info[1],info[0],hash_val)
+    return '#line %i "%s" // %s\n' % (info[1], info[0], hash_val)
+
+
+
+def load_cpp(fn):
+  """Given a filename this loads the file and returns a string representing it. Before doing so it adjusts it such that the correct filename and line numbers will appear when things go wrong when using scipy.weave."""
+  f = open(fn, 'r')
+  data = f.read()
+  f.close()
+  
+  return '#line 1 "%s"\n%s' % (fn, data)
