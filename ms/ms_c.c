@@ -1342,7 +1342,8 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
 {
  // Get the argument - a data matrix... 
   PyArrayObject * start;
-  if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &start)) return NULL;
+  float clamp = 0.0;
+  if (!PyArg_ParseTuple(args, "O!|f", &PyArray_Type, &start, &clamp)) return NULL;
 
  // Check the input is acceptable...
   npy_intp feats = DataMatrix_ext_features(&self->dm);
@@ -1387,7 +1388,14 @@ static PyObject * MeanShift_probs_py(MeanShift * self, PyObject * args)
     float p = prob(self->spatial, self->kernel, self->config, fv, self->norm, self->quality);
    
    // Store it...
-    *(float*)PyArray_GETPTR1(out, i) = p;
+    if (p>clamp)
+    {
+     *(float*)PyArray_GETPTR1(out, i) = p;
+    }
+    else
+    {
+     *(float*)PyArray_GETPTR1(out, i) = clamp;
+    }
   }
  
  // Return the assigned clusters...
@@ -2617,7 +2625,7 @@ static PyMethodDef MeanShift_methods[] =
  {"kl", (PyCFunction)MeanShift_kl_py, METH_VARARGS, "Calculates and returns an approximation of the kullback leibler divergance, of the first parameter from self - D(self||arg1). In other words, it returns the average number of extra nats for encoding draws from p if you encode them optimally under the assumption they come from the density estimate of the mean shift object given as the first parameter. Uses the samples within self and solves using them as a sample from the distribution - consequntially the constraint the the KL-divergance be positive is broken by this estimate and you can get negative values out. What to do about this is left to the user. An optional second parameter provides a clamp on how low probability calculations for arg1 values are allowed to get, to avoid divide by zero - it defaults to 1e-16. An optional third parameter switches it from using all exemplars in its estiamte to using a bootstrap draw of the given size instead - saves time at the expense of more noise in the estimate."},
  
  {"prob", (PyCFunction)MeanShift_prob_py, METH_VARARGS, "Given a feature vector returns its probability, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return value can be zero."},
- {"probs", (PyCFunction)MeanShift_probs_py, METH_VARARGS, "Given a data matrix returns an array (1D) containing the probability of each feature, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return values can include zeros."},
+ {"probs", (PyCFunction)MeanShift_probs_py, METH_VARARGS, "Given a data matrix returns an array (1D) containing the probability of each feature, as calculated by the kernel density estimate that is defined by the data and kernel. Be warned that the return values can include zeros, but you can provide an optional second parameter which will clamp no output value to be lower than it."},
  
  {"draw", (PyCFunction)MeanShift_draw_py, METH_NOARGS, "Allows you to draw from the distribution represented by the kernel density estimate. Returns a vector and makes use of the internal RNG."},
  {"draws", (PyCFunction)MeanShift_draws_py, METH_VARARGS, "Allows you to draw from the distribution represented by the kernel density estimate. Same as draw except it returns a matrix - you provide a single argument of how many draws to make. Returns an array, <# draws>X<# features> and makes use of the internal RNG."},
