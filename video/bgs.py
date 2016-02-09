@@ -62,7 +62,7 @@ baseFrame = 1
 man = video.Manager()
 
 
-if options.sequence: vid = video.num_to_seq(inFN, video.ReadCV)
+if options.sequence: vid = video.ReadCV_IS(inFN)
 else: vid = video.ReadCV(inFN)
 man.add(vid)
 
