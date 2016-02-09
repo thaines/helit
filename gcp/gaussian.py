@@ -70,7 +70,7 @@ class Gaussian:
 
   def getCovariance(self):
     """Returns the covariance matrix."""
-    if self.covariance==None:
+    if (self.covariance is None):
       self.covariance = numpy.linalg.inv(self.precision)
     return self.covariance
 

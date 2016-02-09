@@ -29,17 +29,17 @@ class DPGMM:
       self.data = map(lambda x: x.copy(), dims.data)
 
       self.prior = gcp.GaussianPrior(dims.prior)
-      self.priorT = gcp.StudentT(dims.priorT) if dims.priorT!=None else None
+      self.priorT = gcp.StudentT(dims.priorT) if (dims.priorT is not None) else None
       self.n = map(lambda x: gcp.GaussianPrior(x), dims.n)
       self.beta = dims.beta.copy()
       self.alpha = dims.alpha.copy()
       self.v = dims.v.copy()
-      self.z = None if dims.z==None else dims.z.copy()
+      self.z = None if (dims.z is None) else dims.z.copy()
 
       self.skip = dims.skip
       self.epsilon = dims.epsilon
 
-      self.nT = map(lambda x: None if x==None else gcp.StudentT(x), dims.nT)
+      self.nT = map(lambda x: None if (x is None) else gcp.StudentT(x), dims.nT)
       self.vExpLog = dims.vExpLog.copy()
       self.vExpNegLog = dims.vExpNegLog.copy()
     else:
@@ -73,7 +73,7 @@ class DPGMM:
     self.n += map(lambda _: gcp.GaussianPrior(self.dims), xrange(inc))
     self.v = numpy.append(self.v,numpy.ones((inc,2), dtype=numpy.float32),0)
     
-    if self.z!=None:
+    if (self.z is not None):
       self.z = numpy.append(self.z, numpy.random.mtrand.dirichlet(32.0*numpy.ones(inc), size=self.z.shape[0]), 1)
       weight = numpy.random.mtrand.dirichlet(numpy.ones(2), size=self.z.shape[0])
       self.z[:,:self.stickCap-inc] *= weight[:,0].reshape((self.z.shape[0],1))
@@ -156,7 +156,7 @@ class DPGMM:
 
     # Deal with the z array being incomplete - enlarge/create as needed. Random initialisation is used...
     dm = self.getDM()
-    if self.z==None or self.z.shape[0]<dm.shape[0]:
+    if (self.z is None) or self.z.shape[0]<dm.shape[0]:
       newZ = numpy.empty((dm.shape[0],self.stickCap), dtype=numpy.float32)
       
       if self.z==None: offset = 0

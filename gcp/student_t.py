@@ -77,7 +77,7 @@ class StudentT:
 
   def getInvScale(self):
     """Returns the inverse of the scale matrix."""
-    if self.invScale==None:
+    if self.invScale is None:
       self.invScale = numpy.linalg.inv(self.scale)
     return self.invScale
 
