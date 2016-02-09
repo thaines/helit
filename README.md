@@ -7,7 +7,7 @@ It should be noted that I develop exclusively with 64 bit Linux, but being pytho
 
 This code is primarily for research, which is to say it is not of industrial standards. Some of it is sufficiently neat and robust that it would probably pass the needed testing regime however, once you slapped some sanity checking code in. Some of it is not however - depends mostly on how far out the next deadline was! Regardless, do report bugs to me so I can try to find the time to fix them. I'll also consider feature requests, so don't be afraid to ask.
 
-If anyone wants to contact me for any of the above reasons, or any other good reason, then my email address is <x>@<y>.com where <x>=thaines and <y>=gmail.
+If anyone wants to contact me for any of the above reasons, or any other good reason, then my email address is [x]@[y].com where [x]=thaines and [y]=gmail.
 
 I started this with a Subversion repository, which quickly got changed to a Mercurial repository, but then after that Google code added Git support, which I am much more familiar with. Unsurprisingly the repository now uses Git, after a certain amount of fiddling, which it should remain with for sometime as it is my favourite version control system at this instant. (Right now a lot of people seem to be finding this page by Googling for mercurial to git conversion - the tool you need is called hg-fast-export.sh. Note that after conversion your master will not match the remote repositories master - a rebase will fix that.)
 
