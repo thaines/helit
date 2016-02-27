@@ -27,7 +27,7 @@ dir_conc = [2.0, 16.0, 128.0, 1024.0]
 
 
 # Do the 'simple' kernels...
-for kernel in ['uniform', 'triangular', 'epanechnikov', 'cosine', 'gaussian', 'cauchy']:
+for kernel in ['uniform', 'triangular', 'epanechnikov', 'cosine', 'gaussian', 'cauchy', 'logistic']:
   for dim in dimensions:
     # Create a mean shift object with a single sample of the provided kernel type...
     ms = MeanShift()

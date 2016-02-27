@@ -135,11 +135,16 @@ extern const Kernel Gaussian;
 // A fat tailed one - the Cauchy distribution on distance from the centre. Cutoff is required for this kernel - can be quite expensive as you need a fairly distant cutoff...
 extern const Kernel Cauchy;
 
+// The other fat tailed one - the Logistic distribution on distance from the centre. Has the same distant cutoff therefore expensive issue as the Cauchy...
+extern const Kernel Logistic;
+
+
 // A kernel based on the von-Mises-Fisher distribution, for dealing with directional data. Requires all samples be on the unit circle. Uses the alpha parameter as the concentration of the kernel being used...
 extern const Kernel Fisher;
 
 // A Fisher (partial-)wrapper - this is for when a direction vector and its negated direction vector are equivalent, i.e. when rotations of 180 degrees don't matter. Whilst traditionally this is the realm of the Bingham distribution this simply takes two Fisher distributions, one with the direction of the input, the other its negative, and sums them together with equal probability. In the 2D case this is equivalent to the Bingham distribution anyway...
 extern const Kernel MirrorFisher;
+
 
 // A kernel that allows you to combine kernels, so you can have different kernels on different features within a feature vector.
 extern const Kernel Composite;

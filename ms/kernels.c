@@ -850,6 +850,128 @@ const Kernel Cauchy =
 
 
 
+// The logistic kernel...
+float Logistic_weight(int dims, KernelConfig config, float * offset)
+{
+ float dist_sqr = 0.0;
+ 
+ int i;
+ for (i=0; i<dims; i++)
+ {
+  dist_sqr += offset[i] * offset[i];
+ }
+ 
+ float exp_dist = exp(-sqrt(dist_sqr));
+ 
+ return exp_dist / ((1.0 + exp_dist) * (1.0 + exp_dist));
+}
+
+float Logistic_norm(int dims, KernelConfig config)
+{
+ float ret = 0.0;
+ 
+ // Can't integrate out analytically, so numerical integration it is (match the range of high quality)...
+  int i;
+  const int samples = 1024;
+  const float step = 10.0 / samples;
+  for (i=0; i<samples; i++)
+  {
+   float r = (i+0.5) * step;
+   float exp_dist = exp(-r);
+   ret += pow(r, dims-1) * step * exp_dist / ((1.0 + exp_dist) * (1.0 + exp_dist));
+  }
+ 
+ return Uniform_norm(dims, NULL) / (dims * ret);
+}
+
+float Logistic_range(int dims, KernelConfig config, float quality)
+{
+ return (1.0-quality)*3.3 + quality*10.0;
+}
+
+void Logistic_draw(int dims, KernelConfig config, PhiloxRNG * rng, const float * center, float * out)
+{
+ // Put a Gaussian into each out, keeping track of the squared length...
+  int i;
+  float radius = 0.0;
+  for (i=0; i<dims; i+=2)
+  {
+   // Output...
+    float * second = (i+1<dims) ? (out+i+1) : NULL;
+    out[i] = PhiloxRNG_Gaussian(rng, second);
+    
+    radius += out[i] * out[i];
+    if (second!=NULL) radius += out[i+1] * out[i+1];
+  }
+  
+ // Convert from squared radius to not-squared radius...
+  radius = sqrt(radius);
+  
+ // Draw the radius we are going to emit; prepare the multiplier...  
+  radius = -log(2.0 / (PhiloxRNG_uniform(rng) + 1.0) - 1.0) / radius;
+ 
+ // Normalise so its at the required distance, add the center offset...
+  for (i=0; i<dims; i++)
+  {
+   out[i] = center[i] + out[i] * radius;
+  }
+}
+
+
+float Logistic_mult_mass(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, MultCache * cache)
+{
+ return mult_area_mci(&Logistic, config, dims, terms, fv, scale, cache);
+}
+
+void Logistic_mult_draw(int dims, KernelConfig * config, int terms, const float ** fv, const float ** scale, float * out, MultCache * cache, int fake)
+{
+ if (fake==2)
+ {
+  // We can do the average of feature vector positions option... 
+   int i, j;
+   for (i=0; i<dims; i++) out[i] = 0.0;
+   
+   for (j=0; j<terms; j++)
+   {
+    for (i=0; i<dims; i++)
+    {
+     out[i] += ((fv[j][i] / scale[j][i]) - out[i]) / (j+1);
+    }
+   }
+ }
+ else
+ {
+  // For options 0 and 1 do a proper draw...   
+   mult_draw_mh(&Logistic, config, dims, terms, fv, scale, out, cache);
+ }
+}
+
+
+
+const Kernel Logistic =
+{
+ "logistic",
+ "Uses the Logistic distribution pdf on distance from the origin in the hypersphere. An alternative to the Cauchy, and even more computationally intensive. To understand which bell distribution to choose (Gaussian, Cauchy or Logistic) consider the behaviour of multiplying two distributions when only the tails overlap. If that doesn't matter then you might as well go Gaussian, as its computationally cheaper.",
+ NULL,
+ Kernel_config_new,
+ Kernel_config_verify,
+ Kernel_config_acquire,
+ Kernel_config_release,
+ Logistic_weight,
+ Logistic_norm,
+ Logistic_range,
+ Kernel_to_offset,
+ Kernel_offset,
+ Logistic_draw,
+ Logistic_mult_mass,
+ Logistic_mult_draw,
+ Kernel_states,
+ Kernel_next,
+ Kernel_byte_size,
+};
+
+
+
 // The von-Mises Fisher kernel...
 KernelConfig Fisher_config_new(int dims, const char * config)
 {
@@ -1858,6 +1980,7 @@ const Kernel * ListKernel[] =
  &Cosine,
  &Gaussian,
  &Cauchy,
+ &Logistic,
  &Fisher,
  &MirrorFisher,
  &Composite,

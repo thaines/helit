@@ -77,7 +77,7 @@ cv.SaveImage('draw_input.png', image)
 # Setup the mean shift object...
 ms = MeanShift()
 ms.set_data(data, 'df')
-normal_kernels = ['uniform', 'triangular', 'epanechnikov', 'cosine', 'gaussian', 'cauchy']
+normal_kernels = ['uniform', 'triangular', 'epanechnikov', 'cosine', 'gaussian', 'cauchy', 'logistic']
 ms.set_kernel(random.choice(normal_kernels))
 ms.set_spatial('kd_tree')
 

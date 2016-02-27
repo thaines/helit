@@ -28,7 +28,7 @@ data = numpy.concatenate((a,b))
 ms = MeanShift()
 ms.set_data(data, 'd')
 
-normal_kernels = ['uniform', 'triangular', 'epanechnikov', 'cosine', 'gaussian', 'cauchy']
+normal_kernels = ['uniform', 'triangular', 'epanechnikov', 'cosine', 'gaussian', 'cauchy', 'logistic']
 ms.set_kernel(random.choice(normal_kernels))
 ms.set_spatial(random.choice(ms.spatials()))
 

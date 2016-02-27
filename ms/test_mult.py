@@ -123,7 +123,7 @@ cv.SaveImage('mult_input_draw.png', img)
   
 
 # Iterate and do each of the normal kernels in turn - we want to really dig into this...
-kernels = ['gaussian', 'uniform', 'triangular', 'epanechnikov', 'cosine', 'cauchy']
+kernels = ['gaussian', 'uniform', 'triangular', 'epanechnikov', 'cosine', 'cauchy', 'logistic']
 
 for kernel in kernels:
   print 'Processing', kernel
@@ -182,7 +182,7 @@ for kernel in kernels:
 
   # Multiply them togther properly...
   p = ProgBar()
-  output = numpy.empty((draw, 2), dtype=numpy.float32);
+  output = numpy.empty((draw, 2), dtype=numpy.float32)
   for i in xrange(draw):
     p.callback(i, draw)
     MeanShift.mult(ms, output[i,:].reshape((1,-1)), fake=2)

@@ -36,7 +36,7 @@ void MultCache_new(MultCache * self)
  
  self->gibbs_samples = 1;
  self->mci_samples = 1000;
- self->mh_proposals = 8;
+ self->mh_proposals = 16;
 }
 
 
@@ -338,17 +338,18 @@ int mult_draw_mh(const Kernel * kernel, KernelConfig * config, int dims, int ter
  float * proposal = cache->temp_dims1;
  float * p_temp = cache->temp_dims2;
  float * out_prob = cache->temp_terms1;
- float * proposal_prob = cache->temp_terms1;
+ float * proposal_prob = cache->temp_terms2;
  int proposals = cache->mh_proposals * terms;
  
  int i, j, k;
  int accepts = 0;
  const float norm = 1.0; //kernel->norm(dims, config); // Always cancels out.
  
- // Create an initial proposal - just draw from the first distribution, scale, and fill in the probability values in out_prob...
-  kernel->draw(dims, (config!=NULL)?config[0]:NULL, cache->rng, fv[0], out);
+ // Create an initial proposal - just draw from a randomly selected term, scale, and fill in the probability values in out_prob...
+  int term = PhiloxRNG_next(cache->rng) % terms;
+  kernel->draw(dims, (config!=NULL)?config[term]:NULL, cache->rng, fv[term], out);
   
-  for (j=0; j<dims; j++) out[j] /= scale[0][j];
+  for (j=0; j<dims; j++) out[j] /= scale[term][j];
   
   for (k=0; k<terms; k++)
   {
@@ -363,10 +364,9 @@ int mult_draw_mh(const Kernel * kernel, KernelConfig * config, int dims, int ter
   }
   
  // Loop through creating proposals and accepting/rejecting them - by the end we should have a reasonable draw in out...
-  int term = 0; // Which term to draw the next proposal from - cycle through them as one might be extra pointy and have a much higher accept rate than the others. Could get all complex and one armed bandit-y, but just doing this for now.
   for (i=0; i<proposals; i++)
   {
-   // Select the term we are going to draw from...
+   // Select the term we are going to draw from - loop through as we don't know which term will have the best accept rate, so at least this way we will diffuse the risk...
     term = (term+1) % terms;
     
    // Draw from that term, converting the draw to global space...
