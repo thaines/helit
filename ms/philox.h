@@ -50,6 +50,15 @@ float PhiloxRNG_uniform(PhiloxRNG * this);
 // Returns a standard Normal draw from the rng; can optionally output a second, which is independent of the first...
 float PhiloxRNG_Gaussian(PhiloxRNG * this, float * second);
 
+// Returns a draw from a Gamma distribution, where beta (the scale) is fixed to one...
+float PhiloxRNG_UnscaledGamma(PhiloxRNG * this, float alpha);
+
+// Returns a draw from a Gamma distribution...
+float PhiloxRNG_Gamma(PhiloxRNG * this, float alpha, float beta);
+
+// Returns a draw from a Beta distribution...
+float PhiloxRNG_Beta(PhiloxRNG * this, float alpha, float beta);
+
 
 
 #endif

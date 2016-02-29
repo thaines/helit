@@ -85,6 +85,7 @@ void PhiloxRNG_init(PhiloxRNG * this, unsigned int * index)
  this->next = 4;
 }
 
+
 unsigned int PhiloxRNG_next(PhiloxRNG * this)
 {
  if (this->next>3)
@@ -118,10 +119,12 @@ unsigned int PhiloxRNG_next(PhiloxRNG * this)
  return ret;
 }
 
+
 float PhiloxRNG_uniform(PhiloxRNG * this)
 {
  return (float)PhiloxRNG_next(this) / 4294967296.0; 
 }
+
 
 float PhiloxRNG_Gaussian(PhiloxRNG * this, float * second)
 {
@@ -133,4 +136,91 @@ float PhiloxRNG_Gaussian(PhiloxRNG * this, float * second)
  
  if (second!=NULL) *second = mult * sin(inner);
  return mult * cos(inner);
+}
+
+
+float PhiloxRNG_UnscaledGamma(PhiloxRNG * this, float alpha)
+{
+ // Check if the alpha value is high enough to approximate via a normal distribution...
+  if (alpha>32.0)
+  {
+   while (1)
+   {
+    float ret = alpha + sqrt(alpha) * PhiloxRNG_Gaussian(this, NULL);
+    if (ret<0.0) continue;
+    return ret;
+   }
+  }
+
+ // If alpha is one, within tolerance, just use an exponential distribution...
+  if (fabs(alpha-1.0)<1e-4)
+  {
+   return -log(1.0 - PhiloxRNG_uniform(this));
+  }
+
+ if (alpha>1.0)
+ {
+  // If alpha is 1 or greater use the Cheng/Feast method...
+   while (1)
+   {
+    float u1 = PhiloxRNG_uniform(this);
+    float u2 = PhiloxRNG_uniform(this);
+    float v = ((alpha - 1.0/(6.0*alpha))*u1) / ((alpha-1.0)*u2);
+
+    float lt2 = 2.0*(u2-1.0)/(alpha-1) + v + 1.0/v;
+    if (lt2<=2.0)
+    {
+     return (alpha-1.0)*v;
+    }
+
+    float lt1 = 2.0*log(u2)/(alpha-1.0) - log(v) + v;
+    if (lt1<=1.0)
+    {
+     return (alpha-1.0)*v;
+    }
+   }
+ }
+ else
+ {
+  // If alpha is less than 1 use a rejection sampling method...
+   while (1)
+   {
+    float u1 = 1.0 - PhiloxRNG_uniform(this);
+    float u2 = 1.0 - PhiloxRNG_uniform(this);
+    float u3 = 1.0 - PhiloxRNG_uniform(this);
+
+    float frac, point;
+    if (u1 <= (M_E / (M_E + alpha)))
+    {
+     frac = pow(u2, 1.0/alpha);
+     point = u3 * pow(frac, alpha-1.0);
+    }
+    else
+    {
+     frac = 1.0 - log(u2);
+     point = u3 * exp(-frac);
+    }
+
+    if (point <= (pow(frac, alpha-1.0) * exp(-frac)))
+    {
+     return frac;
+     break;
+    }
+   }
+ }
+}
+
+
+float PhiloxRNG_Gamma(PhiloxRNG * this, float alpha, float beta)
+{
+ return PhiloxRNG_UnscaledGamma(this, alpha) / beta;
+}
+
+
+float PhiloxRNG_Beta(PhiloxRNG * this, float alpha, float beta)
+{
+ float g1 = PhiloxRNG_UnscaledGamma(this, alpha);
+ float g2 = PhiloxRNG_UnscaledGamma(this, beta);
+
+ return g1 / (g1 + g2);
 }
