@@ -22,7 +22,7 @@ setup(name='gbp',
       description='Gaussian belief propagation',
       author='Tom SF Haines',
       author_email='thaines@gmail.com',
-      url='http://code.google.com/p/haines/',
+      url='https://github.com/thaines/helit',
       py_modules=['gbp'],
       ext_modules=[ext],
      )
