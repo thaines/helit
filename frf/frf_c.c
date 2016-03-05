@@ -1526,7 +1526,7 @@ static PyMemberDef Forest_members[] =
  {"bootstrap", T_BOOL, offsetof(Forest, bootstrap), 0, "True to train trees on bootstrap draws of the training data (The default), False to just train on everything."},
  {"opt_features", T_INT, offsetof(Forest, opt_features), 0, "Number of features to randomly select to try optimising for each split in the forest. Defaults so high as to be irrelevant. The recomended value to set this to is the sqrt of the number of features - a good tradeoff between tree independence and tree performance."},
  {"min_exemplars", T_INT, offsetof(Forest, min_exemplars), 0, "Minimum number of exemplars to allow in a node - no node should ever have less than this count in it. Defaults to 1, making it irrelevant."},
- {"max_splits", T_INT, offsetof(Forest, max_splits), 0, "Maximum number of splits when building a new tree. Defaults so high you will run out of memeory first."},
+ {"max_splits", T_INT, offsetof(Forest, max_splits), 0, "Maximum number of splits when building a new tree. Defaults so high you will run out of memory first."},
  
  {"seed0", T_UINT, offsetof(Forest, key[0]), 0, "One of the 4 seeds that drives the random number generator used during tree construction. Will change as its moved along by the need for more pseudo-random data."},
  {"seed1", T_UINT, offsetof(Forest, key[1]), 0, "One of the 4 seeds that drives the random number generator used during tree construction. Will change as its moved along by the need for more pseudo-random data."},
