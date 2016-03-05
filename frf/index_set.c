@@ -81,24 +81,14 @@ void IndexSet_init_all(IndexSet * this)
 void IndexSet_init_bootstrap(IndexSet * this, unsigned int key[4])
 {
  int i;
- unsigned int rand[4];
- int rand_index = 4;
+ 
+ PhiloxRNG rng;
+ PhiloxRNG_init(&rng, key);
     
  for (i=0; i<this->size; i++)
  {
-  // Get some random data...
-   if (rand_index>=4)
-   {
-    int j;
-    for (j=0; j<4; j++) rand[j] = key[j];
-    inc(key);
-       
-    philox(rand);       
-    rand_index = 0; 
-   }
-      
-   unsigned int r = rand[rand_index];
-   rand_index += 1;
+  // Get some random data... 
+   unsigned int r = PhiloxRNG_next(&rng);
    
   // Store a random value in the range...
    this->vals[i] = r % this->size;

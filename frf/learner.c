@@ -457,28 +457,17 @@ int LearnerSet_optimise(LearnerSet * this, InfoSet * info, IndexView * view, int
 {
  int i;
  
+ PhiloxRNG rng;
+ PhiloxRNG_init(&rng, key);
+ 
  // Decide which features to optimise...
   if (features<this->features)
   {
    // We are not doing all of them - shuffle the feat array, at least enough entries for the later loop...
-    unsigned int rand[4];
-    int rand_index = 4;
-    
     for (i=0; i<features; i++)
     {
      // Get some random data...
-      if (rand_index>=4)
-      {
-       int j;
-       for (j=0; j<4; j++) rand[j] = key[j];
-       inc(key);
-       
-       philox(rand);       
-       rand_index = 0; 
-      }
-      
-      unsigned int r = rand[rand_index];
-      rand_index += 1;
+      unsigned int r = PhiloxRNG_next(&rng);
       
      // Select an index in feat to swap into the current position...
       int target = i + (r % (this->features - i));
