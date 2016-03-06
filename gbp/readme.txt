@@ -2,7 +2,7 @@ Gaussian Belief Propagation
 
 Simple linear solver that has an interface that proves convenient for certain problems. Allows you to construct an arbitrary graph of univariate Gaussian random variables. For each node you can specify a unary term, as a Gaussian over its value. For each edge a pairwise term, as a Gaussian over the offset between them and/or a simple precision between them. It outputs the marginals for each node, the means of which happen to also be the maximum likelihood assignment. Note that the entire system is implemented in terms of precision, which is defined as the inverse of the variance, or the inverse of the standard deviation squared.
 
-It additionally includes a linear solver for symmetric ax=b problems, more as a demonstration than code you would actually use as it only makes sense for sparse problems and yet does not utilise a sparse matrix class!
+It additionally includes a linear solver for symmetric ax=b problems, more as a demonstration than code you would actually use as it only makes sense for sparse problems, and yet does not utilise a sparse matrix class! If your problem is a chain then you're solving a Kalman smoothing problem (or filtering, if you incrementally grow the model and only request the marginal of the last value each time!).
 
 This is an implementation of the core technique I used in the paper 'Integrating Stereo with Shape-from-Shading derived Orientation Information', by Tom S.F. Haines and Richard C. Wilson, but I was not the first to use it. (There is an old C++ implementation in my PhD code repository.)
 
