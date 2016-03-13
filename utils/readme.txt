@@ -25,9 +25,6 @@ gamma_cpp.py - Implimentations of the Gamma and related functions in C.
 matrix_cpp.py - Some matrix operations in C++.
 
 
-philoc.h/.c: - A random number generator.
-
-
 readme.txt - This file, which is copied into the html documentation.
 
 make_doc.py - code that generates the html documentation.
