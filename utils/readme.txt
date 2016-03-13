@@ -3,7 +3,7 @@ Utils
 A selection of miscellaneous utilities, for doing various boring tasks.
 
 
-cvarray.py - Code for converting between open cv and numpy arrays.
+cvarray.py - Code for converting between open cv and numpy arrays. No longer necesary - kept for historical code.
 
 prog_bar.py - A simple progress bar object, for command line interface feedback.
 
