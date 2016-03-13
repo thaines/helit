@@ -62,4 +62,6 @@ Current contents (alphabetical):
 
 **utils**: (Mixed) Basic utilities used by almost all of my modules. Most useful are the progress bar class, and the make code, that means all my Python C modules automatically compile - great when doing research as forgetting to run make is no longer a problem! Unusual stuff includes python code to change a python programs process name (Good for those killall's), a function that adds line numbers to scipy.weave code, which is essential if you want to debug them, a multiprocess map replacement, and code for generating documentation.
 
+**utils_gui**: (BSD) An image viewer for GTK 3. Works using a tile concept (for speed) and supports efficient zooming, absurdly large images and using a tablet to control it.
+
 **video**: (GPL v3) A node based system for processing video, that includes various computer vision algorithms, e.g. optical flow, background subtraction. This last one is my own algorithm: 'Background Subtraction with Dirichlet Processes' by Tom SF Haines & Tao Xiang, ECCV 2012. Uses OpenCV and scipy; also compiles C code and uses OpenCL when available. 
