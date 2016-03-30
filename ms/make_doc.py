@@ -24,15 +24,18 @@ doc.addFile('readme.txt', 'Overview')
 text = []
 for kernel in ms.MeanShift.kernels():
   text.append(kernel)
+  text.append('')
   
   d = ms.MeanShift.info(kernel)
   text.append(d)
+  text.append('')
   
   c = ms.MeanShift.info_config(kernel)
   if c==None:
     text.append('Kernel does not require configuring')
   else:
     text.append(c)
+  text.append('')
   text.append('')
 
 doc.addOther('\n'.join(text), "Kernels", False)
@@ -43,9 +46,11 @@ doc.addOther('\n'.join(text), "Kernels", False)
 text = []
 for spatial in ms.MeanShift.spatials():
   text.append(spatial)
+  text.append('')
   
   d = ms.MeanShift.info(spatial)
   text.append(d)
+  text.append('')
   text.append('')
 
 doc.addOther('\n'.join(text), "Spatial Indexing Structures", False)
@@ -56,9 +61,11 @@ doc.addOther('\n'.join(text), "Spatial Indexing Structures", False)
 text = []
 for ball in ms.MeanShift.balls():
   text.append(ball)
+  text.append('')
   
   d = ms.MeanShift.info(ball)
   text.append(d)
+  text.append('')
   text.append('')
 
 doc.addOther('\n'.join(text), "Cluster Convergence Detection Methods (balls)", False)
@@ -72,9 +79,16 @@ for code in ms.MeanShift.converters():
   
   text.append(info['name'])
   text.append('code = %s' % info['code'])
+  text.append('')
+  
   text.append('external dimensions = %i' % info['external'])
+  text.append('')
+  
   text.append('internal dimensions = %i' % info['internal'])
+  text.append('')
+  
   text.append(info['description'])
+  text.append('')
   text.append('')
 
 doc.addOther('\n'.join(text), "Converters", False)

@@ -17,7 +17,7 @@ import math
 from scipy.special import gammaln, psi, polygamma
 from scipy import weave
 
-from utils.start_cpp import start_cpp
+from start_cpp import start_cpp
 
 
 

@@ -6,7 +6,7 @@ syntax: glob
 MANIFEST
 
 *.html
-*.wiki
+*.md
 
 df/*.png
 ms/*.png

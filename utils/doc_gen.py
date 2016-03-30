@@ -35,9 +35,8 @@ class DocGen:
     self.html_functions = ''
     self.html_classes = ''
     
-    self.wiki = open('%s.wiki'%name,'w')
-    self.wiki.write('#summary %s\n\n'%summary)
-    self.wiki.write('= %s= \n\n'%title)
+    self.wiki = open('%s.md'%name,'w')
+    self.wiki.write('# %s\n\n'%title)
     
     self.wiki_variables = ''
     self.wiki_functions = ''
@@ -59,17 +58,17 @@ class DocGen:
     
     
     if self.wiki_variables!='':
-      self.wiki.write('= Variables =\n\n')
+      self.wiki.write('## Variables\n\n')
       self.wiki.write(self.wiki_variables)
       self.wiki.write('\n')
       
     if self.wiki_functions!='':
-      self.wiki.write('= Functions =\n\n')
+      self.wiki.write('## Functions\n\n')
       self.wiki.write(self.wiki_functions)
       self.wiki.write('\n')
 
     if self.wiki_classes!='':
-      self.wiki.write('= Classes =\n\n')
+      self.wiki.write('## Classes\n\n')
       self.wiki.write(self.wiki_classes)
       self.wiki.write('\n')
 
@@ -92,7 +91,7 @@ class DocGen:
       
       wl = line.strip()
       if i==0 and fls:
-        wl = '*%s*'%wl
+        wl = '### %s'%wl
       for ext in ['py','txt']:
         if '.%s - '%ext in wl:
           s = wl.split('.%s - '%ext, 1)
@@ -102,9 +101,9 @@ class DocGen:
 
     self.html.write(self.doc.bigsection(title, '#ffffff', '#7799ee', '<br/>'.join(html)))
     
-    self.wiki.write('== %s ==\n'%title)
+    self.wiki.write('## %s\n'%title)
     self.wiki.write('\n'.join(wiki))
-    self.wiki.write('----\n\n')
+    self.wiki.write('\n---\n\n')
   
   
   def addOther(self, text, title, fls = True):
@@ -123,7 +122,7 @@ class DocGen:
       
       wl = line.strip()
       if i==0 and fls:
-        wl = '*%s*'%wl
+        wl = '### %s'%wl
       for ext in ['py','txt']:
         if '.%s - '%ext in wl:
           s = wl.split('.%s - '%ext, 1)
@@ -133,9 +132,9 @@ class DocGen:
 
     self.html.write(self.doc.bigsection(title, '#ffffff', '#7799ee', '<br/>'.join(html)))
     
-    self.wiki.write('== %s ==\n'%title)
+    self.wiki.write('## %s\n'%title)
     self.wiki.write('\n'.join(wiki))
-    self.wiki.write('----\n\n')
+    self.wiki.write('\n---\n\n')
  
  
   def addVariable(self, var, desc):
@@ -143,8 +142,8 @@ class DocGen:
     self.html_variables += '<strong>%s</strong><br/>'%var
     self.html_variables += '%s<br/><br/>\n'%desc
     
-    self.wiki_variables += '*`%s`*\n'%var
-    self.wiki_variables += '    %s\n\n'%desc
+    self.wiki_variables += '`%s`\n'%var
+    self.wiki_variables += '%s\n\n'%desc
 
 
   def addFunction(self, func):
@@ -168,8 +167,8 @@ class DocGen:
     if keywords!=None:
       arg_str += ', **%s'%keywords if arg_str!='' else '**%s'%keywords
     
-    self.wiki_functions += '*`%s(%s)`*\n'%(name, arg_str)
-    self.wiki_functions += '    %s\n\n'%doc
+    self.wiki_functions += '`%s(%s)`\n'%(name, arg_str)
+    self.wiki_functions += '%s\n\n'%doc
   
   
   def addClass(self, cls):
@@ -185,8 +184,8 @@ class DocGen:
     if len(parents)!=0:
       par_str += reduce(lambda a, b: '%s, %s'%(a,b), map(lambda p: p.__name__, parents))
     
-    self.wiki_classes += '== %s(%s) ==\n'%(name, par_str)
-    self.wiki_classes += '    %s\n\n'%doc
+    self.wiki_classes += '### %s(%s)\n'%(name, par_str)
+    self.wiki_classes += '%s\n\n'%doc
     
     methods = inspect.getmembers(cls, lambda x: inspect.ismethod(x) or inspect.isbuiltin(x) or inspect.isroutine(x))
     def method_key(pair):
@@ -231,7 +230,7 @@ class DocGen:
 
         doc = fetch_doc(cls, name)
         
-        self.wiki_classes += '*`%s(%s)`*\n'%(name, arg_str)
+        self.wiki_classes += '`%s(%s)`\n'%(name, arg_str)
         self.wiki_classes += '    %s\n\n'%doc
     
     
@@ -241,4 +240,4 @@ class DocGen:
       if not name.startswith('__'):
         if hasattr(var, '__doc__'): d = var.__doc__
         else: d = str(var)
-        self.wiki_classes += '*`%s`* = %s\n\n'%(name, d)
+        self.wiki_classes += '`%s` = %s\n\n'%(name, d)
