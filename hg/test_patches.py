@@ -47,10 +47,10 @@ sx = numpy.linspace(psize*0.5, shape[1] - psize*0.5, num=shape[1]/psize).astype(
 sy += psize * (numpy.random.rand(sy.shape[0]) - 0.5)
 sx += psize * (numpy.random.rand(sx.shape[0]) - 0.5)
 
-points = numpy.transpose(numpy.meshgrid(sy, sx)).reshape((-1, 2)).astype(numpy.float32)
+points = numpy.transpose(numpy.meshgrid(sy, sx)).reshape((-1, 2)).astype(numpy.float32)[:,::-1]
 
 angles = numpy.pi * 2.0 * numpy.random.rand(points.shape[0])
-rotations = numpy.transpose((numpy.sin(angles), numpy.cos(angles))).astype(numpy.float32)
+rotations = numpy.transpose((numpy.cos(angles), numpy.sin(angles))).astype(numpy.float32)
 
 
 

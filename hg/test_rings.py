@@ -44,16 +44,13 @@ image = {'r' : image[:,:,0], 'g' : image[:,:,1], 'b' : image[:,:,2]}
 radius = 0.25 * 32
 ang = numpy.linspace(0.0, numpy.pi*2.0, samples, endpoint=False)
 
-ring = numpy.concatenate((radius * numpy.sin(ang)[:,None], radius * numpy.cos(ang)[:,None]), axis=1)
+ring = numpy.concatenate((radius * numpy.cos(ang)[:,None], radius * numpy.sin(ang)[:,None]), axis=1)
 ring = ring.astype(numpy.float32)
 
 cy = numpy.arange(grid_size/2, image['r'].shape[0], grid_size)
 cx = numpy.arange(grid_size/2, image['r'].shape[1], grid_size)
 
-gy, gx = numpy.meshgrid(cy, cx, indexing='ij')
-
-grid = numpy.concatenate((gy.reshape((-1,1)), gx.reshape((-1,1))), axis=1)
-grid = grid.astype(numpy.float32)
+grid = numpy.transpose(numpy.meshgrid(cy, cx)).reshape((-1,2)).astype(numpy.float32)[:,::-1]
 
 
 
@@ -68,9 +65,9 @@ out = numpy.zeros((cy.shape[0] * sample_grid, cx.shape[0] * sample_grid, 3), dty
 for i, name in enumerate(['r', 'g', 'b']):
   data = feats[name]
   
-  for y in xrange(gy.shape[0]):
-    for x in xrange(gx.shape[0]):
-      block = data[y * gx.shape[0] + x,:].reshape((sample_grid, sample_grid))
+  for y in xrange(cy.shape[0]):
+    for x in xrange(cx.shape[0]):
+      block = data[y * cx.shape[0] + x,:].reshape((sample_grid, sample_grid))
       out[y*sample_grid:(y+1)*sample_grid, x*sample_grid:(x+1)*sample_grid, i] = block.astype(numpy.uint8)
 
 

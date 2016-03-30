@@ -582,8 +582,8 @@ static PyObject * Sample(PyObject * module, PyObject * args)
   for (l=0; l<os; l++)
   {
    // Get location to query...
-     float y = *(float*)PyArray_GETPTR2(locations, l, 0);
-     float x = *(float*)PyArray_GETPTR2(locations, l, 1);
+     float x = *(float*)PyArray_GETPTR2(locations, l, 0);
+     float y = *(float*)PyArray_GETPTR2(locations, l, 1);
      
    // B-spline interpolation...
     MultivariateSampleB(degree, y, x, shape, channels, in, temp);
@@ -777,8 +777,8 @@ static PyObject * Offsets(PyObject * module, PyObject * args)
    for (offset=0; offset<os[1]; offset++)
    {
     // Calculate location to query...
-     float sy = *(float*)PyArray_GETPTR2(points, point, 0) + *(float*)PyArray_GETPTR2(offsets, offset, 0);
-     float sx = *(float*)PyArray_GETPTR2(points, point, 1) + *(float*)PyArray_GETPTR2(offsets, offset, 1);
+     float sx = *(float*)PyArray_GETPTR2(points, point, 0) + *(float*)PyArray_GETPTR2(offsets, offset, 0);
+     float sy = *(float*)PyArray_GETPTR2(points, point, 1) + *(float*)PyArray_GETPTR2(offsets, offset, 1);
      
     // B-spline interpolation...
      MultivariateSampleB(degree, sy, sx, shape, channels, in, temp);
@@ -999,19 +999,19 @@ static PyObject * Rotsets(PyObject * module, PyObject * args)
    for (offset=0; offset<os[1]; offset++)
    {
     // Calculate location to query...
-     float sy = *(float*)PyArray_GETPTR2(points, point, 0);
-     float sx = *(float*)PyArray_GETPTR2(points, point, 1);
+     float sx = *(float*)PyArray_GETPTR2(points, point, 0);
+     float sy = *(float*)PyArray_GETPTR2(points, point, 1);
      
-     float ny = *(float*)PyArray_GETPTR2(rotations, point, 0);
-     float nx = *(float*)PyArray_GETPTR2(rotations, point, 1);
+     float nx = *(float*)PyArray_GETPTR2(rotations, point, 0);
+     float ny = *(float*)PyArray_GETPTR2(rotations, point, 1);
      
-     float oy = *(float*)PyArray_GETPTR2(offsets, offset, 0);
-     float ox = *(float*)PyArray_GETPTR2(offsets, offset, 1);
+     float ox = *(float*)PyArray_GETPTR2(offsets, offset, 0);
+     float oy = *(float*)PyArray_GETPTR2(offsets, offset, 1);
      
-     sy +=  nx * oy;
-     sx += -ny * oy;
-     sy +=  ny * ox;
      sx +=  nx * ox;
+     sy +=  ny * ox;
+     sx += -ny * oy;
+     sy +=  nx * oy;
      
     // B-spline interpolation...
      MultivariateSampleB(degree, sy, sx, shape, channels, in, temp);
@@ -1044,10 +1044,10 @@ static PyMethodDef transform_c_methods[] =
  {"fillmasked", (PyCFunction)FillMasked_py, METH_VARARGS, "Given a dictionary representing an image fills in all values outside the mask with the same colour as the closest valid pixel, measured with Manhatten distance. Primarily a method used internally by transform(...) to avoid the complexity of handling a mask, but exposed incase its useful elsewhere. A no-op if called on an image that has no mask. The image is a set of numpy arrays indexed by channel names, all 2D and with the same size, all float32 except for a mask which is uint8 where non-zero means valid."},
  {"transform", (PyCFunction)Transform, METH_VARARGS, "Given a dictionary representing an image returns a new dictionary of the image having been transformed by a provided homography. Note that you typically think of homographys as going from source to target - this expects the inverse. You should also provide the width and height of the output image, though they default to the same as the input image if not provided. Parameters are (hg - homography to apply; each pixel coordinate is multiplied by it to get the source coordinate, image - dictionary of channels, each a float32 2D numpy array of the same size, indexed [y,x]. Can also include a 'mask' channel, uint8, that is nonzero when a pixel is valid, optional height, optional width, optional degree of the polynomial, which can be 0-5, and defaults to 3 (cubic)). Return is a new image dictionary, which will always contain a 'mask' channel indicating which pixels are valid. Note that if there is a mask it will make changes to the original image, but only in the areas marked as invalid by the mask."},
  
- {"sample", (PyCFunction)Sample, METH_VARARGS, "Lets you sample a specified set of locations in an image. Takes parameters (image, locations, degree). image is a dictionary of 2D float32 arrays indexed [y,x], all the same size, to be sampled. Can also include a 'mask' of uint8 where nonzero means valid. locations is a list of coordinates in the image to evaluate, as a 2D float32 numpy array with y in column 0 and x in column 1. degree is the optional degree of the B-spline to use - defaults to 3 (cubic; must be 0-5). It returns a dictionary of 1D float32 numpy arrays indexed [location] of all the evaluations, one per input image channel. Note that any coordinates that land outside the image will be evaluated using repetition of border pixels - no mask is generated. Also note that if there is a mask it will make changes to the original image, but only in the areas marked as invalid by the mask."},
+ {"sample", (PyCFunction)Sample, METH_VARARGS, "Lets you sample a specified set of locations in an image. Takes parameters (image, locations, degree). image is a dictionary of 2D float32 arrays indexed [y,x], all the same size, to be sampled. Can also include a 'mask' of uint8 where nonzero means valid. locations is a list of coordinates in the image to evaluate, as a 2D float32 numpy array with x in column 0 and y in column 1. degree is the optional degree of the B-spline to use - defaults to 3 (cubic; must be 0-5). It returns a dictionary of 1D float32 numpy arrays indexed [location] of all the evaluations, one per input image channel. Note that any coordinates that land outside the image will be evaluated using repetition of border pixels - no mask is generated. Also note that if there is a mask it will make changes to the original image, but only in the areas marked as invalid by the mask."},
  
- {"offsets", (PyCFunction)Offsets, METH_VARARGS, "Slightly strange - lets you sample a specified set of offsets around each point in an array of coordinates. For extracting the values required by features that need this kind of thing. Takes parameters (image, points, offsets, degree). image is a dictionary of 2D float32 arrays indexed [y,x], all the same size, to be sampled. Can also include a 'mask' of uint8 where nonzero means valid. points is a list of points in the image to evaluate, as another 2D float32 numpy array with y in column 0 and x in column 1. offsets is a 2D float32 numpy array, of offsets from an origin pixel, the y axis in column 0, the x axis in column 1. Note that you can get the order the wrong way around with the only consequence being the indexing order of the returned matrices. degree is the optional degree of the B-spline to use - defaults to 3 (cubic; must be 0-5). It then returns a dictionary of float32 numpy arrays indexed [point, offset] of all the relevant evaluations, one per input image channel. Note that any coordinates that land outside the image will be evaluated using repetition of border pixels - no mask is generated. Also note that if there is a mask it will make changes to the original image, but only in the areas marked as invalid by the mask."},
- {"rotsets", (PyCFunction)Rotsets, METH_VARARGS, "Same as Offsets, except it makes rather more sense, as each location also has an orientation (given as sin(angle), cos(angle) - direction of x-axis) which is applied to the offsets before evaluation. In other words, this is for extracting feature vectors from images that estimate a rotation before sampling. Takes parameters (image, points, rotations, offsets, degree). image is a dictionary of 2D float32 arrays indexed [y,x], all the same size, to be sampled. Can also include a 'mask' of uint8 where nonzero means valid. points is a list of points in the image to evaluate, as another 2D float32 numpy array with y in column 0 and x in column 1. rotations is a 2D float32 array, aligned with the points and giving ny in column 0 and nx in column 1. These should be the unit length direction of the x axis - you can think of it as ny=sin(angle), nx=cos(angle). Note that scaling these vectors will have the expected effect, so you can have per-point scales as well as per-point angles. offsets is a 2D float32 numpy array, of offsets from an origin pixel, the y axis in column 0, the x axis in column 1. degree is the optional degree of the B-spline to use - defaults to 3 (cubic; must be 0-5). It then returns a dictionary of float32 numpy arrays indexed [point, offset] of all the relevant evaluations, one per input image channel. Note that any coordinates that land outside the image will be evaluated using repetition of border pixels - no mask is generated. Also note that if there is a mask it will make changes to the original image, but only in the areas marked as invalid by the mask."},
+ {"offsets", (PyCFunction)Offsets, METH_VARARGS, "Slightly strange - lets you sample a specified set of offsets around each point in an array of coordinates. For extracting the values required by features that need this kind of thing. Takes parameters (image, points, offsets, degree). image is a dictionary of 2D float32 arrays indexed [y,x], all the same size, to be sampled. Can also include a 'mask' of uint8 where nonzero means valid. points is a list of points in the image to evaluate, as another 2D float32 numpy array with x in column 0 and y in column 1. offsets is a 2D float32 numpy array, of offsets from an origin pixel, the x axis in column 0, the y axis in column 1. Note that you can get the order the wrong way around with the only consequence being the indexing order of the returned matrices. degree is the optional degree of the B-spline to use - defaults to 3 (cubic; must be 0-5). It then returns a dictionary of float32 numpy arrays indexed [point, offset] of all the relevant evaluations, one per input image channel. Note that any coordinates that land outside the image will be evaluated using repetition of border pixels - no mask is generated. Also note that if there is a mask it will make changes to the original image, but only in the areas marked as invalid by the mask."},
+ {"rotsets", (PyCFunction)Rotsets, METH_VARARGS, "Same as offsets, except it makes rather more sense, as each location also has an orientation (given as cos(angle), sin(angle) - direction of x-axis) which is applied to the offsets before evaluation. In other words, this is for extracting feature vectors from images that estimate a rotation before sampling. Takes parameters (image, points, rotations, offsets, degree). image is a dictionary of 2D float32 arrays indexed [y,x], all the same size, to be sampled. Can also include a 'mask' of uint8 where nonzero means valid. points is a list of points in the image to evaluate, as another 2D float32 numpy array with x in column 0 and y in column 1. rotations is a 2D float32 array, aligned with the points and giving nx in column 0 and ny in column 1. These should be the unit length direction of the x axis - you can think of it as nx=cos(angle), ny=sin(angle). Note that scaling these vectors will have the expected effect, so you can have per-point scales as well as per-point angles. offsets is a 2D float32 numpy array, of offsets from an origin pixel, the x axis in column 0, the y axis in column 1. degree is the optional degree of the B-spline to use - defaults to 3 (cubic; must be 0-5). It then returns a dictionary of float32 numpy arrays indexed [point, offset] of all the relevant evaluations, one per input image channel. Note that any coordinates that land outside the image will be evaluated using repetition of border pixels - no mask is generated. Also note that if there is a mask it will make changes to the original image, but only in the areas marked as invalid by the mask."},
   
  {NULL}
 };

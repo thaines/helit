@@ -4,7 +4,7 @@ A simple library of functions for constructing homographies, then distorting ima
 
 Also includes some additional methods for querying arbitrary locations in an image with B-Spline interpolation - just made sense to include them here so they can share the B-Spline code. There is also a Gaussian blur implementation (n-dimensional, with support for derivatives and missing data handling) that got shoved in here.
 
-Be warned that homographies are constructed to apply to vectors [x, y, w], to be consistent with everyone else, but then the arrays are indexed [y, x] - this makes things a touch confusing at points. Also, arrays of coordinates are always ordered [y, x], which seemed like a good idea at the time.
+Be warned that homographies are constructed to apply to vectors [x, y, w], to be consistent with everyone else, but then the arrays are indexed [y, x] - this makes things a touch confusing at points.
 
 
 Contains the following key files:
