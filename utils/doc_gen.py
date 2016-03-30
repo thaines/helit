@@ -188,6 +188,7 @@ class DocGen:
     self.wiki_classes += '%s\n\n'%doc
     
     methods = inspect.getmembers(cls, lambda x: inspect.ismethod(x) or inspect.isbuiltin(x) or inspect.isroutine(x))
+
     def method_key(pair):
       if pair[0]=='__init__': return '___'
       else: return pair[0]
@@ -195,7 +196,7 @@ class DocGen:
     
     
     for name, method in methods:
-      if not name.startswith('_%s'%cls.__name__) and (not inspect.ismethod(method) and name[:2]!='__'):
+      if not name.startswith('_%s'%cls.__name__) and name[:2]!='__':
         if inspect.ismethod(method):
           args, varargs, keywords, defaults = inspect.getargspec(method)
         else:
