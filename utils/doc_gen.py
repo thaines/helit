@@ -152,20 +152,25 @@ class DocGen:
     self.html_functions += '\n'
     
     name = func.__name__
-    args, varargs, keywords, defaults = inspect.getargspec(func)
-    doc = inspect.getdoc(func)
     
-    if defaults==None: defaults = list()
-    defaults = (len(args)-len(defaults)) * [None] + list(defaults)
+    try:
+      args, varargs, keywords, defaults = inspect.getargspec(func)
     
-    arg_str = ''
-    if len(args)!=0:
-      arg_str += reduce(lambda a, b: '%s, %s'%(a,b), map(lambda arg, d: arg if d==None else '%s = %s'%(arg,d), args, defaults))
+      if defaults==None: defaults = list()
+      defaults = (len(args)-len(defaults)) * [None] + list(defaults)
+    
+      arg_str = ''
+      if len(args)!=0:
+        arg_str += reduce(lambda a, b: '%s, %s'%(a,b), map(lambda arg, d: arg if d==None else '%s = %s'%(arg,d), args, defaults))
       
-    if varargs!=None:
-      arg_str += ', *%s'%varargs if arg_str!='' else '*%s'%varargs
-    if keywords!=None:
-      arg_str += ', **%s'%keywords if arg_str!='' else '**%s'%keywords
+      if varargs!=None:
+        arg_str += ', *%s'%varargs if arg_str!='' else '*%s'%varargs
+      if keywords!=None:
+        arg_str += ', **%s'%keywords if arg_str!='' else '**%s'%keywords
+    except TypeError:
+      arg_str = '?'
+      
+    doc = inspect.getdoc(func)
     
     self.wiki_functions += '`%s(%s)`\n'%(name, arg_str)
     self.wiki_functions += '%s\n\n'%doc
