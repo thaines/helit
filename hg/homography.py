@@ -36,7 +36,7 @@ def rotate(angle):
 
 
 def scale(amount):
-  """Scales everythinng to be the given amount times bigger (or smaller if <1)."""
+  """Scales everything to be the given amount times bigger (or smaller if <1)."""
   hg = numpy.eye(3, dtype=numpy.float32)
   hg[0,0] = amount
   hg[1,1] = amount
