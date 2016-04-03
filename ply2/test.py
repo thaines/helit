@@ -243,6 +243,64 @@ class TestPly2(unittest.TestCase):
     data['element']['people']['image'][1] = 'Insert image here'
     with self.assertRaises(AttributeError):
       ply2.verify(data)
+  
+  
+  def test_encoding_to_dtype(self):
+    self.assertTrue(ply2.encoding_to_dtype('nat8')==numpy.uint8)
+    self.assertTrue(ply2.encoding_to_dtype('nat16')==numpy.uint16)
+    self.assertTrue(ply2.encoding_to_dtype('nat32')==numpy.uint32)
+    self.assertTrue(ply2.encoding_to_dtype('nat64')==numpy.uint64)
+    with self.assertRaises(IOError):
+      ply2.encoding_to_dtype('nat128')
+    
+    self.assertTrue(ply2.encoding_to_dtype('int8')==numpy.int8)
+    self.assertTrue(ply2.encoding_to_dtype('int16')==numpy.int16)
+    self.assertTrue(ply2.encoding_to_dtype('int32')==numpy.int32)
+    self.assertTrue(ply2.encoding_to_dtype('int64')==numpy.int64)
+    with self.assertRaises(IOError):
+      ply2.encoding_to_dtype('int128')
+    
+    self.assertTrue(ply2.encoding_to_dtype('real16')==numpy.float16)
+    self.assertTrue(ply2.encoding_to_dtype('real32')==numpy.float32)
+    self.assertTrue(ply2.encoding_to_dtype('real64')==numpy.float64)
+    self.assertTrue(ply2.encoding_to_dtype('real128')==numpy.float128)
+    
+    self.assertTrue(ply2.encoding_to_dtype('string:uint8')==numpy.object)
+    self.assertTrue(ply2.encoding_to_dtype('array:2:uint32:real32')==numpy.object)
+    
+    with self.assertRaises(IOError):
+      ply2.encoding_to_dtype('red shirt')
+  
+  
+  def tests_array_to_encoding(self):
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.uint8))=='nat8')
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.uint16))=='nat16')
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.uint32))=='nat32')
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.uint64))=='nat64')
+    
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.int8))=='int8')
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.int16))=='int16')
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.int32))=='int32')
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.int64))=='int64')
+    
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.float16))=='real16')
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.float32))=='real32')
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.float64))=='real64')
+    self.assertTrue(ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.float128))=='real128')
+    
+    with self.assertRaises(IOError):
+      ply2.array_to_encoding(numpy.zeros(8,dtype=numpy.complex))
+    
+    test = numpy.zeros(8,dtype=numpy.object)
+    test[0] = 'Hello world'
+    self.assertTrue(ply2.array_to_encoding(test)=='string:nat32')
+    
+    test[0] = numpy.zeros((4,4), dtype=numpy.int16)
+    self.assertTrue(ply2.array_to_encoding(test)=='array:2:nat32:int16')
+    
+    test[0] = numpy.zeros((4,4), dtype=numpy.complex)
+    with self.assertRaises(IOError):
+      ply2.array_to_encoding(test)
 
 
 

@@ -147,3 +147,64 @@ def verify(data):
           
         else:
           raise TypeError('Element array has unsupported type.')
+
+
+
+def encoding_to_dtype(enc, store_extra = None):
+  """Given an encoding from a ply 2 file this converts it into a dtype that numpy recognises."""
+  
+  parts = enc.split(':')
+  if store_extra!=None and len(parts)>1:
+    store_extra += parts[1:]
+  
+  if parts[0]=='int8': return numpy.int8
+  if parts[0]=='int16': return numpy.int16
+  if parts[0]=='int32': return numpy.int32
+  if parts[0]=='int64': return numpy.int64
+  if parts[0]=='int128': raise IOError('int128 is not supported by this implimentation.')
+  
+  if parts[0]=='nat8': return numpy.uint8
+  if parts[0]=='nat16': return numpy.uint16
+  if parts[0]=='nat32': return numpy.uint32
+  if parts[0]=='nat64': return numpy.uint64
+  if parts[0]=='nat128': raise IOError('nat128 is not supported by this implimentation.')
+  
+  if parts[0]=='real16': return numpy.float16
+  if parts[0]=='real32': return numpy.float32
+  if parts[0]=='real64': return numpy.float64
+  if parts[0]=='real128': return numpy.float128
+  
+  if parts[0]=='array': return numpy.object
+  if parts[0]=='string': return numpy.object
+  
+  raise IOError('Unrecognised encoding in ply 2 file.')
+
+
+
+def array_to_encoding(arr):
+  """Given a numpy array this returns a suitable ply 2 type for the element it represents. Assumes that the array is encodable (has passed verify), and will return an answer in some error situations."""
+  if issubclass(arr.dtype.type, numpy.signedinteger):
+    if arr.dtype.itemsize==1: return 'int8'
+    if arr.dtype.itemsize==2: return 'int16'
+    if arr.dtype.itemsize==4: return 'int32'
+    if arr.dtype.itemsize==8: return 'int64'
+    
+  if issubclass(arr.dtype.type, numpy.unsignedinteger):
+    if arr.dtype.itemsize==1: return 'nat8'
+    if arr.dtype.itemsize==2: return 'nat16'
+    if arr.dtype.itemsize==4: return 'nat32'
+    if arr.dtype.itemsize==8: return 'nat64'
+  
+  if issubclass(arr.dtype.type, numpy.floating):
+    if arr.dtype.itemsize==2: return 'real16'
+    if arr.dtype.itemsize==4: return 'real32'
+    if arr.dtype.itemsize==8: return 'real64'
+    if arr.dtype.itemsize==16: return 'real128'
+    
+  if arr.dtype==numpy.object:
+    if isinstance(arr.flat[0], numpy.ndarray):
+      return 'array:%i:nat32:%s' % (len(arr.flat[0].shape), array_to_encoding(arr.flat[0]))
+    else:
+      return 'string:nat32'
+  
+  raise IOError('Failed to represent numpy type as type suitable for a ply 2 file.')
