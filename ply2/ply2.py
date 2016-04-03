@@ -13,23 +13,8 @@ import numpy
 
 
 
-# This reads and writes ply 2 files, as represented internally by a nest of Python dictionaries, where the data itself is stored as numpy arrays.
-# Given the dictionary has the variable name 'data', then the following entries may be found:
-#
-# data['format'] = 'ascii', 'binary_little_endian' or 'binary_big_endian' to indicate how the file is to be stored; if omitted defaults to ascii.
-# data['type'] = A list of types.
-# data['meta'] - A dictionary indexed by the key of each meta item, going to the meta items, so that data['meta']['author'] = 'Cthulhu' indicates that the header includes 'meta string:uint8 author 7 Cthulhu\n'. Encoding is automatically infered from the python type.
-# data['comment] - A dictionary indexed by natural numbers, to get comment 0, comment 1 etc. as strings.
-# data['compress'] = None, '', 'gzip', 'bzip2'. If omitted or the first two options that means no compression.
-#
-# data['element'] - A dictionary indexed by the name of each element type.
-# data['element'][<element name>] - A dictionary indexed by property.
-# data['element'][<element name>][<property name>] - A numpy array with the shape of the element in question, containing all of the data for this property type.
-
-
-
 def create(binary = False, compress = 0):
-  """Creates and returns an 'empty' dictionary to represent a ply 2 file, with reasonable defaults filled in. Takes two parameters: If binary is false (the default) it uses ascii mode, otherwise it uses binary mode, where it matches the mode for the current computer."""
+  """Creates and returns an 'empty' dictionary to represent a ply 2 file, with reasonable defaults filled in. Takes two parameters: If binary is False (the default) it uses ascii mode, otherwise it uses binary mode, where it matches the mode to the current computer."""
   ret = dict()
   
   ret['format'] = ('binary_little_endian' if sys.byteorder=='little' else 'binary_big_endian') if binary else 'ascii'
@@ -43,7 +28,7 @@ def create(binary = False, compress = 0):
 
 
 def verify(data):
-  """Given a dictionary that is meant to be encoded as a ply 2 file this verifies its compatible - throw an error if there is a problem. Called by the write function, but provided for if you want to verify seperately."""
+  """Given a dictionary that is meant to be encoded as a ply 2 file this verifies its compatible - raises an error if there is a problem. Called by the write function, but provided for if you want to verify seperately."""
   
   # Check root keys are all valid...
   if not set(data.keys()) <= set(['format', 'type', 'meta', 'comment', 'compress', 'element']):
@@ -151,7 +136,7 @@ def verify(data):
 
 
 def encoding_to_dtype(enc, store_extra = None):
-  """Given an encoding from a ply 2 file this converts it into a dtype that numpy recognises."""
+  """Given an encoding from a ply 2 file this converts it into a dtype that numpy recognises. For internal use."""
   
   parts = enc.split(':')
   if store_extra!=None and len(parts)>1:
@@ -182,7 +167,7 @@ def encoding_to_dtype(enc, store_extra = None):
 
 
 def array_to_encoding(arr):
-  """Given a numpy array this returns a suitable ply 2 type for the element it represents. Assumes that the array is encodable (has passed verify), and will return an answer in some error situations."""
+  """Given a numpy array this returns a suitable ply 2 type for the property it represents. Assumes that the array is encodable (has passed verify), and will return an answer in some error situations. For internal use."""
   if issubclass(arr.dtype.type, numpy.signedinteger):
     if arr.dtype.itemsize==1: return 'int8'
     if arr.dtype.itemsize==2: return 'int16'
