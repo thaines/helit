@@ -23,11 +23,16 @@ doc.addFile('readme.txt', 'Overview')
 
 
 # Add all of the functions...
+doc.addFunction(ply2.write)
+
 doc.addFunction(ply2.create)
 doc.addFunction(ply2.verify)
 
 doc.addFunction(ply2.encoding_to_dtype)
 doc.addFunction(ply2.array_to_encoding)
+
+doc.addFunction(ply2.to_meta_line)
+doc.addFunction(ply2.to_element_line)
 
 
 

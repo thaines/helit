@@ -10,6 +10,8 @@
 
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from collections import OrderedDict
+
 import tempfile
 import unittest
 
@@ -301,6 +303,225 @@ class TestPly2(unittest.TestCase):
     test[0] = numpy.zeros((4,4), dtype=numpy.complex)
     with self.assertRaises(IOError):
       ply2.array_to_encoding(test)
+  
+  
+  def test_write_empty(self):
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, dict())
+    
+    temp.seek(0)
+    data = temp.read()
+    
+    expected = ['ply', 'format ascii 2.0', 'end_header', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+
+  
+  def test_write_default(self):
+    temp = tempfile.TemporaryFile('w+b')
+    
+    data = ply2.create()
+    ply2.write(temp, data)
+    
+    temp.seek(0)
+    data = temp.read()
+    
+    expected = ['ply', 'format ascii 2.0', 'end_header', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_empty_element(self):
+    temp = tempfile.TemporaryFile('w+b')
+    
+    data = ply2.create()
+    data['element']['dummy'] = dict()
+    
+    ply2.write(temp, data)
+    
+    temp.seek(0)
+    data = temp.read()
+
+    expected = ['ply', 'format ascii 2.0', 'element dummy 0', 'end_header', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+
+
+  def test_write_ints(self):
+    temp = tempfile.TemporaryFile('w+b')
+    
+    data = ply2.create()
+    data['element']['values'] = dict()
+    data['element']['values']['x'] = numpy.array([1, 2, 3], dtype=numpy.int32)
+    
+    ply2.write(temp, data)
+    
+    temp.seek(0)
+    data = temp.read()
+    
+    expected = ['ply', 'format ascii 2.0', 'element values 3', 'property int32 x', 'end_header', '1', '2', '3', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_floats(self):
+    temp = tempfile.TemporaryFile('w+b')
+    
+    data = ply2.create()
+    data['element']['values'] = OrderedDict()
+    data['element']['values']['x'] = numpy.array([1, 2, 3], dtype=numpy.float32)
+    data['element']['values']['y'] = numpy.array([1.5, 5.6, numpy.pi], dtype=numpy.float32)
+    
+    ply2.write(temp, data)
+    
+    temp.seek(0)
+    data = temp.read()
+    
+    expected = ['ply', 'format ascii 2.0', 'element values 3', 'property real32 x', 'property real32 y', 'end_header', '1 1.5', '2 5.5999999', '3 3.1415927', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_image(self):
+    temp = tempfile.TemporaryFile('w+b')
+    
+    data = ply2.create()
+    data['type'].append('image.rgb')
+    data['element']['pixel'] = OrderedDict()
+    data['element']['pixel']['red'] = numpy.array([[0, 255], [0, 0]], dtype=numpy.uint8)
+    data['element']['pixel']['green'] = numpy.array([[0, 0], [255, 0]], dtype=numpy.uint8)
+    data['element']['pixel']['blue'] = numpy.array([[0, 0], [0, 255]], dtype=numpy.uint8)
+    
+    ply2.write(temp, data)
+    
+    temp.seek(0)
+    data = temp.read()
+    
+    expected = ['ply', 'format ascii 2.0', 'type image.rgb', 'element pixel 2 2', 'property nat8 red', 'property nat8 green', 'property nat8 blue', 'end_header', '0 0 0', '255 0 0', '0 255 0', '0 0 255', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_strings(self):
+    temp = tempfile.TemporaryFile('w+b')
+    
+    names = numpy.zeros(8, dtype=numpy.object)
+    names[0] = 'The Alien'
+    names[1] = 'Ripley'
+    names[2] = 'Ash'
+    names[3] = u'Bite Me'
+    names[4] = '    '
+    names[5] = '  Penguin'
+    names[6] = 'Joker  '
+    names[7] = 'Two\nFace'
+    
+    data = ply2.create()
+    data['element']['people'] = OrderedDict()
+    data['element']['people']['name'] = names
+    
+    ply2.write(temp, data)
+    
+    temp.seek(0)
+    data = temp.read()
+
+    expected = ['ply', 'format ascii 2.0', 'element people 8', 'property string:nat32 name', 'end_header', '9 The Alien', '6 Ripley', '3 Ash', '7 Bite Me', '4     ', '9   Penguin', '7 Joker  ', '8 Two\nFace', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_arrays(self):
+    temp = tempfile.TemporaryFile('w+b')
+    
+    samples = numpy.zeros(5, dtype=numpy.object)
+    samples[0] = numpy.array([3, 1, 4, 2], dtype=numpy.int8)
+    samples[1] = numpy.array([42, 42], dtype=numpy.int8) 
+    samples[2] = numpy.array([100, 101, 102, -1, -2, 0], dtype=numpy.int8)
+    samples[3] = numpy.array([-12], dtype=numpy.int8)
+    samples[4] = numpy.array([], dtype=numpy.int8)
+    
+    data = ply2.create()
+    data['element']['samples'] = OrderedDict()
+    data['element']['samples']['values'] = samples
+    
+    ply2.write(temp, data)
+    
+    temp.seek(0)
+    data = temp.read()
+
+    expected = ['ply', 'format ascii 2.0', 'element samples 5', 'property array:1:nat32:int8 values', 'end_header', '4 3 1 4 2', '2 42 42', '6 100 101 102 -1 -2 0', '1 -12', '0 ', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_meta(self):
+    temp = tempfile.TemporaryFile('w+b')
+    
+    data = ply2.create()
+    data['meta']['author'] = 'Cthulhu'
+    data['meta']['tentacles'] = 42
+    data['meta']['pi'] = numpy.pi
+    
+    ply2.write(temp, data)
+    
+    temp.seek(0)
+    data = temp.read()
+
+    expected = ['ply', 'format ascii 2.0', 'meta string:nat32 author 7 Cthulhu', 'meta int64 tentacles 42', 'meta float64 pi 3.141592653589793', 'end_header', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_map(self):
+    temp = tempfile.TemporaryFile('w+b')
+    
+    data = ply2.create()
+    data['type'].append('map')
+    data['meta']['location'] = 'Middle Earth'
+    
+    names = numpy.zeros(9, dtype=numpy.object)
+    names[0] = 'Hobbiton'
+    names[1] = 'Bree'
+    names[2] = 'Rivendell'
+    names[3] = 'Moria'
+    names[4] = u'Lothl\u00f3rien'
+    names[5] = 'Edoras'
+    names[6] = "Helm's Deep"
+    names[7] = 'Isengard'
+    names[8] = 'Minas Tirith'
+    
+    data['element']['city'] = OrderedDict()
+    data['element']['city']['name'] = names
+    data['element']['city']['x'] = numpy.array([67.4, 79.0, 99.1, 100.5, 113.0, 105.1, 99.5, 98.5, 135.6], dtype=numpy.float32)
+    data['element']['city']['y'] = numpy.array([55.5, 54.1, 53.3, 69.5, 74.6, 99.6, 98.7, 94.8, 111.3], dtype=numpy.float32)
+    
+    names = numpy.zeros(3, dtype=numpy.object)
+    names[0] = 'Orthanc'
+    names[1] = u'Barad-d\u00fbr'
+    names[2] = 'Cirith Ungol'
+    
+    data['element']['tower'] = OrderedDict()
+    data['element']['tower']['name'] = names
+    data['element']['tower']['x'] = numpy.array([98.5, 156.2, 145.2], dtype=numpy.float32)
+    data['element']['tower']['y'] = numpy.array([94.8, 107.8, 111.0], dtype=numpy.float32)
+    
+    ply2.write(temp, data)
+    
+    temp.seek(0)
+    data = temp.read()
+
+    expected = ['ply', 'format ascii 2.0', 'type map', 'meta string:nat32 location 12 Middle Earth', 'element city 9', 'property string:nat32 name', 'property real32 x', 'property real32 y', 'element tower 3', 'property string:nat32 name', 'property real32 x', 'property real32 y', 'end_header', '8 Hobbiton 67.400002 55.5', '4 Bree 79 54.099998', '9 Rivendell 99.099998 53.299999', '5 Moria 100.5 69.5', u'11 Lothl\u00f3rien 113 74.599998', '6 Edoras 105.1 99.599998', "11 Helm's Deep 99.5 98.699997", '8 Isengard 98.5 94.800003', '12 Minas Tirith 135.60001 111.3', '7 Orthanc 98.5 94.800003', u'10 Barad-d\u00fbr 156.2 107.8', '12 Cirith Ungol 145.2 111', '']
+    self.assertTrue(data.decode('utf8')=='\n'.join(expected))
+    
+    temp.close()
 
 
 

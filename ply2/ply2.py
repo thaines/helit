@@ -9,7 +9,12 @@
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import sys
+import gzip
+import bz2
+
 import numpy
+
+from collections import OrderedDict
 
 
 
@@ -18,10 +23,11 @@ def create(binary = False, compress = 0):
   ret = dict()
   
   ret['format'] = ('binary_little_endian' if sys.byteorder=='little' else 'binary_big_endian') if binary else 'ascii'
-  ret['meta'] = dict()
+  ret['type'] = []
+  ret['meta'] = OrderedDict()
   ret['comment'] = dict()
   ret['compress'] = None if compress==0 else ('gzip' if compress==1 else 'bzip2')
-  ret['element'] = dict()
+  ret['element'] = OrderedDict()
   
   return ret
 
@@ -193,3 +199,188 @@ def array_to_encoding(arr):
       return 'string:nat32'
   
   raise IOError('Failed to represent numpy type as type suitable for a ply 2 file.')
+
+
+
+def to_meta_line(key, value):
+  """Given a key and value from a dictionary of meta data this returns the requisite meta line for a ply 2 file header. For internal use only."""
+  key = key.encode('utf8')
+  
+  if isinstance(value, basestring):
+    value = value.encode('utf8')
+    return 'meta string:nat32 %s %i %s\n' % (key, len(value), value)
+  
+  if isinstance(value, int):
+    return 'meta int64 %s %i\n' % (key, value)
+  
+  if isinstance(value, float):
+    return 'meta float64 %s %.16g\n' % (key, value)
+  
+  raise IOError('Unrecognised ')
+
+
+
+def to_element_line(key, value):
+  """Given an item in the element dictionary, which represents an element, this returns the element line for the header."""
+  shape = (0, )
+  for prop, arr in value.iteritems():
+    shape = arr.shape
+    break
+  
+  shape = ' '.join([str(x) for x in shape])
+  return 'element %s %s\n' % (key, shape)
+
+
+
+class BZ2Comp:
+  """Version provided by the Python library does not write to an alrewady open file - this version does."""
+  def __init__(self, f):
+    self.f = f
+    self.comp = bz2.BZ2Compressor()
+  
+  def write(self, data):
+    self.f.write(self.comp.compress(data))
+  
+  def flush(self):
+    self.f.write(self.comp.flush(data))
+
+
+
+def ascii_array(arr):
+  """Given a numpy array this returns it represented as an ascii array."""
+  shape = ' '.join([str(x) for x in arr.shape])
+  data = ' '.join([str(x) for x in arr.flat])
+  return '%s %s' % (shape, data)
+
+
+
+def write_ascii(f, element, order):
+  """Write the given element, with the elements in the given order. f is the file to write to, element the entry in the dictionary (dictionary containing propertioes as numpy arrays) and order the order to write the elements (list of property names)."""
+  
+  # Convert each property into an array of strings...
+  parts = []
+  for prop in order:
+    arr = element[prop]
+    
+    if arr.dtype==numpy.object:
+      if isinstance(arr.flat[0], numpy.ndarray): # Array
+        parts.append([ascii_array(x) for x in arr.flat])
+      
+      else: # String
+        parts.append(['%i %s'%(len(x.encode('utf8')),x.encode('utf8')) for x in arr.flat])
+      
+    elif arr.dtype==numpy.float16:
+      parts.append(['%.4g' % x for x in arr.flat])
+      
+    elif arr.dtype==numpy.float32:
+      parts.append(['%.8g' % x for x in arr.flat])
+    
+    elif arr.dtype==numpy.float64:
+      parts.append(['%.16g' % x for x in arr.flat])
+    
+    elif arr.dtype==numpy.float128:
+      parts.append(['%.35g' % x for x in arr.flat])
+    
+    else: # All the integer types.
+      parts.append([str(x) for x in arr.flat])
+  
+  # Zip them and write out, line by line...
+  for line in zip(*parts):
+    f.write(' '.join(line) + '\n')
+
+
+
+def write(f, data):
+  """Given a dictionary in the required format (second parameter, see readme.txt), this writes it to the file (first variable), where file can either be the filename of a file to open or a file-like object to .write() all of the data to. Note that if a file is passed in it must have been openned in binary mode, even if using the ascii format."""
+  
+  # Verify the passed data...
+  verify(data)
+  
+  # If we have been passed a string open the file...
+  if isinstance(f, basestring):
+    f = open(f, 'wb')
+    do_close = True
+  else:
+    do_close = False
+  
+  
+  # Write the header...
+  f.write('ply\n'.encode('utf8'))
+  
+  if 'format' in data:
+    format = data['format']
+    f.write(('format %s 2.0\n' % data['format']).encode('utf8'))
+  else:
+    format  = 'ascii'
+    f.write('format ascii 2.0\n'.encode('utf8'))
+  
+  if 'type' in data and len(data['type'])>0:
+    f.write(('type %s\n' % ' '.join(data['type'])).encode('utf8'))
+  
+  if 'meta' in data:
+    for key, value in data['meta'].iteritems():
+      f.write(to_meta_line(key, value).encode('utf8'))
+  
+  if 'comment' in data:
+    for i in xrange(len(data['comment'])):
+      f.write(('comment %s\n' % data['comment'][i]).encode('utf8'))
+  
+  compress = None
+  if 'compress' in data:
+    if data['compress']=='gzip':
+      compress = 'gzip'
+      f.write('compress gzip\n'.encode('utf8'))
+    
+    if data['compress']=='bzip2':
+      compress = 'bzip2'
+      f.write('compress bzip2\n'.encode('utf8'))
+  
+  element_order = []
+  property_order = dict()
+  if 'element' in data:
+    for key, value in data['element'].iteritems():
+      element_order.append(key)
+      property_order[key] = []
+      
+      f.write(to_element_line(key, value).encode('utf8'))
+
+      for prop, arr in value.iteritems():
+        f.write(('property %s %s\n' % (array_to_encoding(arr), prop)).encode('utf8'))
+        property_order[key].append(prop)
+  
+  f.write('end_header\n'.encode('utf8'))
+  
+  
+  # Prepare for compression if required...
+  ff = f
+  
+  if compress=='gzip':
+    ff = gzip.GzipFile(fileobj = f, mode = 'wb')
+  
+  if compress=='bzip2':
+    ff = BZ2Comp(f)
+  
+  
+  # Loop and write each element in turn, using the correct writting code...
+  for elem in element_order:
+    if format=='ascii':
+      write_ascii(ff, data['element'][elem], property_order[elem])
+    
+    elif format=='binary_little_endian':
+      raise NotImplementedError()
+    
+    else: # binary_big_endian
+      raise NotImplementedError()
+
+  
+  # If we were compressing then we better flush the buffer...
+  if compress=='gzip':
+    ff.close()
+  
+  if compress=='bzip2':
+    ff.flush()
+  
+  
+  # If we openned the file we better close it...
+  if do_close:
+    f.close()
