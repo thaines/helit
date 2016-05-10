@@ -122,7 +122,7 @@ float SampleB(int degree, float y, float x, PyArrayObject * data)
   
  // Now loop the relevant range, summing the output weighted by the relevant weights and handling boundary conditions...
   float ret = 0.0;
-  int shape[2] = {PyArray_SHAPE(data)[0], PyArray_SHAPE(data)[0]};
+  int shape[2] = {PyArray_SHAPE(data)[0], PyArray_SHAPE(data)[1]};
   
   for (dy=-degree; dy<=degree; dy++)
   {
