@@ -57,7 +57,7 @@ name is used to both identify the element, and to indicate to a loader what it i
 
 The list of properties (Delimited by the next element or the end of the header.) defines what each element contains, and the order in which it contains it. The encoding is what the property actually is, whilst the name is used to identify it.
 
-Windows-style new lines must not be used.
+Windows-style new lines must not be used - "\n" only.
 
 
 encodings:

@@ -248,27 +248,27 @@ class TestPly2(unittest.TestCase):
   
   
   def test_encoding_to_dtype(self):
-    self.assertTrue(ply2.encoding_to_dtype('nat8')==numpy.uint8)
-    self.assertTrue(ply2.encoding_to_dtype('nat16')==numpy.uint16)
-    self.assertTrue(ply2.encoding_to_dtype('nat32')==numpy.uint32)
-    self.assertTrue(ply2.encoding_to_dtype('nat64')==numpy.uint64)
-    with self.assertRaises(IOError):
+    self.assertTrue(ply2.encoding_to_dtype('nat8')[0]==numpy.uint8)
+    self.assertTrue(ply2.encoding_to_dtype('nat16')[0]==numpy.uint16)
+    self.assertTrue(ply2.encoding_to_dtype('nat32')[0]==numpy.uint32)
+    self.assertTrue(ply2.encoding_to_dtype('nat64')[0]==numpy.uint64)
+    with self.assertRaises(NotImplementedError):
       ply2.encoding_to_dtype('nat128')
     
-    self.assertTrue(ply2.encoding_to_dtype('int8')==numpy.int8)
-    self.assertTrue(ply2.encoding_to_dtype('int16')==numpy.int16)
-    self.assertTrue(ply2.encoding_to_dtype('int32')==numpy.int32)
-    self.assertTrue(ply2.encoding_to_dtype('int64')==numpy.int64)
-    with self.assertRaises(IOError):
+    self.assertTrue(ply2.encoding_to_dtype('int8')[0]==numpy.int8)
+    self.assertTrue(ply2.encoding_to_dtype('int16')[0]==numpy.int16)
+    self.assertTrue(ply2.encoding_to_dtype('int32')[0]==numpy.int32)
+    self.assertTrue(ply2.encoding_to_dtype('int64')[0]==numpy.int64)
+    with self.assertRaises(NotImplementedError):
       ply2.encoding_to_dtype('int128')
     
-    self.assertTrue(ply2.encoding_to_dtype('real16')==numpy.float16)
-    self.assertTrue(ply2.encoding_to_dtype('real32')==numpy.float32)
-    self.assertTrue(ply2.encoding_to_dtype('real64')==numpy.float64)
-    self.assertTrue(ply2.encoding_to_dtype('real128')==numpy.float128)
+    self.assertTrue(ply2.encoding_to_dtype('real16')[0]==numpy.float16)
+    self.assertTrue(ply2.encoding_to_dtype('real32')[0]==numpy.float32)
+    self.assertTrue(ply2.encoding_to_dtype('real64')[0]==numpy.float64)
+    self.assertTrue(ply2.encoding_to_dtype('real128')[0]==numpy.float128)
     
-    self.assertTrue(ply2.encoding_to_dtype('string:uint8')==numpy.object)
-    self.assertTrue(ply2.encoding_to_dtype('array:2:uint32:real32')==numpy.object)
+    self.assertTrue(ply2.encoding_to_dtype('string:nat8')==(numpy.object,None,numpy.uint8,None))
+    self.assertTrue(ply2.encoding_to_dtype('array:2:nat32:real32')==(numpy.object,2,numpy.uint32,numpy.float32))
     
     with self.assertRaises(IOError):
       ply2.encoding_to_dtype('red shirt')
@@ -305,112 +305,47 @@ class TestPly2(unittest.TestCase):
       ply2.array_to_encoding(test)
   
   
-  def test_write_empty(self):
-    temp = tempfile.TemporaryFile('w+b')
-    ply2.write(temp, dict())
-    
-    temp.seek(0)
-    data = temp.read()
-    
-    expected = ['ply', 'format ascii 2.0', 'end_header', '']
-    self.assertTrue(data=='\n'.join(expected))
-    
-    temp.close()
-
   
-  def test_write_default(self):
-    temp = tempfile.TemporaryFile('w+b')
-    
-    data = ply2.create()
-    ply2.write(temp, data)
-    
-    temp.seek(0)
-    data = temp.read()
-    
-    expected = ['ply', 'format ascii 2.0', 'end_header', '']
-    self.assertTrue(data=='\n'.join(expected))
-    
-    temp.close()
+  def ds_empty(self):
+    return dict()
   
   
-  def test_write_empty_element(self):
-    temp = tempfile.TemporaryFile('w+b')
-    
+  def ds_default(self):
+    return ply2.create()
+  
+  
+  def ds_empty_element(self):
     data = ply2.create()
     data['element']['dummy'] = dict()
-    
-    ply2.write(temp, data)
-    
-    temp.seek(0)
-    data = temp.read()
-
-    expected = ['ply', 'format ascii 2.0', 'element dummy 0', 'end_header', '']
-    self.assertTrue(data=='\n'.join(expected))
-    
-    temp.close()
-
-
-  def test_write_ints(self):
-    temp = tempfile.TemporaryFile('w+b')
-    
+    return data
+  
+  
+  def ds_ints(self):
     data = ply2.create()
     data['element']['values'] = dict()
     data['element']['values']['x'] = numpy.array([1, 2, 3], dtype=numpy.int32)
-    
-    ply2.write(temp, data)
-    
-    temp.seek(0)
-    data = temp.read()
-    
-    expected = ['ply', 'format ascii 2.0', 'element values 3', 'property int32 x', 'end_header', '1', '2', '3', '']
-    self.assertTrue(data=='\n'.join(expected))
-    
-    temp.close()
+    return data
   
   
-  def test_write_floats(self):
-    temp = tempfile.TemporaryFile('w+b')
-    
+  def ds_floats(self):
     data = ply2.create()
     data['element']['values'] = OrderedDict()
     data['element']['values']['x'] = numpy.array([1, 2, 3], dtype=numpy.float32)
     data['element']['values']['y'] = numpy.array([1.5, 5.6, numpy.pi], dtype=numpy.float32)
-    
-    ply2.write(temp, data)
-    
-    temp.seek(0)
-    data = temp.read()
-    
-    expected = ['ply', 'format ascii 2.0', 'element values 3', 'property real32 x', 'property real32 y', 'end_header', '1 1.5', '2 5.5999999', '3 3.1415927', '']
-    self.assertTrue(data=='\n'.join(expected))
-    
-    temp.close()
+    return data
   
   
-  def test_write_image(self):
-    temp = tempfile.TemporaryFile('w+b')
-    
+  def ds_image(self):
     data = ply2.create()
     data['type'].append('image.rgb')
     data['element']['pixel'] = OrderedDict()
     data['element']['pixel']['red'] = numpy.array([[0, 255], [0, 0]], dtype=numpy.uint8)
     data['element']['pixel']['green'] = numpy.array([[0, 0], [255, 0]], dtype=numpy.uint8)
     data['element']['pixel']['blue'] = numpy.array([[0, 0], [0, 255]], dtype=numpy.uint8)
-    
-    ply2.write(temp, data)
-    
-    temp.seek(0)
-    data = temp.read()
-    
-    expected = ['ply', 'format ascii 2.0', 'type image.rgb', 'element pixel 2 2', 'property nat8 red', 'property nat8 green', 'property nat8 blue', 'end_header', '0 0 0', '255 0 0', '0 255 0', '0 0 255', '']
-    self.assertTrue(data=='\n'.join(expected))
-    
-    temp.close()
+    return data
   
   
-  def test_write_strings(self):
-    temp = tempfile.TemporaryFile('w+b')
-    
+  def ds_strings(self):
     names = numpy.zeros(8, dtype=numpy.object)
     names[0] = 'The Alien'
     names[1] = 'Ripley'
@@ -425,20 +360,10 @@ class TestPly2(unittest.TestCase):
     data['element']['people'] = OrderedDict()
     data['element']['people']['name'] = names
     
-    ply2.write(temp, data)
-    
-    temp.seek(0)
-    data = temp.read()
-
-    expected = ['ply', 'format ascii 2.0', 'element people 8', 'property string:nat32 name', 'end_header', '9 The Alien', '6 Ripley', '3 Ash', '7 Bite Me', '4     ', '9   Penguin', '7 Joker  ', '8 Two\nFace', '']
-    self.assertTrue(data=='\n'.join(expected))
-    
-    temp.close()
+    return data
   
   
-  def test_write_arrays(self):
-    temp = tempfile.TemporaryFile('w+b')
-    
+  def ds_arrays(self):
     samples = numpy.zeros(5, dtype=numpy.object)
     samples[0] = numpy.array([3, 1, 4, 2], dtype=numpy.int8)
     samples[1] = numpy.array([42, 42], dtype=numpy.int8) 
@@ -450,39 +375,18 @@ class TestPly2(unittest.TestCase):
     data['element']['samples'] = OrderedDict()
     data['element']['samples']['values'] = samples
     
-    ply2.write(temp, data)
-    
-    temp.seek(0)
-    data = temp.read()
-
-    expected = ['ply', 'format ascii 2.0', 'element samples 5', 'property array:1:nat32:int8 values', 'end_header', '4 3 1 4 2', '2 42 42', '6 100 101 102 -1 -2 0', '1 -12', '0 ', '']
-    self.assertTrue(data=='\n'.join(expected))
-    
-    temp.close()
+    return data
   
   
-  def test_write_meta(self):
-    temp = tempfile.TemporaryFile('w+b')
-    
+  def ds_meta(self):
     data = ply2.create()
     data['meta']['author'] = 'Cthulhu'
     data['meta']['tentacles'] = 42
     data['meta']['pi'] = numpy.pi
-    
-    ply2.write(temp, data)
-    
-    temp.seek(0)
-    data = temp.read()
-
-    expected = ['ply', 'format ascii 2.0', 'meta string:nat32 author 7 Cthulhu', 'meta int64 tentacles 42', 'meta float64 pi 3.141592653589793', 'end_header', '']
-    self.assertTrue(data=='\n'.join(expected))
-    
-    temp.close()
+    return data
   
   
-  def test_write_map(self):
-    temp = tempfile.TemporaryFile('w+b')
-    
+  def ds_map(self):
     data = ply2.create()
     data['type'].append('map')
     data['meta']['location'] = 'Middle Earth'
@@ -513,7 +417,150 @@ class TestPly2(unittest.TestCase):
     data['element']['tower']['x'] = numpy.array([98.5, 156.2, 145.2], dtype=numpy.float32)
     data['element']['tower']['y'] = numpy.array([94.8, 107.8, 111.0], dtype=numpy.float32)
     
-    ply2.write(temp, data)
+    return data
+  
+  
+  
+  def test_write_empty(self):
+    before = self.ds_empty()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+    
+    temp.seek(0)
+    data = temp.read()
+    
+    expected = ['ply', 'format ascii 2.0', 'end_header', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+
+  
+  def test_write_default(self):
+    before = self.ds_default()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+    
+    temp.seek(0)
+    data = temp.read()
+    
+    expected = ['ply', 'format ascii 2.0', 'end_header', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_empty_element(self):
+    before = self.ds_empty_element()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+    
+    temp.seek(0)
+    data = temp.read()
+
+    expected = ['ply', 'format ascii 2.0', 'element dummy 0', 'end_header', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+
+
+  def test_write_ints(self):
+    before = self.ds_ints()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+    
+    temp.seek(0)
+    data = temp.read()
+    
+    expected = ['ply', 'format ascii 2.0', 'element values 3', 'property int32 x', 'end_header', '1', '2', '3', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_floats(self):
+    before = self.ds_floats()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+    
+    temp.seek(0)
+    data = temp.read()
+    
+    expected = ['ply', 'format ascii 2.0', 'element values 3', 'property real32 x', 'property real32 y', 'end_header', '1 1.5', '2 5.5999999', '3 3.1415927', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_image(self):
+    before = self.ds_image()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+    
+    temp.seek(0)
+    data = temp.read()
+    
+    expected = ['ply', 'format ascii 2.0', 'type image.rgb', 'element pixel 2 2', 'property nat8 red', 'property nat8 green', 'property nat8 blue', 'end_header', '0 0 0', '255 0 0', '0 255 0', '0 0 255', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+
+
+  def test_write_strings(self):
+    before = self.ds_strings()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+    
+    temp.seek(0)
+    data = temp.read()
+
+    expected = ['ply', 'format ascii 2.0', 'element people 8', 'property string:nat32 name', 'end_header', '9 The Alien', '6 Ripley', '3 Ash', '7 Bite Me', '4     ', '9   Penguin', '7 Joker  ', '8 Two\nFace', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_arrays(self):
+    before = self.ds_arrays()
+    
+    temp = tempfile.TemporaryFile('w+b') 
+    ply2.write(temp, before)
+    
+    temp.seek(0)
+    data = temp.read()
+
+    expected = ['ply', 'format ascii 2.0', 'element samples 5', 'property array:1:nat32:int8 values', 'end_header', '4 3 1 4 2', '2 42 42', '6 100 101 102 -1 -2 0', '1 -12', '0 ', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_meta(self):
+    before = self.ds_meta()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+    
+    temp.seek(0)
+    data = temp.read()
+
+    expected = ['ply', 'format ascii 2.0', 'meta string:nat32 author 7 Cthulhu', 'meta int64 tentacles 42', 'meta real64 pi 3.141592653589793', 'end_header', '']
+    self.assertTrue(data=='\n'.join(expected))
+    
+    temp.close()
+  
+  
+  def test_write_map(self):
+    before = self.ds_map()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
     
     temp.seek(0)
     data = temp.read()
@@ -522,6 +569,210 @@ class TestPly2(unittest.TestCase):
     self.assertTrue(data.decode('utf8')=='\n'.join(expected))
     
     temp.close()
+  
+  
+  
+  def equal(self, a, b):
+    """Internal method that compares two ply files in the dictionary representation, to see if they are identical - will fail the test if not."""
+    
+    # Format...
+    self.assertTrue((a['format'] if 'format' in a else 'ascii')==(b['format'] if 'format' in b else 'ascii'))
+    
+    # Type...
+    self.assertTrue(set(a['type'] if 'type' in a else [])==set(b['type'] if 'type' in b else []))
+   
+    # Meta...
+    a_meta = a['meta'] if 'meta' in a else dict()
+    b_meta = b['meta'] if 'meta' in b else dict()
+    
+    self.assertTrue(set(a_meta.keys())==set(b_meta.keys()))
+    
+    for key, va in a_meta.iteritems():
+      vb = b_meta[key]
+      self.assertTrue(type(va)==type(vb))
+      self.assertTrue(va==vb)
+    
+    # Comments...
+    a_com = a['comment'] if 'comment' in a else dict()
+    b_com = b['comment'] if 'comment' in b else dict()
+    
+    self.assertTrue(len(a_com)==len(b_com))
+    
+    for i in xrange(len(a_com)):
+      self.assertTrue(i in a_com)
+      self.assertTrue(i in b_com)
+      self.assertTrue(a_com[i]==b_com[i])
+    
+    # Compress...
+    a_comp = a['compress'] if 'compress' in a else ''
+    b_comp = b['compress'] if 'compress' in b else ''
+    
+    if a_comp==None: a_comp = ''
+    if b_comp==None: b_comp = ''
+    self.assertTrue(a_comp==b_comp)
+    
+    # Element structure...
+    a_elems = a['element'] if 'element' in a else dict()
+    b_elems = b['element'] if 'element' in b else dict()
+    
+    self.assertTrue(set(a_elems.keys())==set(b_elems.keys()))
+    
+    for elem in a_elems:
+      a_props = a_elems[elem]
+      b_props = b_elems[elem]
+      
+      self.assertTrue(set(a_props.keys())==set(b_props.keys()))
+      
+      for prop in a_props:
+        a_array = a_props[prop]
+        b_array = b_props[prop]
+        
+        self.assertTrue(a_array.shape==b_array.shape)
+        self.assertTrue(a_array.dtype==b_array.dtype)
+        
+        if a_array.dtype!=numpy.object:
+          self.assertTrue((a_array==b_array).all())
+        
+        else:
+          for index in numpy.ndindex(*a_array.shape):
+            check = a_array[index]==b_array[index]
+            
+            if isinstance(check, numpy.ndarray):
+              self.assertTrue(check.all())
+              
+            else:
+              self.assertTrue(check)
+              
+
+  
+  def test_write_read_empty(self):
+    before = self.ds_empty()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+
+
+  def test_write_read_default(self):
+    before = self.ds_default()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+
+
+  def test_write_read_empty_element(self):
+    before = self.ds_empty_element()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+
+
+  def test_write_read_ints(self):
+    before = self.ds_ints()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+
+
+  def test_write_read_floats(self):
+    before = self.ds_floats()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+
+
+  def test_write_read_image(self):
+    before = self.ds_image()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+
+
+  def test_write_read_strings(self):
+    before = self.ds_strings()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+
+
+  def test_write_read_arrays(self):
+    before = self.ds_arrays()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+    
+
+  def test_write_read_meta(self):
+    before = self.ds_meta()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+    
+    
+  def test_write_read_map(self):
+    before = self.ds_map()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
 
 
 

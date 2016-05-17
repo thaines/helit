@@ -7,7 +7,7 @@ This library reads and writes ply 2 files, as represented internally by a nest o
 data['format'] = 'ascii', 'binary_little_endian' or 'binary_big_endian' to indicate how the file is to be stored; if omitted defaults to ascii.
 data['type'] = A list of types, indicating what kind of data the file represents.
 data['meta'] - A dictionary indexed by the key of each meta item, going to the meta items, so that data['meta']['author'] = 'Cthulhu' indicates that the header includes 'meta string:nat32 author 7 Cthulhu\n'. Encoding is automatically inferred from the python type.
-data['comment] - A dictionary indexed by natural numbers, to get comment 0, comment 1 etc. as strings.
+data['comment'] - A dictionary indexed by natural numbers, to get comment 0, comment 1 etc. as strings.
 data['compress'] = None, '', 'gzip', 'bzip2'. If omitted or the first two options that means no compression.
 
 data['element'] - A dictionary indexed by the name of each element type.
