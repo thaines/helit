@@ -35,7 +35,7 @@ This tells the program what is encoded within, e.g. 'mesh' for the original use 
 
 Meta data may be optionally stored - this consists of
 'meta <encoding> <key> <value>\n'
-where encoding is one of the encodings used to store data, key is a text string without white space and value is the value, using the ascii encoding of the encoding given. Support for the array encoding for the meta type is optional.
+where encoding is one of the encodings used to store data, key is a text string without white space and value is the value, using the ascii encoding of the encoding given. Support for strings that contain new lines is optional. Support for the array encoding for the meta type is optional.
 
 Optionally comments can be included, as many as desired; they take the form:
 'comment <some arbitrary text>\n'
@@ -112,7 +112,7 @@ property real32 x
 property real32 y
 property real32 z
 element face 6
-property array:1:nat8:nat32 vertex_index
+property array:1:nat8:nat32 vertex_indices
 
 The choice of floating point for the vertex positions is optional, and there are many ways to extend this.
 
@@ -162,7 +162,7 @@ property string:nat32 attribution
 colour_map.rgb:
 ---------------
 
-A ply file that contains a colour map - basically input colour and output colour at a number of data points. Often these will need to be interpolated in use - how this is done is up to the program applying the transform (I typically use thin plate splines.). Defined on the assumption that people might want to do another colour space; file extension should be .colour_map in all cases however. For the rgb version defined here its floating point, but 0-255 is the range (historical artefact).
+A ply file that contains a colour map - basically input colour and output colour at a number of data points. Often these will need to be interpolated in use - how this is done is up to the program applying the transform (I typically use thin plate splines.). Defined on the assumption that people might want to do another colour space; file extension should be .colour_map in all cases however. For the rgb version defined here its floating point, but 0-255 is the range (historical artefact). I'm fully aware that 'rgb' is not a real colour space - extra meta data could be included if that was known.
 
 type colour_map.rgb
 element sample 40

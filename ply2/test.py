@@ -420,6 +420,77 @@ class TestPly2(unittest.TestCase):
     return data
   
   
+  def ds_mesh(self):
+    data = ply2.create()
+    data['type'].append('mesh')
+    
+    verts = numpy.empty((8, 3), dtype=numpy.float32)
+    verts[0,:] = ( 1.0,  1.0, -1.0)
+    verts[1,:] = ( 1.0, -1.0, -1.0)
+    verts[2,:] = (-1.0, -1.0, -1.0)
+    verts[3,:] = (-1.0,  1.0, -1.0)
+    verts[4,:] = ( 1.0,  1.0,  1.0)
+    verts[5,:] = (-1.0,  1.0,  1.0)
+    verts[6,:] = (-1.0, -1.0,  1.0)
+    verts[7,:] = ( 1.0, -1.0,  1.0)
+    
+    faces = numpy.empty(6, dtype=numpy.object)
+    faces[0] = numpy.array([0, 1, 2, 3], dtype=numpy.int32)
+    faces[1] = numpy.array([4, 5, 6, 7], dtype=numpy.int32)
+    faces[2] = numpy.array([0, 4, 7, 1], dtype=numpy.int32)
+    faces[3] = numpy.array([1, 7, 6, 2], dtype=numpy.int32)
+    faces[4] = numpy.array([2, 6, 5, 3], dtype=numpy.int32)
+    faces[5] = numpy.array([4, 0, 3, 5], dtype=numpy.int32)
+    
+    data['element']['vertex'] = OrderedDict()
+    data['element']['vertex']['x'] = verts[:,0]
+    data['element']['vertex']['y'] = verts[:,1]
+    data['element']['vertex']['z'] = verts[:,2]
+    
+    data['element']['face'] = OrderedDict()
+    data['element']['face']['vertex_indices'] = faces
+    
+    return data
+  
+  
+  def ds_colour_map(self):
+    data = ply2.create()
+    data['type'].append('colour_map.rgb')
+    
+    samples = numpy.empty((3, 6), dtype=numpy.float32)
+    samples[0,:] = [0, 0, 0, 0, 0, 0]
+    samples[1,:] = [1, 1, 1, 1, 1, 1]
+    samples[2,:] = [0.5, 0.5, 0.5, 0.25, 0.25, 0.25]
+    
+    data['element']['sample'] = OrderedDict()
+    data['element']['sample']['in.r'] = samples[:,0]
+    data['element']['sample']['in.g'] = samples[:,1]
+    data['element']['sample']['in.b'] = samples[:,2]
+    data['element']['sample']['out.r'] = samples[:,3]
+    data['element']['sample']['out.g'] = samples[:,4]
+    data['element']['sample']['out.b'] = samples[:,5]
+    
+    return data
+  
+  
+  def ds_graph(self):
+    data = ply2.create()
+    
+    name = numpy.zeros(2, dtype=numpy.object)
+    name[0] = 'x'
+    name[1] = 'y'
+    
+    value = numpy.zeros(2, dtype=numpy.object)
+    value[0] = numpy.sin(numpy.linspace(0.0, numpy.pi, 32))
+    value[1] = numpy.cos(numpy.linspace(0.0, numpy.pi, 32))
+    
+    data['element']['variable'] = OrderedDict()
+    data['element']['variable']['name'] = name
+    data['element']['variable']['value'] = value
+    
+    return data
+
+
   
   def test_write_empty(self):
     before = self.ds_empty()
@@ -571,7 +642,38 @@ class TestPly2(unittest.TestCase):
     temp.close()
   
   
-  
+  def test_write_mesh(self):
+    before = self.ds_mesh()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+    
+    temp.seek(0)
+    data = temp.read()
+
+    expected = ['ply', 'format ascii 2.0', 'type mesh', 'element vertex 8', 'property real32 x', 'property real32 y', 'property real32 z', 'element face 6', 'property array:1:nat32:int32 vertex_indices', 'end_header', '1 1 -1',
+'1 -1 -1', '-1 -1 -1', '-1 1 -1', '1 1 1', '-1 1 1', '-1 -1 1', '1 -1 1', '4 0 1 2 3', '4 4 5 6 7', '4 0 4 7 1', '4 1 7 6 2', '4 2 6 5 3', '4 4 0 3 5', '']
+    self.assertTrue(data.decode('utf8')=='\n'.join(expected))
+    
+    temp.close()
+
+
+  def test_write_colour_map(self):
+    before = self.ds_colour_map()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+    
+    temp.seek(0)
+    data = temp.read()
+    
+    expected = ['ply', 'format ascii 2.0', 'type colour_map.rgb', 'element sample 3', 'property real32 in.r', 'property real32 in.g', 'property real32 in.b', 'property real32 out.r', 'property real32 out.g', 'property real32 out.b', 'end_header', '0 0 0 0 0 0', '1 1 1 1 1 1', '0.5 0.5 0.5 0.25 0.25 0.25', '']
+    self.assertTrue(data.decode('utf8')=='\n'.join(expected))
+    
+    temp.close()
+
+
+
   def equal(self, a, b):
     """Internal method that compares two ply files in the dictionary representation, to see if they are identical - will fail the test if not."""
     
@@ -635,14 +737,12 @@ class TestPly2(unittest.TestCase):
         
         else:
           for index in numpy.ndindex(*a_array.shape):
-            check = a_array[index]==b_array[index]
-            
-            if isinstance(check, numpy.ndarray):
-              self.assertTrue(check.all())
-              
+            if isinstance(a_array[index], numpy.ndarray):
+              error = numpy.fabs(a_array[index]-b_array[index])
+              self.assertTrue((error<1e-6).all())
             else:
-              self.assertTrue(check)
-              
+              self.assertTrue(a_array[index]==b_array[index])
+
 
   
   def test_write_read_empty(self):
@@ -773,6 +873,379 @@ class TestPly2(unittest.TestCase):
     temp.close()
     
     self.equal(before, after)
+
+
+  def test_write_read_mesh(self):
+    before = self.ds_mesh()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+
+
+  def test_write_read_colour_map(self):
+    before = self.ds_colour_map()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+
+
+  def test_write_read_graph(self):
+    before = self.ds_graph()
+    
+    temp = tempfile.TemporaryFile('w+b')
+    ply2.write(temp, before)
+
+    temp.seek(0)
+    after = ply2.read(temp)
+    temp.close()
+    
+    self.equal(before, after)
+  
+  
+  
+  def test_read_minimal(self):
+    lines = ['ply', 'format ascii 2.0', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    ply2.read(temp)
+    temp.close()
+  
+  
+  def test_read_no_end(self):
+    lines = ['ply', 'format ascii 2.0']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(EOFError):
+      ply2.read(temp)
+    temp.close()
+  
+  
+  def test_read_past_limit(self):
+    lines = ['ply', 'format ascii 2.0'] + ['comment I am a fish'] * 16384 + ['end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(BufferError):
+      ply2.read(temp)
+    temp.close()
+  
+  
+  def test_read_no_magic(self):
+    lines = ['format ascii 2.0', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+
+
+  def test_read_no_format(self):
+    lines = ['ply', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+  
+  
+  def test_read_type(self):
+    lines = ['ply', 'format ascii 2.0', 'type nothing', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    ply2.read(temp)
+    temp.close()
+  
+  
+  def test_read_multiple_type(self):
+    lines = ['ply', 'format ascii 2.0', 'type nothing', 'type nothingness', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+  
+  
+  def test_read_multiple_compress(self):
+    lines = ['ply', 'format ascii 2.0', 'compress gzip2', 'compress gzip2', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+    
+    
+  def test_read_bad_compress(self):
+    lines = ['ply', 'format ascii 2.0', 'compress dancing gzip2', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+
+
+  def test_read_unknown_compress(self):
+    lines = ['ply', 'format ascii 2.0', 'compress elephant', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+    
+    
+  def test_read_bad_length(self):
+    lines = ['ply', 'format ascii 2.0', 'length 5 blue wahles', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+    
+    lines = ['ply', 'format ascii 2.0', 'length nine', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(ValueError):
+      ply2.read(temp)
+    temp.close()
+    
+  
+  def test_read_null_element(self):
+    lines = ['ply', 'format ascii 2.0', 'element penguin 0', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    ply2.read(temp)
+    temp.close()
+
+
+  def test_read_duplicate_element(self):
+    lines = ['ply', 'format ascii 2.0', 'element penguin 0', 'element penguin 0', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+    
+    
+  def test_read_no_shape(self):
+    lines = ['ply', 'format ascii 2.0', 'element penguin', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+ 
+
+  def test_read_antidata(self):
+    lines = ['ply', 'format ascii 2.0', 'element penguin -4', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+  
+  
+  def test_read_naked_property(self):
+    lines = ['ply', 'format ascii 2.0', 'property real32 nose_size', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+    
+    
+  def test_read_duplicate_property(self):
+    lines = ['ply', 'format ascii 2.0', 'element penguin 0', 'property real32 nose_size', 'property real32 nose_size', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(AssertionError):
+      ply2.read(temp)
+    temp.close()
+  
+  
+  def test_read_bad_meta(self):
+    # Missing...
+    lines0 = ['ply', 'format ascii 2.0', 'meta real32', 'end_header', '']
+    
+    # Not a float...
+    lines1 = ['ply', 'format ascii 2.0', 'meta real32 author bunny', 'end_header', '']
+    
+    # Not an int...
+    lines2 = ['ply', 'format ascii 2.0', 'meta int32 time 3.5', 'end_header', '']
+    
+    # Excess...
+    lines3 = ['ply', 'format ascii 2.0', 'meta real32 time 3.5 seconds', 'end_header', '']
+    
+    # Bad string length type...
+    lines4 = ['ply', 'format ascii 2.0', 'meta string:rodent owner 4 Rupert', 'end_header', '']
+    
+    # Bad string length...
+    lines5 = ['ply', 'format ascii 2.0', 'meta string:nat32 owner rat Rupert', 'end_header', '']
+    
+    # Wrong string length...
+    lines6 = ['ply', 'format ascii 2.0', 'meta string:nat32 owner 8 Rupert', 'end_header', '']
+    
+    # No string length...
+    lines7 = ['ply', 'format ascii 2.0', 'meta string:nat32 owner Rupert', 'end_header', '']
+    
+    # Unknown type...
+    lines8 = ['ply', 'format ascii 2.0', 'meta quaternion angle 3.2 1.2 4.5 -0.3', 'end_header', '']
+
+    # Do all of the above...
+    for lines, error in [(lines0,KeyError), (lines1,ValueError), (lines2,ValueError), (lines3,ValueError), (lines4,IOError), (lines5,ValueError), (lines6,IOError), (lines7,ValueError), (lines8,IOError)]:
+      temp = tempfile.TemporaryFile('w+b')
+      temp.write('\n'.join(lines))
+    
+      temp.seek(0)
+      with self.assertRaises(error):
+        ply2.read(temp)
+      temp.close()
+
+
+  def test_read_line_endings_dos(self):
+    lines = ['ply', 'format ascii 2.0', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n\r'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(EOFError):
+      ply2.read(temp)
+    temp.close()
+
+
+  def test_read_line_endings_mac(self):
+    lines = ['ply', 'format ascii 2.0', 'end_header', '']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\r\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(EOFError):
+      ply2.read(temp)
+    temp.close()
+
+
+  def test_read_small(self):
+    lines = ['ply', 'format ascii 2.0', 'element values 2', 'property int32 size', 'end_header', '4', '5']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    ply2.read(temp)
+    temp.close()
+
+
+  def test_read_incomplete(self):
+    lines = ['ply', 'format ascii 2.0', 'element values 2', 'property int32 size', 'end_header', '4']
+    
+    temp = tempfile.TemporaryFile('w+b')
+    temp.write('\n'.join(lines))
+    
+    temp.seek(0)
+    with self.assertRaises(IOError):
+      ply2.read(temp)
+    temp.close()
+    
+    
+  def test_read_bad_properties(self):
+    # Unknown type...
+    lines0 = ['ply', 'format ascii 2.0', 'element values 0', 'property elephants size', 'end_header', '']
+    
+    # Incomplete string...
+    lines1 = ['ply', 'format ascii 2.0', 'element values 0', 'property string size', 'end_header', '']
+    
+    # Wrong string...
+    lines2 = ['ply', 'format ascii 2.0', 'element values 0', 'property string:bytes size', 'end_header', '']
+    
+    # Crazy string...
+    lines3 = ['ply', 'format ascii 2.0', 'element values 0', 'property string:real32 size', 'end_header', '']
+    
+    # Incomplete array spec...
+    lines4 = ['ply', 'format ascii 2.0', 'element values 0', 'property array:2: size', 'end_header', '']
+    
+    # Negative dimensionality array...
+    lines5 = ['ply', 'format ascii 2.0', 'element values 0', 'property array:-2:nat32:real32 size', 'end_header', '']
+    
+    # Silly shape measure...
+    lines6 = ['ply', 'format ascii 2.0', 'element values 0', 'property array:1:real32:real32 size', 'end_header', '']
+    
+    # Complex nesting...
+    lines7 = ['ply', 'format ascii 2.0', 'element values 0', 'property array:1:real32:string:nat32 size', 'end_header', '']
+    
+    # Do all of the above...
+    for lines, error in [(lines0,IOError), (lines1,IndexError), (lines2,IOError), (lines3,IOError), (lines4,KeyError), (lines5,ValueError), (lines6,IOError), (lines7,KeyError)]:
+      temp = tempfile.TemporaryFile('w+b')
+      temp.write('\n'.join(lines))
+    
+      temp.seek(0)
+      with self.assertRaises(error):
+        ply2.read(temp)
+      temp.close()
 
 
 

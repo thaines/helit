@@ -164,15 +164,25 @@ def encoding_to_dtype(enc, force_int = False):
   if parts[0]=='nat128': raise NotImplementedError('nat128 is not supported by this implimentation.')
 
   if force_int:
-    raise IOError('Unrecognised or unsupported encoding in ply 2 file.')
+    raise IOError('Unrecognised or unsupported encoding in ply 2 file (for array/string shape type).')
   
   if parts[0]=='real16': return (numpy.float16, None, None, None)
   if parts[0]=='real32': return (numpy.float32, None, None, None)
   if parts[0]=='real64': return (numpy.float64, None, None, None)
   if parts[0]=='real128': return (numpy.float128, None, None, None)
   
-  if parts[0]=='array': return (numpy.object, int(parts[1]), encoding_to_dtype(parts[2],True)[0], encoding_to_dtype(parts[3])[0])
-  if parts[0]=='string': return (numpy.object, None, encoding_to_dtype(parts[1],True)[0], None)
+  if parts[0]=='array':
+    if len(parts)!=4:
+      raise KeyError('Incomplete array specification')
+    
+    dims = int(parts[1])
+    if dims<1:
+      raise ValueError('Array requires a positive dimension count.')
+    
+    return (numpy.object, dims, encoding_to_dtype(parts[2],True)[0], encoding_to_dtype(parts[3])[0])
+  
+  if parts[0]=='string':
+    return (numpy.object, None, encoding_to_dtype(parts[1],True)[0], None)
   
   raise IOError('Unrecognised encoding in ply 2 file.')
 
@@ -231,6 +241,8 @@ def read_meta_line(line):
   
   # Split - max split means the length and string will not be seperated for a string type, as that requires special care...
   parts = line.split(None, 3)
+  if len(parts)!=4:
+    raise KeyError('Meta is missing information')
   
   if parts[1] in ['int8', 'int16', 'int32', 'int64', 'int128', 'nat8', 'nat16', 'nat32', 'nat64', 'nat128']:
     value = int(parts[3])
@@ -244,9 +256,11 @@ def read_meta_line(line):
 
     base = parts[3].index(' ')
     value = parts[3][base+1:]
+    
+    if len(value)!=int(parts[3][:base]):
+      raise IOError('String length does not match specified.')
   
   else:
-    print line
     raise IOError('Unrecognised or unsuported meta value encoding.')
 
   return parts[2], value
@@ -496,7 +510,10 @@ def read_ascii(f, element, prop):
   
   def next_token():
     while len(tokens)==0 or tokens[0].isspace():
-      more = ws_keep_split.findall(f.readline())[:-1]
+      data = f.readline()
+      if len(data)==0:
+        raise IOError('Insufficient data')
+      more = ws_keep_split.findall(data)[:-1]
       if len(tokens)!=0:
         more[0] = tokens.pop(0) + more[0]
       tokens.extend(more)
@@ -604,6 +621,9 @@ def read(f):
   
   while True:
     line = f.readline()
+    if len(line)==0:
+      raise EOFError('Ran out of data reading header.')
+    
     header.append(line[:-1])
     
     # Stop if done...
@@ -660,7 +680,7 @@ def read(f):
         raise AssertionError('Multiple compression specifications.')
       
       if len(part)!=2:
-        raise AssertionError('header compression specification is wrong.')
+        raise AssertionError('Header compression specification is wrong.')
       
       if part[1]=='gzip':
         data['compress'] = 'gzip'
@@ -669,11 +689,11 @@ def read(f):
         data['compress'] = 'bzip2'
         compress = 'bzip2'
       else:
-        raise AssertionError('unrecognised compression mode.')
+        raise AssertionError('Unrecognised compression mode.')
     
     elif part[0]=='length': # Ignored - just check its at least the right structure.
       if len(part)!=2:
-        raise AssertionError('header file length specification is wrong.')
+        raise AssertionError('Header file length specification is wrong.')
       
       length = int(part[1]) # For the exception thrown!
     
@@ -682,21 +702,21 @@ def read(f):
       shape = [int (p) for p in part[2:]]
       
       if name in data['element']:
-        raise AssertionError('duplicate element.')
+        raise AssertionError('Duplicate element.')
       
       if len(shape)==0:
-        raise AssertionError('element has no shape.')
+        raise AssertionError('Element has no shape.')
       
       for v in shape:
         if v<0:
-          raise AssertionError('shape has negative volume.')
+          raise AssertionError('Shape has negative volume.')
       
       data['element'][name] = OrderedDict()
       elem_shape[name] = tuple(shape)
     
     elif part[0]=='property':
       if len(data['element'])==0:
-        raise AssertionError('property defined before element declared in header.')
+        raise AssertionError('Property defined before element declared in header.')
       
       elem_name = next(reversed(data['element']))
       elem = data['element'][elem_name]
@@ -706,7 +726,7 @@ def read(f):
       prop_name = part[2]
       
       if prop_name in elem:
-        raise AssertionError('duplicate property name in header.')
+        raise AssertionError('Duplicate property name within element.')
       
       elem_prop[elem_name][prop_name] = (arr_dtype, dims, shape_dtype, store_dtype)
       elem[prop_name] = numpy.zeros(shape, dtype=arr_dtype)
