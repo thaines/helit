@@ -605,18 +605,8 @@ def read_ascii(f, element, prop):
 
 
 
-def read(f):
-  """This reads a ply2 file (first variable), where file can either be the filename of a file to open or a file-like object to .read()/.readline() all of the data from. Note that if a file is passed in it must have been opened in binary mode, even if using the ascii format. It tries to leave the cursor at the end of the ply2 file, and will when compression is off, but may not otherwise. Returns the dictionary representing the file."""
-  
-  # If we have been passed a string open the file...
-  if isinstance(f, basestring):
-    f = open(f, 'rb')
-    do_close = True
-  else:
-    do_close = False
-  
-  
-  # Read the header...
+def read_header(f):
+  """Simply reads the header, returning a list of lines and leaving the files cursor immediatly where the data starts."""
   header = []
   
   while True:
@@ -632,6 +622,24 @@ def read(f):
     
     if len(header) > 16384:
       raise BufferError('Limit on header line count exceded.')
+  
+  return header
+
+
+
+def read(f):
+  """This reads a ply2 file (first variable), where file can either be the filename of a file to open or a file-like object to .read()/.readline() all of the data from. Note that if a file is passed in it must have been opened in binary mode, even if using the ascii format. It tries to leave the cursor at the end of the ply2 file, and will when compression is off, but may not otherwise. Returns the dictionary representing the file."""
+  
+  # If we have been passed a string open the file...
+  if isinstance(f, basestring):
+    f = open(f, 'rb')
+    do_close = True
+  else:
+    do_close = False
+  
+  
+  # Read the header...
+  header = read_header(f)
   
   
   # Parse the header, and build an 'empty' dictionary representing the file from it, making use of ordered dictionaries so the actual reading code knows the element/property orders...
