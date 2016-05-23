@@ -151,25 +151,25 @@ def encoding_to_dtype(enc, force_int = False):
   
   parts = enc.split(':')
   
-  if parts[0]=='int8': return (numpy.int8, None, None, None)
-  if parts[0]=='int16': return (numpy.int16, None, None, None)
-  if parts[0]=='int32': return (numpy.int32, None, None, None)
-  if parts[0]=='int64': return (numpy.int64, None, None, None)
+  if parts[0]=='int8': return (numpy.dtype(numpy.int8), None, None, None)
+  if parts[0]=='int16': return (numpy.dtype(numpy.int16), None, None, None)
+  if parts[0]=='int32': return (numpy.dtype(numpy.int32), None, None, None)
+  if parts[0]=='int64': return (numpy.dtype(numpy.int64), None, None, None)
   if parts[0]=='int128': raise NotImplementedError('int128 is not supported by this implimentation.')
   
-  if parts[0]=='nat8': return (numpy.uint8, None, None, None)
-  if parts[0]=='nat16': return (numpy.uint16, None, None, None)
-  if parts[0]=='nat32': return (numpy.uint32, None, None, None)
-  if parts[0]=='nat64': return (numpy.uint64, None, None, None)
+  if parts[0]=='nat8': return (numpy.dtype(numpy.uint8), None, None, None)
+  if parts[0]=='nat16': return (numpy.dtype(numpy.uint16), None, None, None)
+  if parts[0]=='nat32': return (numpy.dtype(numpy.uint32), None, None, None)
+  if parts[0]=='nat64': return (numpy.dtype(numpy.uint64), None, None, None)
   if parts[0]=='nat128': raise NotImplementedError('nat128 is not supported by this implimentation.')
 
   if force_int:
     raise IOError('Unrecognised or unsupported encoding in ply 2 file (for array/string shape type).')
   
-  if parts[0]=='real16': return (numpy.float16, None, None, None)
-  if parts[0]=='real32': return (numpy.float32, None, None, None)
-  if parts[0]=='real64': return (numpy.float64, None, None, None)
-  if parts[0]=='real128': return (numpy.float128, None, None, None)
+  if parts[0]=='real16': return (numpy.dtype(numpy.float16), None, None, None)
+  if parts[0]=='real32': return (numpy.dtype(numpy.float32), None, None, None)
+  if parts[0]=='real64': return (numpy.dtype(numpy.float64), None, None, None)
+  if parts[0]=='real128': return (numpy.dtype(numpy.float128), None, None, None)
   
   if parts[0]=='array':
     if len(parts)!=4:
@@ -292,7 +292,7 @@ class BZ2Comp:
   
   
   def flush(self):
-    self.f.write(self.comp.flush(data))
+    self.f.write(self.comp.flush())
 
 
 
@@ -334,7 +334,7 @@ class BZ2Decomp:
   
   
   def readline(self):
-    while '\n' not in self.spare[-1]:
+    while len(self.spare)==0 or ('\n' not in self.spare[-1]):
       try:
         data = self.f.read(self.chunk_size)
         data = self.decomp.decompress(data)
@@ -345,7 +345,7 @@ class BZ2Decomp:
         break
     
     ret = ''.join(self.spare)
-    new_line = self.spare.find('\n')
+    new_line = ret.find('\n')
     self.spare = [ret[new_line+1:]]
     return ret[:new_line+1]
    
@@ -393,9 +393,83 @@ def write_ascii(f, element, order):
     else: # All the integer types.
       parts.append([str(x) for x in arr.flat])
   
+  
   # Zip them and write out, line by line...
   for line in zip(*parts):
     f.write(' '.join(line) + '\n')
+
+
+
+def write_binary(f, element, order, little=True):
+  """Identical to write ascii, but for the binary cases, with an extra flag to indicate endiness."""
+  
+  # Needed below...
+  if little:
+    order_accept = '<=' if sys.byteorder=='little' else '<'
+    
+  else:
+    order_accept = '>=' if sys.byteorder=='big' else '>'
+  
+  # Convert each property into a list of binary blobs...
+  parts = []
+  for prop in order:
+    arr = element[prop]
+    
+    if arr.dtype in [numpy.int8, numpy.int16, numpy.int32, numpy.int64, numpy.uint8, numpy.uint16, numpy.uint32, numpy.uint64]:
+      # Handle byte order...
+      if arr.dtype.byteorder not in order_accept:
+        arr = arr.byteswap()
+      
+      # Convert to bytes...
+      data = arr.tostring()
+      
+      # Chop up into a list ready for interleaving, and record...
+      size = arr.dtype.itemsize
+      parts.append([data[i:i+size] for i in xrange(0, len(data), size)])
+    
+    elif arr.dtype in [numpy.float16, numpy.float32, numpy.float64, numpy.float128]:
+      # Convert to bytes...
+      data = arr.tostring()
+      
+      # Chop up into a list ready for interleaving, and record...
+      size = arr.dtype.itemsize
+      parts.append([data[i:i+size] for i in xrange(0, len(data), size)])
+      
+    elif arr.dtype==numpy.object:
+      # Arrays or strings...
+      if isinstance(arr.flat[0], numpy.ndarray):
+        def prepare(a):
+          shape = numpy.array(a.shape, dtype=numpy.uint32)
+          
+          if shape.dtype.byteorder not in order_accept:
+            shape = shape.byteswap()
+          
+          if a.dtype.byteorder not in order_accept and a.dtype in [numpy.int8, numpy.int16, numpy.int32, numpy.int64, numpy.uint8, numpy.uint16, numpy.uint32, numpy.uint64]:
+            a = a.byteswap()
+          
+          return shape.tostring() + a.tostring()
+        
+        parts.append([prepare(a) for a in arr.flat])
+
+      else:
+        def prepare(s):
+          s = s.encode('utf8')
+          
+          size = numpy.array([len(s)], dtype=numpy.uint32)
+          if size.dtype.byteorder not in order_accept:
+            size = size.byteswap()
+          
+          return size.tostring() + s
+      
+        parts.append([prepare(s) for s in arr.flat])
+      
+    else:
+      raise RuntimeError('Bug: Unsupported array managed to sneak through safety checks.')
+  
+  
+  # Zip and write out...
+  for line in zip(*parts):
+    f.write(''.join(line))
 
 
 
@@ -476,10 +550,10 @@ def write(f, data):
       write_ascii(ff, data['element'][elem], property_order[elem])
     
     elif format=='binary_little_endian':
-      raise NotImplementedError()
+      write_binary(ff, data['element'][elem], property_order[elem], True)
     
     else: # binary_big_endian
-      raise NotImplementedError()
+      write_binary(ff, data['element'][elem], property_order[elem], False)
 
   
   # If we were compressing then we better flush the buffer...
@@ -498,6 +572,28 @@ def write(f, data):
 
 # Regular expression for doing a 'split' without throwing away white space. Relies on the fact the Python re module is greedy, and tries to make each match as long as possible...
 ws_keep_split = re.compile(r'(\s*[^\s]*)')
+
+
+
+# Functor used below...
+class ReadAsciiArray:
+  def __init__(self, next_token, dims, store_dtype, cast):
+    self.next_token = next_token
+    self.dims = dims
+    self.store_dtype = store_dtype
+    self.cast = cast
+  
+  def __call__(self):
+    shape = []
+    for _ in xrange(self.dims):
+      shape.append(int(self.next_token()))
+
+    ret = numpy.empty(shape, dtype=self.store_dtype)
+
+    for index in numpy.ndindex(*shape):
+      ret[index] = self.cast(self.next_token())
+    
+    return ret
 
 
 
@@ -541,19 +637,6 @@ def read_ascii(f, element, prop):
       tokens.insert(0, excess)
     
     return ret[1:].decode('utf8') # [1:] to skip space at start.
-  
-  
-  def read_array(dims, dtype, conv):
-    shape = []
-    for _ in xrange(dims):
-      shape.append(int(next_token()))
-
-    ret = numpy.empty(shape, dtype=dtype)
-
-    for index in numpy.ndindex(*shape):
-      ret[index] = conv(next_token())
-    
-    return ret
 
   
   # To keep the reading loop sane encode it as a list of tuples, where each tuple is an array to output to followed by a (token eatting) function to call to get the data to be written...
@@ -581,13 +664,134 @@ def read_ascii(f, element, prop):
       else:
         # Array...
         if store_dtype in [numpy.int8, numpy.int16, numpy.int32, numpy.int64, numpy.uint8, numpy.uint16, numpy.uint32, numpy.uint64]:
-          ops.append((array, lambda: read_array(dims, store_dtype, int)))
+          ops.append((array, ReadAsciiArray(next_token, dims, store_dtype, int)))
         
         elif store_dtype in [numpy.float16, numpy.float32, numpy.float64, numpy.float128]:
-          ops.append((array, lambda: read_array(dims, store_dtype, float)))
+          ops.append((array, ReadAsciiArray(next_token, dims, store_dtype, float)))
         
         else:
           raise RuntimeError('Trying to read an unsupported array of arrays contents type.')
+    
+    else:
+      raise RuntimeError('Trying to read into an unsupported array type; this is a bug.')
+  
+  
+  # If shape==None there are no properties - its a no-op...
+  if shape==None:
+    return
+  
+  
+  # Loop all coordinates within the shape and read in the properties for each - after all the above prep this is actually rather elegant...
+  for index in numpy.ndindex(*shape):
+    for array, func in ops:
+      array[index] = func()
+
+
+
+# Functors used by the read_binary function...
+class ReadBinaryInt:
+  def __init__(self, f, dtype, byteswap):
+    self.f = f
+    self.dtype = dtype
+    self.byteswap = byteswap
+  
+  def __call__(self):
+    data = self.f.read(self.dtype.itemsize)
+    arr = numpy.fromstring(data, self.dtype)
+    if self.byteswap:
+      arr = arr.byteswap()
+    return arr[0]
+
+
+
+class ReadBinaryFloat:
+  def __init__(self, f, dtype):
+    self.f = f
+    self.dtype = dtype
+  
+  def __call__(self):
+    return numpy.fromstring(self.f.read(self.dtype.itemsize), self.dtype)[0]
+
+
+
+class ReadBinaryString:
+  def __init__(self, f, shape_dtype, byteswap):
+    self.f = f
+    self.shape_dtype = shape_dtype
+    self.byteswap = byteswap
+    
+  def __call__(self):
+    shape_data = self.f.read(self.shape_dtype.itemsize)
+    length = numpy.fromstring(shape_data, self.shape_dtype)
+    if self.byteswap: length = length.byteswap()
+    
+    data = self.f.read(length[0])
+    if len(data)!=length[0]:
+      raise EOFError('Ran out data reading string.')
+    
+    return data.decode('utf8')
+
+
+
+class ReadBinaryArray:
+  def __init__(self, f, dims, shape_dtype, store_dtype, byteswap):
+    self.f = f
+    self.dims = dims
+    self.shape_dtype = shape_dtype
+    self.store_dtype = store_dtype
+    self.byteswap = byteswap
+    self.byteswap_data = byteswap and self.store_dtype in [numpy.int8, numpy.int16, numpy.int32, numpy.int64, numpy.uint8, numpy.uint16, numpy.uint32, numpy.uint64]
+    
+  def __call__(self):
+    shape_data = self.f.read(self.shape_dtype.itemsize * self.dims)
+    shape = numpy.fromstring(shape_data, self.shape_dtype)
+    if self.byteswap:
+      shape = shape.byteswap()
+    
+    len_data = int(numpy.prod(shape)) * self.store_dtype.itemsize
+    data = self.f.read(len_data)
+    if len(data)!=len_data:
+      raise EOFError('Ran out data reading array.')
+    
+    ret = numpy.fromstring(data, self.store_dtype).reshape(shape)
+    if self.byteswap_data:
+      ret = ret.byteswap()
+      
+    return ret
+
+
+
+def read_binary(f, element, prop, little = True):
+  """Same interface and purpose as read_ascii, except binary data and with extra flag with True to indicate little endian, False to indicate big endian."""
+  
+  # Prep for endian-ness...
+  byteswap = little != (sys.byteorder=='little') # Sorry
+
+
+  # To keep the reading loop sane encode it as a list of tuples, where each tuple is an array to output to followed by a (data eatting) functor to call to get the data to be written...
+  shape = None
+  ops = []
+  for name, array in element.iteritems():
+    
+    if shape==None:
+      shape = array.shape
+
+    if array.dtype in [numpy.int8, numpy.int16, numpy.int32, numpy.int64, numpy.uint8, numpy.uint16, numpy.uint32, numpy.uint64]:
+      ops.append((array, ReadBinaryInt(f, array.dtype, byteswap)))
+    
+    elif array.dtype in [numpy.float16, numpy.float32, numpy.float64, numpy.float128]:
+      ops.append((array, ReadBinaryFloat(f, array.dtype)))
+    
+    elif array.dtype==numpy.object:
+      arr_dtype, dims, shape_dtype, store_dtype = prop[name]
+      
+      if dims==None:
+        # String...
+        ops.append((array, ReadBinaryString(f, shape_dtype, byteswap)))
+      
+      else:
+        # Array...
+        ops.append((array, ReadBinaryArray(f, dims, shape_dtype, store_dtype, byteswap)))
     
     else:
       raise RuntimeError('Trying to read into an unsupported array type; this is a bug.')
@@ -756,10 +960,10 @@ def read(f):
       read_ascii(ff, data['element'][elem_name], elem_prop[elem_name])
     
     elif data['format']=='binary_little_endian':
-      raise NotImplementedError()
+      read_binary(ff, data['element'][elem_name], elem_prop[elem_name], True)
     
     else: # binary_big_endian
-      raise NotImplementedError()
+      read_binary(ff, data['element'][elem_name], elem_prop[elem_name], False)
   
   
   # If decompressing then clean that up...

@@ -1246,6 +1246,227 @@ class TestPly2(unittest.TestCase):
       with self.assertRaises(error):
         ply2.read(temp)
       temp.close()
+  
+  
+  def test_adv_write_read_empty(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_empty()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_default(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_default()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_empty_element(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_empty_element()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_ints(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_ints()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_floats(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_floats()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_image(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_image()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_strings(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_strings()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_arrays(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_arrays()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_meta(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_meta()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_map(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_map()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_mesh(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_mesh()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_colour_map(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_colour_map()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
+
+
+  def test_adv_write_read_graph(self):
+    for compress in ['', 'gzip', 'bzip2']:
+      for format in ['ascii', 'binary_little_endian', 'binary_big_endian']:
+        before = self.ds_graph()
+        before['compress'] = compress
+        before['format'] = format
+    
+        temp = tempfile.TemporaryFile('w+b')
+        ply2.write(temp, before)
+
+        temp.seek(0)
+        after = ply2.read(temp)
+        temp.close()
+    
+        self.equal(before, after)
 
 
 
