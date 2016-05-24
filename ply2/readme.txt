@@ -5,7 +5,7 @@ This specifies a more flexible version of the ply file format, extended primaril
 This library reads and writes ply 2 files, as represented internally by a nest of Python dictionaries, where the data itself is stored as numpy arrays. Given the dictionary representing the ply 2 file has the variable name 'data', then the following entries are used:
 
 data['format'] = 'ascii', 'binary_little_endian' or 'binary_big_endian' to indicate how the file is to be stored; if omitted defaults to ascii.
-data['type'] = A list of types, indicating what kind of data the file represents.
+data['type'] = A list of types (arbitrary strings), indicating what kind of data the file represents.
 data['meta'] - A dictionary indexed by the key of each meta item, going to the meta items, so that data['meta']['author'] = 'Cthulhu' indicates that the header includes 'meta string:nat32 author 7 Cthulhu\n'. Encoding is automatically inferred from the python type.
 data['comment'] - A dictionary indexed by natural numbers, to get comment 0, comment 1 etc. as strings.
 data['compress'] = None, '', 'gzip', 'bzip2'. If omitted or the first two options that means no compression.
@@ -20,7 +20,7 @@ See specification.txt for what is actually written to disk.
 Contains the following files:
 
 ply2.py - Contains the read and write functions.
-test.py - Contains lots of unit tests to make sure it works.
+test.py - Contains lots of unit tests to make sure it works. Includes many examples of using the library.
 
 readme.txt - This file, which is included in the documentation.
 make_doc.py - Builds the documentation.

@@ -34,7 +34,6 @@ doc.addFunction(ply2.array_to_encoding)
 
 doc.addFunction(ply2.to_meta_line)
 doc.addFunction(ply2.read_meta_line)
-doc.addFunction(ply2.to_element_line)
 
 
 

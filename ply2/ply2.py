@@ -20,7 +20,7 @@ from collections import OrderedDict, defaultdict
 
 
 def create(binary = False, compress = 0):
-  """Creates and returns an 'empty' dictionary to represent a ply 2 file, with reasonable defaults filled in. Takes two parameters: If binary is False (the default) it uses ascii mode, otherwise it uses binary mode, where it matches the mode to the current computer."""
+  """Creates and returns an 'empty' dictionary to represent a ply 2 file, with reasonable defaults filled in. Takes two parameters: If binary is False (the default) it uses ascii mode, otherwise it uses binary mode, where it matches the mode to the current computer. If compress is 0 (the default) it does not compress the file, if its 1 it uses gzip compression and if its 2 it uses bzip2 compression."""
   ret = dict()
   
   ret['format'] = ('binary_little_endian' if sys.byteorder=='little' else 'binary_big_endian') if binary else 'ascii'
