@@ -1,0 +1,220 @@
+ply 2 specification
+
+This specifies a more flexible version of the ply file format, extended primarily to store data other than 3D models. It was designed because I wanted a file format that was human readable (unlike hdf5) and suitable for data sets too large for a json file. Being that the ply file format already has these properties it made sense to extend it. It should be noted that my choice of 'ply2' is entirely independent of the original authors of the ply format - I hope this does not annoy them. As the original ply format suffers from a certain amount of variability in implementation, often resulting in incompatibilities between software, I have written this to reduce the variability; it is entirely incompatible with the original format as a result.
+
+This specification comes with a python reader/writer, which should hopefully limit the damage of any ambiguities which I have failed to resolve in this document.
+
+
+File extension:
+---------------
+
+Is to be ignored - anything may be used, as appropriate to the application at hand. ply2 may be used if that is deemed appropriate. Using the type of data stored in the file as an extension is probably the better choice (e.g. .mesh, .image). I would recommend against .ply, to avoid software that can't open these files trying to do so.
+
+
+Loading:
+--------
+
+The file format is designed to be very easy to write. When loading however there are some features that may prove inconvenient - they have been marked optional in the following. It is acceptable to drop such features, the only requirement being that the reason the loader failed should be reported to the user.
+
+
+Header:
+-------
+
+The header consists of a sequence of text lines, each delimited by a unix style line ending (\n). It starts with 'ply\n' as an identifier to indicate it is a ply file and ends with 'end_header\n' - immediately following the end the data itself starts. The header can contain a variety of parts, though the format must always follow immediately after the start. All text in a ply2 file is encoded using utf8.
+
+The format must be one of
+'format ascii 2.0\n'
+'format binary_little_endian 2.0\n'
+'format binary_big_endian 2.0\n'
+and should always be the first line of the header, immediately after ply.
+
+A type is optional, but should typically be included, and consists of
+'type {a list of types}\n'
+This tells the program what is encoded within, e.g. 'mesh' for the original use to store a 3D mesh. This is a matter of people publishing sub-specifications (a few are at the end of this document) as to what the basic structure of a file that satisfies a particular type should be (Typically this is the minimum of what must be provided, allowing more to be added by a program if it so wishes.). A list can be provided (separated by one or more spaces.) to cover the possibility of a file matching multiple standards (e.g. it might match 'mesh', but also be a 'text' file that contains notes about the mesh.). Dot notation to indicate a substandard is also supported, e.g. 'mesh.rigged', which implies that it also satisfies the 'mesh' sub-specification as well. In practise a well written loader would ignore this and check if the elements/properties match an expected pattern, but its still convenient to indicate the intention to the loader, especially when a program supports multiple possibilities.
+
+Meta data may be optionally stored - this consists of
+'meta {encoding} {key} {value}\n'
+where encoding is one of the encodings used to store data, key is a text string without white space and value is the value, using the ascii encoding of the encoding given. Support for strings that contain new lines is optional. Support for the array encoding for the meta type is optional.
+
+Optionally comments can be included, as many as desired; they take the form:
+'comment {some arbitrary text}\n'
+They must not include \n, though multiple comments in sequence can be considered equivalent to comments with new lines. Whilst still supported, if information can be stored using meta data instead then that is the preferred technique - most loaders are expected to entirely ignore comments.
+
+Optionally the body may be compressed, though support for this is optional:
+'compress gzip\n'
+'compress bzip2\n'
+
+Optionally 'length <number of bytes>\n' may be provided, as the length of the file after the header, in bytes, in its compressed state if applicable. Provided so you can check for incomplete files without decompressing them.
+
+The main part of the header is the list of elements; each takes the form of:
+'element {name} {counts}\n'
+followed by an arbitrary number of property lines:
+'property {encoding} {name}\n'
+They effectively define an array of C-like structures. Multiple counts can be used to define an nD array, in C order (last number is the inner loop).
+
+name is used to both identify the element, and to indicate to a loader what it is. count is how many appear in the body of the file, noting that the order of elements in the header defines the order in the file.
+
+The list of properties (Delimited by the next element or the end of the header.) defines what each element contains, and the order in which it contains it. The encoding is what the property actually is, whilst the name is used to identify it.
+
+Windows-style new lines must not be used - "\n" only.
+
+
+encodings:
+----------
+
+Here is a list of the possibilities:
+ int8
+ int16
+ int32
+ int64
+ int128 - optional support.
+ nat8
+ nat16
+ nat32
+ nat64
+ nat128 - optional support.
+ real16 - optional support.
+ real32
+ real64
+ real128 - optional support.
+ array:{dims}:{shape encoding}:{contents encoding}
+ string:{length encoding}
+
+These deviate from the original specification by quite a lot, as it was a mess - the above is effectively throwing that out to have something with zero ambiguity.
+
+int means integer, and is a signed number encoded with the given number of bits. Subject to endian setting, and I shouldn't have to say this but using twos-compliment (i.e. the standard for modern CPUs).
+nat means natural, and is an unsigned number encoded with the given number of bits. Subject to endian setting.
+real means a floating point number, encoded with the given number of bits. These use the IEEE 754 specification, and are not affected by the endian setting.
+
+array:{dims}:{shape encoding}:{contents encoding}
+After array you have the number of dimensions, followed by how those dimensions are encoded (int or nat encoding only). At the end you have the encoding that is repeated within the array. Note that the encoding must have a fixed length - you cannot have arrays containing arrays/strings. Ordering is defined so that the last shape number is iterated in the inner loop - C order in other words.
+Example: array:2:nat32:nat8 - A 2D array of nat8's, where the dimensions are encoded using nat32's. On disk this would be two nat32's, followed by the requested number of nat8's (the product of both shape dimensions). If encoding an image then the convention would be that the first shape number is the height and the second is the width, so that the data is organised by row.
+
+string:{length encoding}
+Defines a string - consists of a length followed by that many bytes. Encoding is always utf8, so actual character count may be less than length.
+
+
+body:
+-----
+
+Consists of the data defined by the header, in the order given in the header. Hence, the header defines a sequence of values that need to be read, effectively as a list of elements. The encoding defines how this sequence is encoded - ascii uses typical representation of numbers (for float anything that printf supports is allowed), with white space between each element (white space includes tabs and \n; convention is to end each element instance with a \n, but this is not required.). For strings they are encoded as their length in ascii, but then the white space must always be one space, followed by the string - otherwise you could not encode strings that start with white space in an ascii file. The binary files are much more straight forward, and do exactly what you expect. There is no padding of any kind. If there is compression it is only applied to the body.
+
+
+mesh:
+-----
+
+The mesh format is defined similarly to the original ply file:
+
+type mesh
+element vertex 8
+property real32 x
+property real32 y
+property real32 z
+element face 6
+property array:1:nat8:nat32 vertex_indices
+
+The choice of floating point for the vertex positions is optional, and there are many ways to extend this.
+
+
+image:
+------
+
+An image can be encoded as:
+
+type image.rgb
+element pixel 768 1024
+property nat8 red
+property nat8 green
+property nat8 blue
+
+Having other channels would be quite common, especially if a compositor was involved:
+ 'alpha' can be used for alpha that is not pre-multiplied.
+ 'prealpha' can optionally be included for pre-multiplied alpha.
+ 'depth' can optionally be included for depth.
+This format would strongly be recommended to use binary encoding, with compression.
+real32 can be used for the colour channels, in which case they should have the range 0 to 1.
+
+
+text:
+-----
+
+File that has an interpretation as text - often part of other file types.
+
+type text
+element text 1 # Can have multiple blocks if you really want!
+property string:nat32 text
+
+
+corpus:
+-------
+
+A corpus of documents - includes the ability to have an attribution:
+
+type corpus
+element document 10000
+property string:nat32 text
+
+Common extensions for the document:
+property string:nat32 attribution
+
+
+colour_map.rgb:
+---------------
+
+A ply file that contains a colour map - basically input colour and output colour at a number of data points. Often these will need to be interpolated in use - how this is done is up to the program applying the transform (I typically use thin plate splines.). Defined on the assumption that people might want to do another colour space; file extension should be .colour_map in all cases however. For the rgb version defined here its floating point, but 0-255 is the range (historical artefact). I'm fully aware that 'rgb' is not a real colour space - extra meta data could be included if that was known.
+
+type colour_map.rgb
+element sample 40
+property real32 in.r
+property real32 in.g
+property real32 in.b
+property real32 out.r
+property real32 out.g
+property real32 out.b
+
+
+line_graph
+----------
+
+A ply file for storing a representation of 2D lines, as a vertex/edge graph with a lot of extra information. (A lot of it optional) This is the format I use for tagged handwriting data.
+
+type line_graph
+
+element vertex 500
+property real32 x
+property real32 y
+property real32 u       # Optional - location in source texture that this vertex came from.
+property real32 v       # Optional -  as above.
+property real32 w       # Optional, distance travelled in uv space if we travel radius.
+property real32 radius  # Optional
+property real32 density # Optional - density of the ink.
+property real32 weight  # Optional
+
+element edge 300
+property nat32 from # Index of starting vertex
+property nat32 to   # Index of ending vertex
+
+element split 12 # Optional
+property nat32 edge # Which edge to split
+property real32 t   # Where to split the edge
+
+element tag 9 # Optional
+property nat32 edge        # Which edge to split
+property real32 t          # Where to split the edge
+property string:nat32 text # Typically the letter assigned to this section of the line graph, with _ to indicate start/end of word.
+
+element link 3 # Optional
+property nat32  from_edge # Starting edge
+property real32 from_t    # Where on the starting edge
+property nat32  to_edge   # Ending edge
+property real32 to_t      # Where on the ending edge
+
+element link_tag 3 # Optional
+property nat32  from_edge  # Starting edge
+property real32 from_t     # Where on the starting edge
+property nat32  to_edge    # Ending edge
+property real32 to_t       # Where on the ending edge
+property string:nat32 text
+
+element homography 9 # Optional - used to represent the lines the text has been written on, at the y=integer lines. Goes from the space of the rule to the space of the line graph image.
+property real32 v # The 9 values of a homography, in row major order.

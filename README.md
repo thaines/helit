@@ -56,6 +56,8 @@ Current contents (alphabetical):
 
 **p_cat** (Apache 2.0) A bunch of probabilistic classifiers, using some of the density estimation methods also in this code base. Does it all via a standard interface, so they can be swapped out, and includes incremental learning and, somewhat unusually, the probability of a sample belonging to an unknown class, as calculated under a Dirichlet process assumption (this last feature is for a paper).
 
+**ply2** (BSD) My extension of the ply file format, for more general use. Includes a specification and pure Python reading/writing code. Intention is for this to be a good format to fill the gap between json and hdf5, particularly for large quantities of human readable data. Was created for the handwriting project, so particular attention has been made to string support. Done without the permission of the original authors, so I hope they don't mind!
+
 **rlda**: (GPL v3) My region LDA implementation - see the paper 'Video Topic Modelling with Behavioural Segmentation' by T. S. F. Haines and T. Xiang (Downloadable from my website.). A topic model that includes a behavioural segmentation within the same model, which is simultaneously solved. Designed to be good at analysing traffic data by virtue of it inferring the regions of the input where each activity occurs, giving it a better generalisation capability.
 
 **smp**: (GPL v3) This Sparse Multinomial Posterior library solves the rather unusual problem of estimating a multinomial given draws from it, when those draws are sparse. That is, when the counts for some of the entries are missing. Generates the expected value of the multinomial being estimated. Uses scipy.weave.
