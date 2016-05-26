@@ -149,7 +149,7 @@ static PyObject * Gaussian(PyObject * self, PyObject * args, PyObject * kw)
   }
   max *= quality;
   
-  float * weight = (float*)malloc(((int)ceil(max) + 1) * sizeof(float));
+  float * weight = (float*)malloc(((int)ceil(max) + 2) * sizeof(float));
   
   
  // Fill the structure in with the starting values, taking care to handle NaNs and inf...
