@@ -8,8 +8,6 @@
 
 # Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 
-# Simple script for generating a calibration target, to be printed then scanned, to calibrate the printer relative to the scanner.
-
 import argparse
 import os.path
 import errno
