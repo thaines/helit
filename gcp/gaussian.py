@@ -8,12 +8,7 @@
 
 # Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 
-
-
-import math
 import numpy
-import numpy.linalg
-import numpy.random
 
 
 
@@ -78,15 +73,21 @@ class Gaussian:
   def getNorm(self):
     """Returns the normalising constant of the distribution. Typically for internal use only."""
     if self.norm==None:
-      self.norm = math.pow(2.0*math.pi,-0.5*self.mean.shape[0]) * math.sqrt(numpy.linalg.det(self.getPrecision()))
+      self.norm = numpy.power(2.0*numpy.pi, -0.5*self.mean.shape[0]) * numpy.sqrt(numpy.linalg.det(self.getPrecision()))
     return self.norm
 
   def prob(self, x):
-    """Given a vector x evaluates the probability density function at that point."""
+    """Given a vector x evaluates the probability density function at that point. Also supports vectorisation for if you give it a data matrix."""
     x = numpy.asarray(x)
     offset = x - self.mean
-    val = numpy.dot(offset,numpy.dot(self.getPrecision(),offset))
-    return self.getNorm() * math.exp(-0.5 * val)
+    
+    if len(offset.shape)==1:
+      val = offset.dot(self.getPrecision().dot(offset))
+    
+    else: # Assuming data matrix, with 2 dimensions.
+      val = numpy.einsum('ij,jk,ik->i', offset, self.getPrecision(), offset)
+    
+    return self.getNorm() * numpy.exp(-0.5 * val)
 
 
   def sample(self):
