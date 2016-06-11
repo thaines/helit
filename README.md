@@ -42,6 +42,8 @@ Current contents (alphabetical):
 
 **gmm**: (Apache 2.0) A fairly standard Gaussian mixture model library, that uses k-means for initialisation followed by EM to fit with the actual model. Only supports isotropic kernels, but then non-isotropic kernels can cause stability issues with EM. Has a Bayesian information criterion (BIC) implementation, for automatically selecting the number of clusters. Includes some very nice, and particularly fast, k-means implementations, in case that is all you want. Makes extensive use of scipy.weave.
 
+**handwriting**: (Apache 2.0) All of the code specific to the paper 'My Text in Your Handwriting', by T. S. F. Haines (me), O. Mac Aodha and  G. J. Brostow.
+
 **hg**: (Apache 2.0) Simple module for constructing and applying homographies to images, plus some related gubbins.
 
 **kde_inc**: (Apache 2.0) A simple incremental kernel density estimation module with Gaussian kernels, that uses a fixed number of kernels and greedily merges kernels together when it exceeds that cap. Also includes leave one out optimisation of the kernel size, in terms of a symmetric precision matrix. Nothing special really - I only implemented this so I could match the experimental setup of another paper. Its simple and neat however, and I guess could be useful when the fixed time property matters, though if that is really the case you would probably want a C version, rather than this python-only snail.
