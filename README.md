@@ -24,6 +24,8 @@ Current contents (alphabetical):
 
 **ddhdp**: (GPL v3) My Delta-Dual Hierarchical Dirichlet Processes implementation, from the paper 'Delta-Dual Hierarchical Dirichlet Processes: A pragmatic abnormal behaviour detector' by T. S. F. Haines and T. Xiang (Can be obtained from my website.). It shares a lot of code with the dhdp implementation, unsurprisingly, making similarly extensive use of scipy.weave. Also, if dhdp is complex this is bordering on the insane - its an awful lot of very complex code, compliments of a lot of variables that need to be Gibbs sampled.
 
+**ddp**: (Apache 2.0) Discrete dynamic programming. Nothing special.
+
 **df**: (Apache 2.0) A decision forest (random forest) implementation. It is extremely modular, for future expandability, but rather limited. Very flexible, with support for incremental learning and both continuous and discrete features. Currently only supports classification with a limited set of test generation techniques, which is basically the standard feature set for a typical random forest implementation. Currently it is Python with numpy/scipy only; code is well commented and should be relatively easy to understand.
 
 **dhdp**: (Apache 2.0) A Dual Hierarchical Dirichlet processes implementation, using Gibbs sampling. Also includes the ability to switch off the document clustering and obtain a HDP implementation. Its rather complex - a lot is going on, and its design is arguably not the best. Makes extensive use of scipy.weave as most of the code is actually in C++.
