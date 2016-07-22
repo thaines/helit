@@ -44,6 +44,8 @@ Current contents (alphabetical):
 
 **gmm**: (Apache 2.0) A fairly standard Gaussian mixture model library, that uses k-means for initialisation followed by EM to fit with the actual model. Only supports isotropic kernels, but then non-isotropic kernels can cause stability issues with EM. Has a Bayesian information criterion (BIC) implementation, for automatically selecting the number of clusters. Includes some very nice, and particularly fast, k-means implementations, in case that is all you want. Makes extensive use of scipy.weave.
 
+**graph_cuts**: (Apache 2.0) Just a max flow implimentation and an interface for doing binary labelings on nD grids.
+
 **handwriting**: (Apache 2.0) All of the code specific to the paper 'My Text in Your Handwriting', by T. S. F. Haines (me), O. Mac Aodha and  G. J. Brostow.
 
 **hg**: (Apache 2.0) Simple module for constructing and applying homographies to images, plus some related gubbins.
