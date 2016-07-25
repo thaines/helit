@@ -209,7 +209,7 @@ def array_to_encoding(arr):
     if arr.dtype.itemsize==16: return 'real128'
     
   if arr.dtype==numpy.object:
-    if isinstance(arr.flat[0], numpy.ndarray):
+    if len(arr.flat)!=0 and isinstance(arr.flat[0], numpy.ndarray):
       return 'array:%i:nat32:%s' % (len(arr.flat[0].shape), array_to_encoding(arr.flat[0]))
     else:
       return 'string:nat32'
@@ -372,7 +372,7 @@ def write_ascii(f, element, order):
     arr = element[prop]
     
     if arr.dtype==numpy.object:
-      if isinstance(arr.flat[0], numpy.ndarray): # Array
+      if len(arr.flat)!=0 and isinstance(arr.flat[0], numpy.ndarray): # Array
         parts.append([ascii_array(x) for x in arr.flat])
       
       else: # String
