@@ -7,3 +7,5 @@ calibrate_printer - Does a closed loop colour calibration between a scanner and 
 
 corpus - Analyses the 100 most popular project Gutenberg books to generate typical statistics for the English language, then uses that to extract short blocks of text from the corpus for an author to write down in their handwriting. The text is selected to be representative of the English language, so we can learn a good model of their handwriting.
 
+line_graph - The data structure that represents the line extracted from text. Includes the majority of the C-optimised functionality of the handwriting system, and consequentially has some really strange features - absurdly feature rich in other words.
+
