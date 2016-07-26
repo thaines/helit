@@ -9,3 +9,5 @@ corpus - Analyses the 100 most popular project Gutenberg books to generate typic
 
 line_graph - The data structure that represents the line extracted from text. Includes the majority of the C-optimised functionality of the handwriting system, and consequentially has some really strange features - absurdly feature rich in other words.
 
+let - Line extraction tool; a GUI. Lets you prepare scanned in handwriting for synthesis; in addition to extracting the line includes tagging, handwriting recognition, alpha matting, indicating the rule of the page and a whole bunch of other things.
+
