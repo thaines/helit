@@ -22,8 +22,8 @@ from frf import frf
 
 from utils.start_cpp import start_cpp
 
-from utils_gui.viewer import Viewer
-from utils_gui.tile_image import TileImage
+from line_graph.utils_gui.viewer import Viewer
+from line_graph.utils_gui.tile_image import TileImage
 
 from ddp.ddp import DDP
 
@@ -570,12 +570,3 @@ class AutoTagDialog(Gtk.Dialog):
       print 'Auto-tagging done'
       end_time = time.clock()
       self.let.alg_time += end_time - start_time
-      
-      # Convert the dots array into a fat matrix and feed to dots viewer...
-      print 'Updating dot viewer...'
-      if len(dots)==0:
-        dots = None
-      else:
-        dots = numpy.concatenate(dots, axis=0)
-
-      self.let.auto_probs.set_dots(dots)

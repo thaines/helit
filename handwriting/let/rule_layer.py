@@ -11,7 +11,7 @@ import numpy.linalg as la
 
 from hg.homography import match as match_hg
 
-from utils_gui.viewport_layer import *
+from line_graph.utils_gui.viewport_layer import *
 
 
 
@@ -72,7 +72,7 @@ class RuleLayer(Layer):
     if 'v' in dic['element']['homography']:
       data = dic['element']['homography']['v']
       
-      if len(data.shape)==1 and data.shape[0]==0:
+      if len(data.shape)==1 and data.shape[0]==9:
         self.homography = data.reshape((3,3)).astype(numpy.float32)
   
   
