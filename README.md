@@ -22,7 +22,7 @@ If anyone wants to contact me for any of the above reasons, or any other good re
 
 Current contents (alphabetical):
 
-**ddhdp**: (GPL v3) My Delta-Dual Hierarchical Dirichlet Processes implementation, from the paper 'Delta-Dual Hierarchical Dirichlet Processes: A pragmatic abnormal behaviour detector' by T. S. F. Haines and T. Xiang (Can be obtained from my website.). It shares a lot of code with the dhdp implementation, unsurprisingly, making similarly extensive use of scipy.weave. Also, if dhdp is complex this is bordering on the insane - its an awful lot of very complex code, compliments of a lot of variables that need to be Gibbs sampled.
+**ddhdp**: (GPL 3.0) My Delta-Dual Hierarchical Dirichlet Processes implementation, from the paper 'Delta-Dual Hierarchical Dirichlet Processes: A pragmatic abnormal behaviour detector' by T. S. F. Haines and T. Xiang (Can be obtained from my website.). It shares a lot of code with the dhdp implementation, unsurprisingly, making similarly extensive use of scipy.weave. Also, if dhdp is complex this is bordering on the insane - its an awful lot of very complex code, compliments of a lot of variables that need to be Gibbs sampled.
 
 **ddp**: (Apache 2.0) Discrete dynamic programming. Nothing special.
 
@@ -30,7 +30,7 @@ Current contents (alphabetical):
 
 **dhdp**: (Apache 2.0) A Dual Hierarchical Dirichlet processes implementation, using Gibbs sampling. Also includes the ability to switch off the document clustering and obtain a HDP implementation. Its rather complex - a lot is going on, and its design is arguably not the best. Makes extensive use of scipy.weave as most of the code is actually in C++.
 
-**dp_al**: (GPL v3) An active learning method of mine, that uses Dirichlet processes. The relevant paper is 'Active Learning using Dirichlet Processes for Rare Class Discovery and Classification' by T. S. F. Haines and T. Xiang, from BMVC 2011 (Can be obtained from my website.). A very simple algorithm that works very well when faced with the competing goals of finding new categories, particularly rare ones, and refining the classification boundaries of existing categories. It is a bit absurd me putting code up, given that implementation is so easy, so the main value here is the test code and the framework that allows for comparison with a bunch of other active learning algorithms that are also implemented within this module.
+**dp_al**: (GPL 3.0) An active learning method of mine, that uses Dirichlet processes. The relevant paper is 'Active Learning using Dirichlet Processes for Rare Class Discovery and Classification' by T. S. F. Haines and T. Xiang, from BMVC 2011 (Can be obtained from my website.). A very simple algorithm that works very well when faced with the competing goals of finding new categories, particularly rare ones, and refining the classification boundaries of existing categories. It is a bit absurd me putting code up, given that implementation is so easy, so the main value here is the test code and the framework that allows for comparison with a bunch of other active learning algorithms that are also implemented within this module.
 
 **dpgmm**: (Apache 2.0) A Dirichlet process Gaussian mixture model, implemented using the mean field variational technique. Its about as good as a general purpose density estimator can get, though it suffers from a heavy computational and memory burden. Code is in pure python, depends on the gcp module and it is very neat and reasonably well commented - speed is reasonable for the method as the code vectorises well. Unlike some other implementations handles incremental learning correctly - both adding extra sticks to the model and adding extra data after convergence.
 
@@ -46,7 +46,7 @@ Current contents (alphabetical):
 
 **graph_cuts**: (Apache 2.0) Just a max flow implimentation and an interface for doing binary labelings on nD grids.
 
-**handwriting**: (Apache 2.0) All of the code specific to the paper 'My Text in Your Handwriting', by T. S. F. Haines (me), O. Mac Aodha and  G. J. Brostow.
+**handwriting**: (Mixed licenses) All of the code specific to the paper 'My Text in Your Handwriting', by T. S. F. Haines (me), O. Mac Aodha and  G. J. Brostow.
 
 **hg**: (Apache 2.0) Simple module for constructing and applying homographies to images, plus some related gubbins.
 
@@ -64,9 +64,9 @@ Current contents (alphabetical):
 
 **ply2** (BSD) My extension of the ply file format, for more general use. Includes a specification and pure Python reading/writing code. Intention is for this to be a good format to fill the gap between json and hdf5, particularly for large quantities of human readable data. Was created for the handwriting project, so particular attention has been made to string support. Done without the permission of the original authors, so I hope they don't mind!
 
-**rlda**: (GPL v3) My region LDA implementation - see the paper 'Video Topic Modelling with Behavioural Segmentation' by T. S. F. Haines and T. Xiang (Downloadable from my website.). A topic model that includes a behavioural segmentation within the same model, which is simultaneously solved. Designed to be good at analysing traffic data by virtue of it inferring the regions of the input where each activity occurs, giving it a better generalisation capability.
+**rlda**: (GPL 3.0) My region LDA implementation - see the paper 'Video Topic Modelling with Behavioural Segmentation' by T. S. F. Haines and T. Xiang (Downloadable from my website.). A topic model that includes a behavioural segmentation within the same model, which is simultaneously solved. Designed to be good at analysing traffic data by virtue of it inferring the regions of the input where each activity occurs, giving it a better generalisation capability.
 
-**smp**: (GPL v3) This Sparse Multinomial Posterior library solves the rather unusual problem of estimating a multinomial given draws from it, when those draws are sparse. That is, when the counts for some of the entries are missing. Generates the expected value of the multinomial being estimated. Uses scipy.weave.
+**smp**: (GPL 3.0) This Sparse Multinomial Posterior library solves the rather unusual problem of estimating a multinomial given draws from it, when those draws are sparse. That is, when the counts for some of the entries are missing. Generates the expected value of the multinomial being estimated. Uses scipy.weave.
 
 **svm**: (Apache 2.0) A support vector machine implementation, which only supports the traditional classification scenario. It is however implemented using some of the best available methods, and includes leave one out model selection with a decent set of kernel types and various useful defaults for when you just want to throw data at it. Its not as optimised as it could be, but is still plenty fast. I know there are already various other libraries for doing this with Python, but my testing showed serious issues with all of them, specifically strange restrictions, lack of multiclass support and an inability to save models etc, not to mention absolutely dire interfaces and little documentation. This is only from a Python point of view however - if you don't care which language you use then there are better libraries. Also, the above is a description of a historic problem, which is no longer the case.
 
@@ -76,4 +76,4 @@ Current contents (alphabetical):
 
 **utils_gui**: (BSD) An image viewer for GTK 3. Works using a tile concept (for speed) and supports efficient zooming, absurdly large images and using a tablet to control it.
 
-**video**: (GPL v3) A node based system for processing video, that includes various computer vision algorithms, e.g. optical flow, background subtraction. This last one is my own algorithm: 'Background Subtraction with Dirichlet Processes' by Tom SF Haines & Tao Xiang, ECCV 2012. Uses OpenCV and scipy; also compiles C code and uses OpenCL when available. 
+**video**: (GPL 3.0) A node based system for processing video, that includes various computer vision algorithms, e.g. optical flow, background subtraction. This last one is my own algorithm: 'Background Subtraction with Dirichlet Processes' by Tom SF Haines & Tao Xiang, ECCV 2012. Uses OpenCV and scipy; also compiles C code and uses OpenCL when available. 
