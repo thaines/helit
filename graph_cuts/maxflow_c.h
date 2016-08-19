@@ -127,9 +127,22 @@ struct MaxFlowAPI
 
 static MaxFlowAPI * maxflow;
 
-static int import_maxflow(void)
+// Can be given NULL, but that will only work if the graph_cuts module is directly in the path; otherwise the maxflow module can be passed...
+static int import_maxflow(PyObject * module)
 {
- maxflow = (MaxFlowAPI*)PyCapsule_Import("maxflow_c._C_API", 0);
+ if (module==NULL)
+ {
+  maxflow = (MaxFlowAPI*)PyCapsule_Import("maxflow_c.C_API", 0);
+ }
+ else
+ {
+  PyObject * capsule = PyObject_GetAttrString(module, "C_API");
+  if (capsule!=NULL)
+  {
+   maxflow = (MaxFlowAPI*)PyCapsule_GetPointer(capsule, "maxflow_c.C_API");
+  }
+ }
+ 
  return (maxflow!=NULL) ? 0 : -1;
 }
 

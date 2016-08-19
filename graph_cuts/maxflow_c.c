@@ -1545,6 +1545,6 @@ PyMODINIT_FUNC initmaxflow_c(void)
   api.store_unused = MaxFlow_store_unused;
   
  // Register a capsule for access to api...
-  PyObject * api_capsule = PyCapsule_New((void*)&api, "maxflow_c._C_API", NULL);
-  if (api_capsule!=NULL) PyModule_AddObject(mod, "_C_API", api_capsule);
+  PyObject * api_capsule = PyCapsule_New((void*)&api, "maxflow_c.C_API", NULL);
+  if (api_capsule!=NULL) PyModule_AddObject(mod, "C_API", api_capsule);
 }
