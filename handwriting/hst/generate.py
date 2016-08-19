@@ -110,9 +110,11 @@ def select_glyphs_dp(text, glyph_db, fetch_count = 8, match_mult = 1.0, poor_fit
         if gs[j].key.endswith('_') != space_after: data_term[i][j] += poor_fit_cost
         if gs[j].key.strip('_') != text[i]: data_term[i][j] += poor_fit_cost
   
-  # If requested add noise to the unary term to simulate a draw...
+  # If requested add noise to the unary term to simulate a draw (perturb and map algorithm, by Papandreou and Yuille)...
   if noise:
-    pass #####################
+    for data in data_term:
+      if data!=None:
+        data += numpy.log(-numpy.log(numpy.random.rand(data.shape[0]))) # Gumbel noise
   
   # Third pass - calculate adjacency cost matrices for each glyph...
   smooth_term = []
@@ -152,7 +154,9 @@ def select_glyphs_dp(text, glyph_db, fetch_count = 8, match_mult = 1.0, poor_fit
   
   # Solve...
   dp.solve()
-  solution = dp.best()
+  solution, solution_cost = dp.best()
+  if log_func!=None:
+    log_func('Solution cost = %f' % solution_cost)
   
   # Extract the results...
   offset = 0
@@ -503,9 +507,9 @@ def render(lg, border = 8, textures = TextureCache(), cleverness = 0, radius_gro
   # If requested use maxflow to find optimal cuts, to avoid any real blending...
   count = 0
   if cleverness==2:
-    count = comp.maxflow_select(edge_weight, smooth_weight)
+    count = comp.maxflow_select(edge_weight, smooth_weight, maxflow)
   elif cleverness==3:
-    count = comp.graphcut_select(edge_weight, smooth_weight, unary_mult)
+    count = comp.graphcut_select(edge_weight, smooth_weight, unary_mult, maxflow)
   
   if cleverness==0:
     render = comp.render_last()

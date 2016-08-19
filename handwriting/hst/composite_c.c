@@ -1274,14 +1274,15 @@ static PyObject * Composite_maxflow_select_py(Composite * self, PyObject * args)
  // Extract the optional parameters...
   float edge_bias = 0.0;
   float smooth_bias = 0.0;
+  PyObject * maxflow_module = NULL;
   
-  if (!PyArg_ParseTuple(args, "|ff", &edge_bias, &smooth_bias)) return NULL;
+  if (!PyArg_ParseTuple(args, "|ffO", &edge_bias, &smooth_bias, &maxflow_module)) return NULL;
   
   if (edge_bias<0.0) edge_bias = 0.0;
   if (smooth_bias<0.0) smooth_bias = 0.0;
  
  // Make sure the maxflow array is loaded...
-  if (import_maxflow()!=0) return NULL;
+  if (import_maxflow(maxflow_module)!=0) return NULL;
  
  // Simply call through to the method...
   int solved = Composite_maxflow_select(self, maxflow, edge_bias, smooth_bias);
@@ -1657,15 +1658,16 @@ static PyObject * Composite_graphcut_select_py(Composite * self, PyObject * args
   float edge_bias = 0.0;
   float smooth_bias = 0.0;
   float weight_bias = 0.0;
+  PyObject * maxflow_module = NULL;
   
-  if (!PyArg_ParseTuple(args, "|fff", &edge_bias, &smooth_bias, &weight_bias)) return NULL;
+  if (!PyArg_ParseTuple(args, "|fffO", &edge_bias, &smooth_bias, &weight_bias, &maxflow_module)) return NULL;
   
   if (edge_bias<0.0) edge_bias = 0.0;
   if (smooth_bias<0.0) smooth_bias = 0.0;
   if (weight_bias<0.0) weight_bias = 0.0;
  
  // Make sure the maxflow array is loaded...
-  if (import_maxflow()!=0) return NULL;
+  if (import_maxflow(maxflow_module)!=0) return NULL;
  
  // Simply call through to the method...
   int solved = Composite_graphcut_select(self, maxflow, edge_bias, smooth_bias, weight_bias);
@@ -1860,8 +1862,8 @@ static PyMethodDef Composite_methods[] =
  {"inc_weight_alpha", (PyCFunction)Composite_inc_weight_alpha_py, METH_VARARGS, "Adds to the mixing weight of every pixel in the image a value provided to this method multiplied the alpha of the pixel. Used to bias the output towards pixels that are more opaque"},
  {"draw_pair", (PyCFunction)Composite_draw_pair_py, METH_VARARGS, "Given as input two part numbers this makes sure that every pixel that has one part in it also has the other part in it, by adding a pixel with alpha 0 with the relevent part number as needed. The weight of the extra pixel is by default 1, and can be provided as an optional third parameter."},
  
- {"maxflow_select", (PyCFunction)Composite_maxflow_select_py, METH_VARARGS, "Uses the maxflow (mincut) algorithm to select and process overlapping regions of the image, to select which layer to keep to minimise visual error. Where there are multiple overlaps it processes each in turn as a binary selection problem, until every pixel has at most one sample in. Has two optional parameters (a bias term to increase the cost of breaks on the edge of a contested region, a weight to assign to adjacent colour similarity terms, to avoid cuts when edges overlap.). Returns how many seperate maxflow problems have been solved."},
- {"graphcut_select", (PyCFunction)Composite_graphcut_select_py, METH_VARARGS, "Exactly the same as maxflow_select, except it solves a complete binary graph cut problem for each overlaping region. This means that in principal you could have complex boundaries, but allows it to factor in the weight term provided to the system. Supports an extra third parameter - a multiplier to the weight when factoring it into the cost to be minimised."},
+ {"maxflow_select", (PyCFunction)Composite_maxflow_select_py, METH_VARARGS, "Uses the maxflow (mincut) algorithm to select and process overlapping regions of the image, to select which layer to keep to minimise visual error. Where there are multiple overlaps it processes each in turn as a binary selection problem, until every pixel has at most one sample in. Has two optional parameters (a bias term to increase the cost of breaks on the edge of a contested region, a weight to assign to adjacent colour similarity terms, to avoid cuts when edges overlap.). A third optional parameter allows you to pass in the maxflow module, if its not in the search path so it can get access to the interface. Returns how many seperate maxflow problems have been solved."},
+ {"graphcut_select", (PyCFunction)Composite_graphcut_select_py, METH_VARARGS, "Exactly the same as maxflow_select, except it solves a complete binary graph cut problem for each overlaping region. This means that in principal you could have complex boundaries, but allows it to factor in the weight term provided to the system. Supports an extra third parameter - a multiplier to the weight when factoring it into the cost to be minimised (the maxflow module becomes the fourth parameter)."},
  
  {"render_last", (PyCFunction)Composite_render_last_py, METH_VARARGS, "Renders the image out, returning a numpy array of type uint8, indexed [y, x, c], where red is c=2, green is c=1, blue is c=0 and alpha is c=3. This takes the most recent layer added, and is basically a stupid approach."},
  {"render_average", (PyCFunction)Composite_render_average_py, METH_VARARGS, "Renders the image out, returning a numpy array of type uint8, indexed [y, x, c], where red is c=2, green is c=1, blue is c=0 and alpha is c=3. This combines layers by simply averaging their overlaping colour, weighted by the weight value. Pretty simple basically."},
