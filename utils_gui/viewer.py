@@ -162,6 +162,7 @@ class Viewer(Gtk.DrawingArea):
       self.height, self.width = reduce(lambda pa, pb: (max(pa[0],pb[0]), max(pa[1],pb[1])), map(lambda l: l.get_size(), self.layers))
 
       self.viewport = Viewport(1, 1, 0.0, 0.0, self.width, self.height)
+      self.viewport.viewer = self
 
     # Update the viewport for the widget dimensions...
     if self.viewport!=None:
