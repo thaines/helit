@@ -185,10 +185,10 @@ class Pool:
       
       lla = numpy.array([new] + [numpy.log(self.prior[x[0]])-x[1] for x in entity[1].iteritems() if x[0]!=None], dtype=numpy.float32)
       
-      high = llbc.max()
-      lla_sum = high + numpy.log(numpy.exp(llbc-high).sum())
+      high = lla.max()
+      log_sum = high + numpy.log(numpy.exp(lla-high).sum())
       
-      prob[i] = new - div
+      prob[i] = new - log_sum
 
     # Select an entry...
     if hardChoice: pos = numpy.argmax(prob)
@@ -245,11 +245,12 @@ class Pool:
       if softSelect==None: # 1 - Expected hinge loss, sort of.
         if len(llSel)>0: maxSel = max(llSel.itervalues())
         else: maxSel = 0.0
-        wrong[i] -= numpy.exp(maxSel + llIs[None])
+        if None in llIs:
+          wrong[i] -= numpy.exp(maxSel + llIs[None])
         for cat, p in llSel.iteritems():
           wrong[i] -= numpy.exp(maxSel + llIs[cat]) - numpy.exp(p + llIs[cat])
       elif softSelect:
-        for cat, p in probSel.iteritems():
+        for cat, p in llSel.iteritems():
           wrong[i] -= numpy.exp(p + llIs[cat])
       else:
         best = -1.0
