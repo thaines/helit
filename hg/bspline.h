@@ -31,6 +31,11 @@ float SampleB(int degree, float y, float x, PyArrayObject * data);
 
 
 
+// Same as SampleB, but takes a 3D array instead which it indexes [layer, y, x]; for the situation where you have a stack of images to select from...
+float LayerSampleB(int degree, int layer, float y, float x, PyArrayObject * data);
+
+
+
 // Does a standard B-spline sampling of a multivariate image at the given float position, with the given degree. Degree must not go higher than 5 (no mask support, so image must have been filled in if it has one to get sensible behaviour)...
 void MultivariateSampleB(int degree, float y, float x, int shape[2], int channels, PyArrayObject ** image, float * out);
 

@@ -146,6 +146,55 @@ float SampleB(int degree, float y, float x, PyArrayObject * data)
 
 
 
+float LayerSampleB(int degree, int layer, float y, float x, PyArrayObject * data)
+{
+ // Evaluate B-spline weights for both axes...
+  static const int max_degree = 5; // Can be changed if needed, but degree 5 is already beyond sensible.
+  
+  int dy;
+  int iy = (int)floorf(y+0.5);
+  float by[max_degree*2+1];
+  
+  for (dy=-degree; dy<=degree; dy++)
+  {
+   by[degree+dy] = B(degree, iy+dy - y);
+  }
+  
+  int dx;
+  int ix = (int)floorf(x+0.5);
+  float bx[max_degree*2+1];
+  
+  for (dx=-degree; dx<=degree; dx++)
+  {
+   bx[degree+dx] = B(degree, ix+dx - x);
+  }
+  
+ // Now loop the relevant range, summing the output weighted by the relevant weights and handling boundary conditions...
+  float ret = 0.0;
+  int shape[2] = {PyArray_SHAPE(data)[1], PyArray_SHAPE(data)[2]};
+  
+  for (dy=-degree; dy<=degree; dy++)
+  {
+   for (dx=-degree; dx<=degree; dx++)
+   {
+    int sy = iy+dy;
+    if (sy<0) sy = 0;
+    if (sy>=shape[0]) sy = shape[0] - 1;
+    
+    int sx = ix+dx;
+    if (sx<0) sx = 0;
+    if (sx>=shape[1]) sx = shape[1] - 1;
+
+    ret += by[degree+dy] * bx[degree+dx] * *(float*)PyArray_GETPTR3(data, layer, sy, sx);
+   }
+  }
+  
+ // Return the evaluated value...
+  return ret;
+}
+
+
+
 void MultivariateSampleB(int degree, float y, float x, int shape[2], int channels, PyArrayObject ** image, float * out)
 {
  // Evaluate B-spline weights for both axes...
