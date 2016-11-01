@@ -10,6 +10,8 @@
 
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import sys
+
 from collections import OrderedDict
 
 import tempfile
@@ -502,7 +504,7 @@ class TestPly2(unittest.TestCase):
     data = temp.read()
     
     expected = ['ply', 'format ascii 2.0', 'end_header', '']
-    self.assertTrue(data=='\n'.join(expected))
+    self.assertTrue(data.decode('utf8')=='\n'.join(expected))
     
     temp.close()
 
@@ -517,7 +519,7 @@ class TestPly2(unittest.TestCase):
     data = temp.read()
     
     expected = ['ply', 'format ascii 2.0', 'end_header', '']
-    self.assertTrue(data=='\n'.join(expected))
+    self.assertTrue(data=='\n'.join(expected).encode('utf8'))
     
     temp.close()
   
@@ -532,7 +534,7 @@ class TestPly2(unittest.TestCase):
     data = temp.read()
 
     expected = ['ply', 'format ascii 2.0', 'element dummy 0', 'end_header', '']
-    self.assertTrue(data=='\n'.join(expected))
+    self.assertTrue(data=='\n'.join(expected).encode('utf8'))
     
     temp.close()
 
@@ -547,7 +549,7 @@ class TestPly2(unittest.TestCase):
     data = temp.read()
     
     expected = ['ply', 'format ascii 2.0', 'element values 3', 'property int32 x', 'end_header', '1', '2', '3', '']
-    self.assertTrue(data=='\n'.join(expected))
+    self.assertTrue(data.decode('utf8')=='\n'.join(expected))
     
     temp.close()
   
@@ -562,7 +564,7 @@ class TestPly2(unittest.TestCase):
     data = temp.read()
     
     expected = ['ply', 'format ascii 2.0', 'element values 3', 'property real32 x', 'property real32 y', 'end_header', '1 1.5', '2 5.5999999', '3 3.1415927', '']
-    self.assertTrue(data=='\n'.join(expected))
+    self.assertTrue(data.decode('utf8')=='\n'.join(expected))
     
     temp.close()
   
@@ -577,7 +579,7 @@ class TestPly2(unittest.TestCase):
     data = temp.read()
     
     expected = ['ply', 'format ascii 2.0', 'type image.rgb', 'element pixel 2 2', 'property nat8 red', 'property nat8 green', 'property nat8 blue', 'end_header', '0 0 0', '255 0 0', '0 255 0', '0 0 255', '']
-    self.assertTrue(data=='\n'.join(expected))
+    self.assertTrue(data=='\n'.join(expected).encode('utf8'))
     
     temp.close()
 
@@ -592,7 +594,7 @@ class TestPly2(unittest.TestCase):
     data = temp.read()
 
     expected = ['ply', 'format ascii 2.0', 'element people 8', 'property string:nat32 name', 'end_header', '9 The Alien', '6 Ripley', '3 Ash', '7 Bite Me', '4     ', '9   Penguin', '7 Joker  ', '8 Two\nFace', '']
-    self.assertTrue(data=='\n'.join(expected))
+    self.assertTrue(data=='\n'.join(expected).encode('utf8'))
     
     temp.close()
   
@@ -607,7 +609,7 @@ class TestPly2(unittest.TestCase):
     data = temp.read()
 
     expected = ['ply', 'format ascii 2.0', 'element samples 5', 'property array:1:nat32:int8 values', 'end_header', '4 3 1 4 2', '2 42 42', '6 100 101 102 -1 -2 0', '1 -12', '0 ', '']
-    self.assertTrue(data=='\n'.join(expected))
+    self.assertTrue(data.decode('utf8')=='\n'.join(expected))
     
     temp.close()
   
@@ -622,7 +624,7 @@ class TestPly2(unittest.TestCase):
     data = temp.read()
 
     expected = ['ply', 'format ascii 2.0', 'meta string:nat32 author 7 Cthulhu', 'meta int64 tentacles 42', 'meta real64 pi 3.141592653589793', 'end_header', '']
-    self.assertTrue(data=='\n'.join(expected))
+    self.assertTrue(data.decode('utf8')=='\n'.join(expected))
     
     temp.close()
   
@@ -689,9 +691,10 @@ class TestPly2(unittest.TestCase):
     
     self.assertTrue(set(a_meta.keys())==set(b_meta.keys()))
     
-    for key, va in a_meta.iteritems():
+    for key, va in a_meta.items():
       vb = b_meta[key]
-      self.assertTrue(type(va)==type(vb))
+      if sys.version_info > (3, 0): # Problem in Python 2 due to str and unicode types.
+        self.assertTrue(type(va)==type(vb))
       self.assertTrue(va==vb)
     
     # Comments...
@@ -700,7 +703,7 @@ class TestPly2(unittest.TestCase):
     
     self.assertTrue(len(a_com)==len(b_com))
     
-    for i in xrange(len(a_com)):
+    for i in range(len(a_com)):
       self.assertTrue(i in a_com)
       self.assertTrue(i in b_com)
       self.assertTrue(a_com[i]==b_com[i])
@@ -741,6 +744,9 @@ class TestPly2(unittest.TestCase):
               error = numpy.fabs(a_array[index]-b_array[index])
               self.assertTrue((error<1e-6).all())
             else:
+              if a_array[index]!=b_array[index]:
+                print('a', type(a_array[index]), len(a_array[index]), a_array[index])
+                print('b', type(b_array[index]), len(b_array[index]), b_array[index])
               self.assertTrue(a_array[index]==b_array[index])
 
 
@@ -919,7 +925,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     ply2.read(temp)
@@ -930,7 +936,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(EOFError):
@@ -942,7 +948,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0'] + ['comment I am a fish'] * 16384 + ['end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(BufferError):
@@ -954,7 +960,7 @@ class TestPly2(unittest.TestCase):
     lines = ['format ascii 2.0', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -966,7 +972,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -978,7 +984,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'type nothing', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     ply2.read(temp)
@@ -989,7 +995,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'type nothing', 'type nothingness', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -1001,7 +1007,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'compress gzip2', 'compress gzip2', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -1013,7 +1019,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'compress dancing gzip2', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -1025,7 +1031,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'compress elephant', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -1037,7 +1043,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'length 5 blue wahles', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -1047,7 +1053,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'length nine', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(ValueError):
@@ -1059,7 +1065,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'element penguin 0', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     ply2.read(temp)
@@ -1070,7 +1076,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'element penguin 0', 'element penguin 0', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -1082,7 +1088,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'element penguin', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -1094,7 +1100,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'element penguin -4', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -1106,7 +1112,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'property real32 nose_size', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -1118,7 +1124,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'element penguin 0', 'property real32 nose_size', 'property real32 nose_size', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(AssertionError):
@@ -1157,7 +1163,7 @@ class TestPly2(unittest.TestCase):
     # Do all of the above...
     for lines, error in [(lines0,KeyError), (lines1,ValueError), (lines2,ValueError), (lines3,ValueError), (lines4,IOError), (lines5,ValueError), (lines6,IOError), (lines7,ValueError), (lines8,IOError)]:
       temp = tempfile.TemporaryFile('w+b')
-      temp.write('\n'.join(lines))
+      temp.write('\n'.join(lines).encode('utf8'))
     
       temp.seek(0)
       with self.assertRaises(error):
@@ -1169,7 +1175,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n\r'.join(lines))
+    temp.write('\n\r'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(EOFError):
@@ -1181,7 +1187,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'end_header', '']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\r\n'.join(lines))
+    temp.write('\r\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(EOFError):
@@ -1193,7 +1199,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'element values 2', 'property int32 size', 'end_header', '4', '5']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     ply2.read(temp)
@@ -1204,7 +1210,7 @@ class TestPly2(unittest.TestCase):
     lines = ['ply', 'format ascii 2.0', 'element values 2', 'property int32 size', 'end_header', '4']
     
     temp = tempfile.TemporaryFile('w+b')
-    temp.write('\n'.join(lines))
+    temp.write('\n'.join(lines).encode('utf8'))
     
     temp.seek(0)
     with self.assertRaises(IOError):
@@ -1240,7 +1246,7 @@ class TestPly2(unittest.TestCase):
     # Do all of the above...
     for lines, error in [(lines0,IOError), (lines1,IndexError), (lines2,IOError), (lines3,IOError), (lines4,KeyError), (lines5,ValueError), (lines6,IOError), (lines7,KeyError)]:
       temp = tempfile.TemporaryFile('w+b')
-      temp.write('\n'.join(lines))
+      temp.write('\n'.join(lines).encode('utf8'))
     
       temp.seek(0)
       with self.assertRaises(error):

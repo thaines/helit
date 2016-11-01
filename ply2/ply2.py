@@ -19,6 +19,12 @@ from collections import OrderedDict, defaultdict
 
 
 
+if sys.version_info > (3, 0):
+  basestring = str
+  xrange = range
+
+
+
 def create(binary = False, compress = 0):
   """Creates and returns an 'empty' dictionary to represent a ply 2 file, with reasonable defaults filled in. Takes two parameters: If binary is False (the default) it uses ascii mode, otherwise it uses binary mode, where it matches the mode to the current computer. If compress is 0 (the default) it does not compress the file, if its 1 it uses gzip compression and if its 2 it uses bzip2 compression."""
   ret = dict()
@@ -60,7 +66,7 @@ def verify(data):
 
   # Make sure the meta key/value pairs are all valid...
   if 'meta' in data:
-    for key, value in data['meta'].iteritems():
+    for key, value in data['meta'].items():
       if not isinstance(key, basestring):
         raise TypeError('Meta name is not a string.')
       
@@ -80,14 +86,14 @@ def verify(data):
       if '\n' in data['comment'][i]:
         raise ValueError('Comment line contains new line.')
   
-  # Make the compresssion mode is valid...
+  # Make sure the compresssion mode is valid...
   if 'compress' in data:
     if data['compress'] not in [None, '', 'gzip', 'bzip2']:
       raise ValueError('Unrecognised format.')
   
   # Loop and check all elements, including all details...
   if 'element' in data:
-    for key, value in data['element'].iteritems():
+    for key, value in data['element'].items():
       if not isinstance(key, basestring):
         raise TypeError('Element name must be a string.')
       
@@ -95,7 +101,7 @@ def verify(data):
         raise KeyError('Name of element contains white space.')
       
       shape = None
-      for prop, arr in value.iteritems():
+      for prop, arr in value.items():
         if not isinstance(prop, basestring):
           raise TypeError('Property name must be a string.')
         
@@ -220,10 +226,7 @@ def array_to_encoding(arr):
 
 def to_meta_line(key, value):
   """Given a key and value from a dictionary of meta data this returns the requisite meta line for a ply 2 file header. For internal use only."""
-  key = key.encode('utf8')
-  
   if isinstance(value, basestring):
-    value = value.encode('utf8')
     return 'meta string:nat32 %s %i %s\n' % (key, len(value), value)
   
   if isinstance(value, int):
@@ -270,7 +273,7 @@ def read_meta_line(line):
 def to_element_line(key, value):
   """Given an item in the element dictionary, which represents an element, this returns the element line for the header."""
   shape = (0, )
-  for prop, arr in value.iteritems():
+  for prop, arr in value.items():
     shape = arr.shape
     break
   
@@ -321,20 +324,20 @@ class BZ2Decomp:
         break
     
     if size>0:
-      ret = ''.join(self.spare)
+      ret = b''.join(self.spare)
       self.spare = [ret[size:]]
       self.spare_total = len(self.spare[0])
       return ret[:size]
     
     else:
-      ret = ''.join(self.spare)
+      ret = b''.join(self.spare)
       self.spare = []
       self.spare_total = 0
       return ret
   
   
   def readline(self):
-    while len(self.spare)==0 or ('\n' not in self.spare[-1]):
+    while len(self.spare)==0 or (b'\n' not in self.spare[-1]):
       try:
         data = self.f.read(self.chunk_size)
         data = self.decomp.decompress(data)
@@ -344,8 +347,8 @@ class BZ2Decomp:
         # Should probably do something with unused_data, but as I don't know what self.f is I am not sure what.
         break
     
-    ret = ''.join(self.spare)
-    new_line = ret.find('\n')
+    ret = b''.join(self.spare)
+    new_line = ret.find(b'\n')
     self.spare = [ret[new_line+1:]]
     return ret[:new_line+1]
    
@@ -376,7 +379,7 @@ def write_ascii(f, element, order):
         parts.append([ascii_array(x) for x in arr.flat])
       
       else: # String
-        parts.append(['%i %s'%(len(x.encode('utf8')),x.encode('utf8')) for x in arr.flat])
+        parts.append(['%i %s'%(len(x.encode('utf8')), x) for x in arr.flat])
       
     elif arr.dtype==numpy.float16:
       parts.append(['%.4g' % x for x in arr.flat])
@@ -396,7 +399,7 @@ def write_ascii(f, element, order):
   
   # Zip them and write out, line by line...
   for line in zip(*parts):
-    f.write(' '.join(line) + '\n')
+    f.write((' '.join(line) + '\n').encode('utf8'))
 
 
 
@@ -469,7 +472,7 @@ def write_binary(f, element, order, little=True):
   
   # Zip and write out...
   for line in zip(*parts):
-    f.write(''.join(line))
+    f.write(b''.join(line))
 
 
 
@@ -501,7 +504,7 @@ def write(f, data):
     f.write(('type %s\n' % ' '.join(data['type'])).encode('utf8'))
   
   if 'meta' in data:
-    for key, value in data['meta'].iteritems():
+    for key, value in data['meta'].items():
       f.write(to_meta_line(key, value).encode('utf8'))
   
   if 'comment' in data:
@@ -521,13 +524,13 @@ def write(f, data):
   element_order = []
   property_order = dict()
   if 'element' in data:
-    for key, value in data['element'].iteritems():
+    for key, value in data['element'].items():
       element_order.append(key)
       property_order[key] = []
       
       f.write(to_element_line(key, value).encode('utf8'))
 
-      for prop, arr in value.iteritems():
+      for prop, arr in value.items():
         f.write(('property %s %s\n' % (array_to_encoding(arr), prop)).encode('utf8'))
         property_order[key].append(prop)
   
@@ -571,7 +574,7 @@ def write(f, data):
 
 
 # Regular expression for doing a 'split' without throwing away white space. Relies on the fact the Python re module is greedy, and tries to make each match as long as possible...
-ws_keep_split = re.compile(r'(\s*[^\s]*)')
+ws_keep_split = re.compile(b'(\s*[^\s]*)')
 
 
 
@@ -627,7 +630,7 @@ def read_ascii(f, element, prop):
   
   def read_str():
     length = int(next_token()) + 1 # +1 so below code gets the space as well.
-    ret = ''
+    ret = b''
     while len(ret)<length:
       ret += next_token()
     
@@ -642,7 +645,7 @@ def read_ascii(f, element, prop):
   # To keep the reading loop sane encode it as a list of tuples, where each tuple is an array to output to followed by a (token eatting) function to call to get the data to be written...
   shape = None
   ops = []
-  for name, array in element.iteritems():
+  for name, array in element.items():
     
     if shape==None:
       shape = array.shape
@@ -771,7 +774,7 @@ def read_binary(f, element, prop, little = True):
   # To keep the reading loop sane encode it as a list of tuples, where each tuple is an array to output to followed by a (data eatting) functor to call to get the data to be written...
   shape = None
   ops = []
-  for name, array in element.iteritems():
+  for name, array in element.items():
     
     if shape==None:
       shape = array.shape
@@ -810,7 +813,7 @@ def read_binary(f, element, prop, little = True):
 
 
 def read_header(f):
-  """Simply reads the header, returning a list of lines and leaving the files cursor immediatly where the data starts."""
+  """Simply reads the header, returning a list of lines and leaving the files cursor immediately where the data starts."""
   header = []
   
   while True:
@@ -818,7 +821,7 @@ def read_header(f):
     if len(line)==0:
       raise EOFError('Ran out of data reading header.')
     
-    header.append(line[:-1])
+    header.append(line[:-1].decode('utf8'))
     
     # Stop if done...
     if len(header)!=0 and header[-1]=='end_header':
@@ -955,7 +958,7 @@ def read(f):
   
   
   # Loop and read in each element in turn...
-  for elem_name in data['element'].iterkeys():
+  for elem_name in data['element']:
     if data['format']=='ascii':
       read_ascii(ff, data['element'][elem_name], elem_prop[elem_name])
     

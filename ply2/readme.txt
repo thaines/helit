@@ -19,8 +19,9 @@ See specification.txt for what is actually written to disk.
 
 Contains the following files:
 
-ply2.py - Contains the read and write functions.
-test.py - Contains lots of unit tests to make sure it works. Includes many examples of using the library.
+ply2.py - Contains the read and write functions. Coded to work with both Python 2 and 3.
+test_p2.py - Contains lots of unit tests to make sure it works. Includes many examples of using the library. Version for Python 2.
+test_p3.py - Above, but for Python 3.
 
 readme.txt - This file, which is included in the documentation.
 make_doc.py - Builds the documentation.
