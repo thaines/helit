@@ -44,16 +44,16 @@ class TPS:
     assert(x.shape[0]>=self.n)
     assert(x.shape[1]==self.n)
     
-    assert(y!=None or (a!=None and b!=None))
-    assert(y==None or (len(y.shape)==1 and y.shape[0]==x.shape[0]))
+    assert((y is not None) or ((a is not None) and (b is not None)))
+    assert((y is None) or (len(y.shape)==1 and y.shape[0]==x.shape[0]))
     
-    assert(a==None or (len(a.shape)==1 and a.shape[0]==x.shape[0]))
-    assert(b==None or (len(b.shape)==1 and b.shape[0]==(self.n+1)))
+    assert((a is None) or (len(a.shape)==1 and a.shape[0]==x.shape[0]))
+    assert((b is None) or (len(b.shape)==1 and b.shape[0]==(self.n+1)))
     
     # Copy over the provided stuff...
     self.x = x.copy()
-    if a!=None: self.a = a.copy()
-    if b!=None: self.b = b.copy()
+    if (a is not None): self.a = a.copy()
+    if (b is not None): self.b = b.copy()
     
     # Generate the matrices...
     n = numpy.empty((x.shape[0], x.shape[1]+1), dtype=x.dtype)
@@ -74,14 +74,14 @@ class TPS:
     m *= self.mult
     
     # If needed learn b...
-    if b==None:
+    if b is None:
       ntmin = numpy.dot(n.T, la.pinv(m))
       bib = numpy.dot(ntmin, n)
       ymod = numpy.dot(ntmin, y)
       self.b = la.lstsq(bib, ymod)[0]
     
     # If needed learn a...
-    if a==None:
+    if a is None:
       self.a = la.lstsq(m, y - numpy.dot(n, self.b))[0]
   
   
