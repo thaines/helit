@@ -59,7 +59,7 @@ class Gaussian:
 
   def getPrecision(self):
     """Returns the precision matrix."""
-    if self.precision==None:
+    if self.precision is None:
       self.precision = numpy.linalg.inv(self.covariance)
     return self.precision
 
@@ -72,7 +72,7 @@ class Gaussian:
 
   def getNorm(self):
     """Returns the normalising constant of the distribution. Typically for internal use only."""
-    if self.norm==None:
+    if self.norm is None:
       self.norm = numpy.power(2.0*numpy.pi, -0.5*self.mean.shape[0]) * numpy.sqrt(numpy.linalg.det(self.getPrecision()))
     return self.norm
 
@@ -92,7 +92,7 @@ class Gaussian:
 
   def sample(self):
     """Draws and returns a sample from the distribution."""
-    if self.cholesky==None:
+    if self.cholesky is None:
       self.cholesky = numpy.linalg.cholesky(self.getCovariance())
     z = numpy.random.normal(size=self.mean.shape)
     return self.mean + numpy.dot(self.cholesky,z)
