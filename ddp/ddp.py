@@ -12,7 +12,7 @@
 from utils.make import make_mod
 import os.path
 
-make_mod('ddp_c', os.path.dirname(__file__), ['ddp_c.h', 'ddp_c.c'])
+make_mod('ddp_c', os.path.dirname(__file__), ['ddp_c.h', 'ddp_c.c'], numpy=True)
 
 
 

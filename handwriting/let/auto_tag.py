@@ -15,7 +15,12 @@ import string
 
 import numpy
 import numpy.linalg as la
-from scipy import weave
+
+try:
+  from scipy import weave
+except ImportError:
+  import weave
+
 from gi.repository import Gtk
 
 from frf import frf

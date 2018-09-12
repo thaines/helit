@@ -15,7 +15,11 @@ from smo_aux import *
 from model import *
 
 import numpy
-from scipy.weave import inline
+
+try:
+    from scipy.weave import inline
+except ImportError:
+    from weave import inline
 
 
 
@@ -40,7 +44,7 @@ class SMO:
 
   def setData(self, dataMatrix, y=None):
     """Sets the data matrix and corresponding y vector of +/- 1 values. If given only one value this function assumes its a tuple of (dataMatrix,y), as returned by the Dataset getTrainData method."""
-    if y==None:
+    if y is None:
       self.dataMatrix = dataMatrix[0]
       self.y = dataMatrix[1]
     else:

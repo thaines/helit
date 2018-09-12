@@ -20,7 +20,7 @@ from utils.make import make_mod
 
 
 # Compile the code if need be...
-make_mod('composite_c', os.path.dirname(__file__), ['composite_c.h', 'composite_c.c'])
+make_mod('composite_c', os.path.dirname(__file__), ['composite_c.h', 'composite_c.c'], numpy=True)
 
 
 

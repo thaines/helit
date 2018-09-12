@@ -22,7 +22,7 @@
 
 
 // B-spline kernel - recursive definition that will do any degree, but has hard coded evaluations for lower degrees (0 to 3 inclusive, where 0=nearest neighbour, 1=linear, etc.). Symmetric around the origin, and can be thought of as having integer spaced uniform knots...
-inline float B(int degree, float x);
+float B(int degree, float x);
 
 
 

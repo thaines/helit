@@ -17,7 +17,7 @@ from utils.make import make_mod
 
 
 # Compile the code if need be...
-make_mod('maxflow_c', os.path.dirname(__file__), ['maxflow_c.h', 'maxflow_c.c'])
+make_mod('maxflow_c', os.path.dirname(__file__), ['maxflow_c.h', 'maxflow_c.c'], numpy=True)
 
 
 

@@ -13,7 +13,7 @@ from utils.make import make_mod
 
 
 # Compile the code if need be...
-make_mod('line_graph_c', os.path.dirname(__file__), ['line_graph_c.h', 'line_graph_c.c'])
+make_mod('line_graph_c', os.path.dirname(__file__), ['line_graph_c.h', 'line_graph_c.c'], numpy=True)
 
 
 

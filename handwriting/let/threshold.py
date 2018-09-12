@@ -12,7 +12,11 @@ from graph_cuts.binary_label import *
 from ms.ms import MeanShift
 from misc.tps import TPS
 
-from scipy import weave
+try:
+  from scipy import weave
+except ImportError:
+  import weave
+
 from utils.start_cpp import start_cpp
 
 

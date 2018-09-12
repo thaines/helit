@@ -13,7 +13,11 @@
 import numpy
 
 from params import *
-from scipy.weave import inline
+
+try:
+    from scipy.weave import inline
+except ImportError:
+    from weave import inline
 
 
 

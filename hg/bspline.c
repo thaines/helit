@@ -12,7 +12,7 @@
 
 
 
-inline float B(int degree, float x)
+float B(int degree, float x)
 {
  switch(degree)
  {

@@ -8,7 +8,11 @@
 
 import numpy
 
-from scipy import weave
+try:
+  from scipy import weave
+except ImportError:
+  import weave
+
 from utils.start_cpp import start_cpp
 
 
