@@ -64,7 +64,7 @@ class TileValue(Layer):
     for i in xrange(values.max()+1):
       # Create a mask for this layer...
       mask[:,:] = 0
-      mask[values==i] = 255
+      mask[numpy.nonzero(values==i)] = 255
     
       # Copy the mask into perminant storage...
       ms = cairo.ImageSurface(cairo.FORMAT_A8, mask.shape[1], mask.shape[0])
