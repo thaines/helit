@@ -44,7 +44,7 @@ def select_glyphs_random(text, glyph_db, log_func = None):
     
     glyphs = glyph_db.glyph(c)
     if len(glyphs)==0:
-      if log_func!=None:
+      if log_func is not None:
         log_func('Dropped character %s due to having no glyphs.'%c)
       return False
     
@@ -71,7 +71,7 @@ def select_glyphs_better_random(text, glyph_db, fetch_count = 8, log_func = None
         ret.append(random.choice(glyphs))
       
       else:
-        if log_func!=None:
+        if log_func is not None:
           log_func('Dropped character %s due to having no glyphs.'% text[i])
           
   return ret
@@ -95,13 +95,13 @@ def select_glyphs_dp(text, glyph_db, fetch_count = 8, match_mult = 1.0, poor_fit
         choice.append(glyphs)
       
       else:
-        if log_func!=None:
+        if log_func is not None:
           log_func('Dropped character %s due to having no glyphs.'% text[i])
   
   # Second pass - calculate a constant message term, to bias towards better fitting glyphs...
-  data_term = map(lambda gs: numpy.zeros(len(gs), dtype=numpy.float32) if gs!=None else None, choice)
+  data_term = map(lambda gs: numpy.zeros(len(gs), dtype=numpy.float32) if gs is not None else None, choice)
   for i, gs in enumerate(choice):
-    if gs!=None:
+    if gs is not None:
       space_before = True if i==0 or text[i-1] in string.whitespace else False
       space_after = True if i+1==len(text) or text[i+1] in string.whitespace else False
       
@@ -113,7 +113,7 @@ def select_glyphs_dp(text, glyph_db, fetch_count = 8, match_mult = 1.0, poor_fit
   # If requested add noise to the unary term to simulate a draw (perturb and map algorithm, by Papandreou and Yuille)...
   if noise:
     for data in data_term:
-      if data!=None:
+      if data is not None:
         data += numpy.log(-numpy.log(numpy.random.rand(data.shape[0]))) # Gumbel noise
   
   # Third pass - calculate adjacency cost matrices for each glyph...
@@ -122,10 +122,10 @@ def select_glyphs_dp(text, glyph_db, fetch_count = 8, match_mult = 1.0, poor_fit
   prev = None
   mult = match_mult
   for current in choice:
-    if current==None: mult *= cost_space
+    if current is None: mult *= cost_space
     else:
       # Calculate the cost matrix between this glyph stack and the previous stack...
-      if prev!=None:
+      if prev is not None:
         cost = numpy.empty((len(prev), len(current)), dtype=numpy.float32)
         
         for j, left in enumerate(prev):
@@ -141,8 +141,8 @@ def select_glyphs_dp(text, glyph_db, fetch_count = 8, match_mult = 1.0, poor_fit
   # Setup the dp solver...
   dp = DDP()
   
-  clean_choice = filter(lambda c: c!=None, choice)
-  clean_data = filter(lambda c: c!=None, data_term)
+  clean_choice = filter(lambda c: c is not None, choice)
+  clean_data = filter(lambda c: c is not None, data_term)
   
   dp.prepare(numpy.array([len(c) for c in clean_choice], dtype=numpy.int32))
   
@@ -155,13 +155,13 @@ def select_glyphs_dp(text, glyph_db, fetch_count = 8, match_mult = 1.0, poor_fit
   # Solve...
   dp.solve()
   solution, solution_cost = dp.best()
-  if log_func!=None:
+  if log_func is not None:
     log_func('Solution cost = %f' % solution_cost)
   
   # Extract the results...
   offset = 0
   for i in xrange(len(choice)):
-    if choice[i]!=None:
+    if choice[i] is not None:
       choice[i] = choice[i][solution[offset]]
       offset += 1
   
@@ -177,7 +177,7 @@ def layout_fixed(glyph_list, glyph_db, gap = 0.2, gap_space = 0.6, log_func = No
   offset = 0.0
   
   for i, glyph in enumerate(glyph_list):
-    if glyph==None:
+    if glyph is None:
       offset += gap_space - gap
       ret.append(None)
     else:
@@ -210,7 +210,7 @@ def layout_source(glyph_list, glyph_db, gap = 0.2, gap_space = 0.6, log_func = N
   offset = 0.0
     
   for i, glyph in enumerate(glyph_list):
-    if glyph==None:
+    if glyph is None:
       offset += median_space
       ret.append(None)
       
@@ -224,14 +224,14 @@ def layout_source(glyph_list, glyph_db, gap = 0.2, gap_space = 0.6, log_func = N
       
       # Calculate a gap based on the stats, and apply it...
       next_glyph = glyph_list[i+1] if i+1<len(glyph_list) else None
-      if next_glyph!=None:
+      if next_glyph is not None:
         gaps = []
       
-        if glyph.right!=None and not glyph.right[0].key.endswith('_'):
+        if glyph.right is not None and not glyph.right[0].key.endswith('_'):
           gaps.append(glyph.right[0].orig_left_x() - glyph.orig_right_x())
         
       
-        if next_glyph!=None and next_glyph.left!=None and not next_glyph.left[0].key.startswith('_'):
+        if next_glyph is not None and next_glyph.left is not None and not next_glyph.left[0].key.startswith('_'):
           gaps.append(next_glyph.orig_left_x() - next_glyph.left[0].orig_right_x())
       
         while len(gaps)<2: gaps.append(median)
@@ -246,7 +246,7 @@ def layout_median(glyph_list, glyph_db, space_weights = None, log_func = None):
   
   # Create the spacing model...
   spacing = Spacing(glyph_db)
-  if space_weights!=None:
+  if space_weights is not None:
     spacing.set_weights(*space_weights)
   
   # Iterate and process each letter in turn...
@@ -254,7 +254,7 @@ def layout_median(glyph_list, glyph_db, space_weights = None, log_func = None):
   offset = 0.0
     
   for i, glyph in enumerate(glyph_list):
-    if glyph==None:
+    if glyph is None:
       offset += spacing.median_space()
       ret.append(None)
       
@@ -267,7 +267,7 @@ def layout_median(glyph_list, glyph_db, space_weights = None, log_func = None):
       offset += glyph.right_x - glyph.left_x
       
       next_glyph = glyph_list[i+1] if i+1<len(glyph_list) else None
-      if next_glyph!=None:
+      if next_glyph is not None:
         offset += spacing.median(glyph, next_glyph)
 
   return ret
@@ -279,7 +279,7 @@ def layout_draw(glyph_list, glyph_db, space_weights = None, amount = 0.5, log_fu
   
   # Create the spacing model...
   spacing = Spacing(glyph_db)
-  if space_weights!=None:
+  if space_weights is not None:
     spacing.set_weights(*space_weights)
   
   # Iterate and process each letter in turn...
@@ -287,7 +287,7 @@ def layout_draw(glyph_list, glyph_db, space_weights = None, amount = 0.5, log_fu
   offset = 0.0
     
   for i, glyph in enumerate(glyph_list):
-    if glyph==None:
+    if glyph is None:
       offset += spacing.draw_space(amount)
       ret.append(None)
       
@@ -300,7 +300,7 @@ def layout_draw(glyph_list, glyph_db, space_weights = None, amount = 0.5, log_fu
       offset += glyph.right_x - glyph.left_x
       
       next_glyph = glyph_list[i+1] if i+1<len(glyph_list) else None
-      if next_glyph!=None:
+      if next_glyph is not None:
         offset += spacing.draw(glyph, next_glyph, amount)
 
   return ret
@@ -313,7 +313,7 @@ def layout_flow(layout, original_sd = 10.0, offset_sd = 5.0, use_rf = False, com
   # Get center_y values for each glyph...
   y_offset = numpy.zeros(len(layout), dtype=numpy.float32)
   for i in xrange(len(layout)):
-    if layout[i]!=None:
+    if layout[i] is not None:
       cx, cy = layout[i][1].get_center()
       y_offset[i] = cy
   
@@ -323,14 +323,14 @@ def layout_flow(layout, original_sd = 10.0, offset_sd = 5.0, use_rf = False, com
   
   # Add in the pairwise terms - they only exist when we have ligatures on both of the glyphs (We have softening when the ligatures match poorly, as we get two estimates and add the difference between them to the sd)...
   for i in xrange(len(layout)-1):
-    if layout[i]==None or layout[i+1]==None:
+    if layout[i] is None or layout[i+1] is None:
       continue
   
     l_hg, l_glyph = layout[i]
     r_hg, r_glyph = layout[i+1]
     
     mean_sd = costs.glyph_pair_offset(l_glyph, r_glyph, offset_sd, use_rf)
-    if mean_sd!=None:
+    if mean_sd is not None:
       solver.pairwise(i, i+1, mean_sd[0], mean_sd[1]**(-2.0))
 
   # Solve for the offsets...
@@ -340,7 +340,7 @@ def layout_flow(layout, original_sd = 10.0, offset_sd = 5.0, use_rf = False, com
   ret = list(layout)
   
   for i in xrange(len(layout)):
-    if ret[i]!=None:
+    if ret[i] is not None:
       offset = numpy.eye(3, dtype=numpy.float32)
       offset[1,2] += solver.result(i)[0] - y_offset[i]
       if comp_punctuation:
@@ -356,7 +356,7 @@ def stitch_noop(glyph_layout):
   """Converts a glyph layout to a linegraph layout. This is usually done at the same time as stitching together glyphs to make joined up writing, but this version doesn't do that."""
   ret = []
   for pair in glyph_layout:
-    if pair!=None:
+    if pair is not None:
       hg, glyph = pair
       ret.append((hg, glyph.lg))
   return ret
@@ -369,7 +369,7 @@ def stitch_connect(glyph_layout, soft = True, half = False, pair_base = 0):
   
   # First copy over the actual glyphs...
   for pair in glyph_layout:
-    if pair!=None:
+    if pair is not None:
       hg, glyph = pair
       ret.append((hg, glyph.lg))
       
@@ -377,7 +377,7 @@ def stitch_connect(glyph_layout, soft = True, half = False, pair_base = 0):
   pair_code = 0
   for i in xrange(len(glyph_layout)-1):
     # Can't stitch spaces...
-    if glyph_layout[i]!=None and glyph_layout[i+1]!=None:
+    if glyph_layout[i] is not None and glyph_layout[i+1] is not None:
       l_hg, l_glyph = glyph_layout[i]
       r_hg, r_glyph = glyph_layout[i+1]
       
@@ -483,7 +483,7 @@ def render(lg, border = 8, textures = TextureCache(), cleverness = 0, radius_gro
     
     tex = textures[fn]
     
-    if tex!=None:
+    if tex is not None:
       if use_linear:
         comp.paint_texture_linear(tex, part)
       else:

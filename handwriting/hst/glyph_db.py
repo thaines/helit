@@ -68,7 +68,7 @@ class Glyph:
   """Represents a glyph, that has been transformed into a suitable coordinate system; includes connectivity information."""
   def __init__(self, lg, seg, hg, extra = 0.4, bias = None):
     """Given a segmented LineGraph and segment number this extracts it, transforms it into the standard coordinate system and stores the homography used to get there. (hg transforms from line space, where there is a line for each y=integer, to the space of the original pixels.) Also records its position on its assigned line and line number so it can be ordered suitably. Does not store connectivity information - that is done later. extra is used for infering the line position, and is extra falloff to have either side of a line voting for it - a smoothing term basically. bias is an optional dictionary indexed by line number that gives a weight to assign to being assigned to that line - used to utilise the fact that data collection asks the writter to use every-other line, which helps avoid misassigned dropped j's for instance."""
-    if lg==None: return
+    if lg is None: return
 
     # Extract the line graph...
     self.lg = LineGraph()
@@ -93,7 +93,7 @@ class Glyph:
     min_x, max_x, min_y, max_y = self.lg.get_bounds()
     self.source = (0.5 * (min_x + max_x), 0.5 * (min_y + max_y))
     
-    if line==None:   
+    if line is None:   
       best_mass = 0.0
       self.left_x = min_x
       self.right_x = max_x
@@ -119,15 +119,15 @@ class Glyph:
               dy = vt[1] - vf[1]
               mass += (vf[5] + vt[5]) * numpy.sqrt(dx*dx + dy*dy)
             
-              if left_x==None: left_x = min(vf[0], vt[0])
+              if left_x is None: left_x = min(vf[0], vt[0])
               else: left_x = min(vf[0], vt[0], left_x)
             
-              if right_x==None: right_x = max(vf[0], vt[0])
+              if right_x is None: right_x = max(vf[0], vt[0])
               else: right_x = max(vf[0], vt[0], right_x)
       
         mass *= 1.0/(1.0+pl - start) # Bias to choosing higher, for tails.
         
-        if bias!=None:
+        if bias is not None:
           mass *= bias[pl]
       
         if mass>best_mass:
@@ -192,9 +192,9 @@ class Glyph:
     
     ret.code = self.code
     
-    ret.mass = None if self.mass==None else self.mass.copy()
-    ret.center = None if self.center==None else self.center.copy()
-    ret.feat = None if self.feat==None else map(lambda a: a.copy(), self.feat)
+    ret.mass = None if self.mass is None else self.mass.copy()
+    ret.center = None if self.center is None else self.center.copy()
+    ret.feat = None if self.feat is None else map(lambda a: a.copy(), self.feat)
     ret.v_offset = self.v_offset
     
     return ret
@@ -213,7 +213,7 @@ class Glyph:
   
   def get_mass(self):
     """Returns a vector of [average density, average radius] - used for matching adjacent glyphs."""
-    if self.mass==None:
+    if self.mass is None:
       self.mass = numpy.zeros(2, dtype=numpy.float32)
       weight = 0.0
       for i in xrange(self.lg.vertex_count):
@@ -227,7 +227,7 @@ class Glyph:
 
   def get_center(self):
     """Returns the 'center' of the glyph - its density weighted in an attempt to make it robust to crazy tails."""
-    if self.center==None:
+    if self.center is None:
       self.center = numpy.zeros(2, dtype=numpy.float32)
       weight = 0.0
     
@@ -246,14 +246,14 @@ class Glyph:
   def get_voffset(self):
     """Calculates and returns the vertical offset to apply to the glyph that corrects for any systematic bias in its flow calculation."""
     
-    if self.v_offset==None:
+    if self.v_offset is None:
       self.v_offset = 0.0
       weight = 0.0
       
       truth = self.get_center()[1]
       
       # Calculate the estimated offsets from the left side and update the estimate, correctly factoring in the variance of the offset...
-      if self.left!=None:
+      if self.left is not None:
         diff, sd = costs.glyph_pair_offset(self.left[0], self, 0.2, True)
         estimate = self.left[0].get_center()[1] + diff
         offset = truth - estimate
@@ -263,7 +263,7 @@ class Glyph:
         self.v_offset += (offset - self.v_offset) * est_weight / weight
     
       # Again from the right side...
-      if self.right!=None:
+      if self.right is not None:
         diff, sd = costs.glyph_pair_offset(self, self.right[0], 0.2, True)
         estimate = self.right[0].get_center()[1] - diff
         offset = truth - estimate
@@ -308,7 +308,7 @@ class Glyph:
   
   def get_feat(self):
     """Calculates and returns a feature for the glyph, or, more accuratly two features, representing (left, right), so some tricks can be done to make their use side dependent (For learning a function for matching to adjacent glyphs.)."""
-    if self.feat==None:
+    if self.feat is None:
       # First build a culumative distribution over the x axis range of the glyph...
       min_x, max_x, min_y, max_y = self.lg.get_bounds()
       culm = numpy.ones(32, dtype=numpy.float32)
@@ -378,8 +378,8 @@ class Glyph:
 
 
   def __str__(self):
-    l = self.left[0].key if self.left!=None else 'None'
-    r = self.right[0].key if self.right!=None else 'None'
+    l = self.left[0].key if self.left is not None else 'None'
+    r = self.right[0].key if self.right is not None else 'None'
     return 'Glyph %i: key = %s (%s|%s)' % (self.code, self.key, l, r)
 
 
@@ -431,53 +431,53 @@ class GlyphDB:
     # Second pass - fill in the connectivity information supported by adjacency...
     link_glyphs = []
     for seg, glyph in enumerate(glyphs):
-      if glyph==None: continue
-      if glyph.key==None: continue
+      if glyph is None: continue
+      if glyph.key is None: continue
       
       # Brute force search to find a left partner...
-      if glyph.left==None:
+      if glyph.left is None:
         best = None
         for g in glyphs:
           # Check it satisfies the conditions...
-          if g==None: continue
-          if g.key==None: continue;
+          if g is None: continue
+          if g.key is None: continue;
           if id(g)==id(glyph): continue
           if g.offset_y!=glyph.offset_y: continue
           if (g.right_x - g.offset_x) > (glyph.right_x - glyph.offset_x): continue
           
           # Check its better than the current best...
-          if best==None or (best.right_x - best.offset_x) < (g.right_x - g.offset_x):
+          if best is None or (best.right_x - best.offset_x) < (g.right_x - g.offset_x):
             best = g
         
-        if best!=None:
+        if best is not None:
           glyph.left = (best, [])
       
       # Brute force search to find a right partner...
-      if glyph.right==None:
+      if glyph.right is None:
         best = None
         for g in glyphs:
           # Check it satisfies the conditions...
-          if g==None: continue
-          if g.key==None: continue;
+          if g is None: continue
+          if g.key is None: continue;
           if id(g)==id(glyph): continue
           if g.offset_y!=glyph.offset_y: continue
           if (g.left_x - g.offset_x) < (glyph.left_x - glyph.offset_x): continue
           
           # Check its better than the current best...
-          if best==None or (best.left_x - best.offset_x) > (g.left_x - g.offset_x):
+          if best is None or (best.left_x - best.offset_x) > (g.left_x - g.offset_x):
             best = g
         
-        if best!=None:
+        if best is not None:
           glyph.right = (best, [])
 
 
       # Now we have the best matches find common glyphs to link them, and record them...
-      for other, out in [g for g in [glyph.left, glyph.right] if g!=None]:
+      for other, out in [g for g in [glyph.left, glyph.right] if g is not None]:
         shared_seg = set([a[1] for a in glyph.adjacent]) & set([a[1] for a in other.adjacent])
         
         for seg in shared_seg:
           g = glyphs[seg]
-          if g==None: continue
+          if g is None: continue
           
           # We have a linking glyph - extract the information...
           glyph_vert = [a[0] for a in glyph.adjacent if a[1]==seg]
@@ -532,16 +532,16 @@ class GlyphDB:
 
     # Third pass - enforce consistancy...
     for glyph in glyphs:
-      if glyph==None: continue
+      if glyph is None: continue
       
-      if glyph.left!=None:
-        if glyph.left[0].right==None or id(glyph.left[0].right[0])!=id(glyph):
+      if glyph.left is not None:
+        if glyph.left[0].right is None or id(glyph.left[0].right[0])!=id(glyph):
           # Inconsistancy - break it...
           glyph.left[0].right = None
           glyph.left = None
           
-      if glyph.right!=None:
-        if glyph.right[0].left==None or id(glyph.right[0].left[0])!=id(glyph):
+      if glyph.right is not None:
+        if glyph.right[0].left is None or id(glyph.right[0].left[0])!=id(glyph):
           # Inconsistancy - break it...
           glyph.right[0].left = None
           glyph.right = None
@@ -551,18 +551,18 @@ class GlyphDB:
     count = 0
     
     for glyph in (glyphs+link_glyphs):
-      if glyph==None: continue
+      if glyph is None: continue
       
       glyph.lg.add_tag(0, 0.1, 'file:%s'%fn)
       glyph.lg.add_tag(0, 0.2, 'texture:%s'%texture)
       
-      glyph.lg.add_tag(0, 0.3, 'link:left:%s'%('n' if glyph.left==None else ('g' if len(glyph.left[1])==0 else 'l')))
-      glyph.lg.add_tag(0, 0.4, 'link:right:%s'%('n' if glyph.right==None else ('g' if len(glyph.right[1])==0 else 'l')))
+      glyph.lg.add_tag(0, 0.3, 'link:left:%s'%('n' if glyph.left is None else ('g' if len(glyph.left[1])==0 else 'l')))
+      glyph.lg.add_tag(0, 0.4, 'link:right:%s'%('n' if glyph.right is None else ('g' if len(glyph.right[1])==0 else 'l')))
       
       glyph.lg.add_tag(0, 0.5, 'source:x:%f' % glyph.source[0])
       glyph.lg.add_tag(0, 0.6, 'source:y:%f' % glyph.source[1])
       
-      if glyph.key!=None:
+      if glyph.key is not None:
         count += 1
         if glyph.key in self.db: self.db[glyph.key].append(glyph)
         else: self.db[glyph.key] = [glyph]
@@ -677,7 +677,7 @@ class GlyphDB:
       if filter(lambda c: c!='_', key) in char_left:
         
         for left_glyph in value:
-          if left_glyph.right!=None:
+          if left_glyph.right is not None:
             right_glyph = left_glyph.right[0]
             if filter(lambda c: c!='_', right_glyph.key) in char_right:
               

@@ -739,7 +739,7 @@ class LET(Gtk.Window):
     """Toggles if the threshold is visible or not - calculates the threshold if needed."""
     if widget.get_active():
       # If needed calculate the threshold...
-      if self.threshold==None:
+      if self.threshold is None:
         self.run_threshold()
 
       # Arrange for its visibility...
@@ -768,7 +768,7 @@ class LET(Gtk.Window):
   def make_line(self):
     """Calculate and extract the line for the text that has been loaded in."""
     # We need the threshold...
-    if self.threshold==None:
+    if self.threshold is None:
       self.run_threshold()
       
     start_time = time.clock()
@@ -842,8 +842,10 @@ class LET(Gtk.Window):
     
     print 'Generating the line graph...'
     self.line = line_graph.LineGraph()
-    if density!=None: self.line.from_mask(mask, radius, density)
-    else: self.line.from_mask(mask, radius, density)
+    if density is not None:
+      self.line.from_mask(mask, radius, density)
+    else:
+      self.line.from_mask(mask, radius, density)
     self.line.smooth(0.1, 20)
     
     
@@ -1106,7 +1108,7 @@ class LET(Gtk.Window):
     fn = os.path.splitext(self.fn)[0] + '_alpha.png'
     if not os.path.exists(fn):
       # We need the threshold...
-      if self.threshold==None:
+      if self.threshold is None:
         self.run_threshold()
       
       start_time = time.clock()

@@ -78,11 +78,11 @@ class TPS:
       ntmin = numpy.dot(n.T, la.pinv(m))
       bib = numpy.dot(ntmin, n)
       ymod = numpy.dot(ntmin, y)
-      self.b = la.lstsq(bib, ymod)[0]
+      self.b = la.lstsq(bib, ymod, rcond=-1)[0]
     
     # If needed learn a...
     if a is None:
-      self.a = la.lstsq(m, y - numpy.dot(n, self.b))[0]
+      self.a = la.lstsq(m, y - numpy.dot(n, self.b), rcond=-1)[0]
   
   
   def get_n(self):

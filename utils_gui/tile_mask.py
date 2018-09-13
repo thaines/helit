@@ -42,7 +42,8 @@ class TileMask(Layer):
   def set_mask(self, mask):
     """Replaces the current mask with a new one."""
     # Default mask for if None is provided...
-    if mask==None: mask = numpy.ones((480, 640), dtype=numpy.bool)
+    if mask is None:
+      mask = numpy.ones((480, 640), dtype=numpy.bool)
     
     # Munge the data into a surface...
     mask = mask.astype(numpy.uint8)

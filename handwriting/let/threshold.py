@@ -219,7 +219,7 @@ def threshold_density(image, density, bg_cost = 0.5, data_mult = 32.0, smooth_ma
   bl.setLonelyCost(lonely)
   
   # Lock some pixels, at the users request...
-  if force!=None:
+  if force is not None:
     fix = numpy.zeros(force.shape, dtype=numpy.int8)
     fix[force==1] = -1
     fix[force==2] = 1

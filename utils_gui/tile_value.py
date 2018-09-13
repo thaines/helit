@@ -51,7 +51,8 @@ class TileValue(Layer):
   def set_values(self, values):
     """Replaces the current values array with a new one."""
     # Default values for if None is provided...
-    if values==None: values = numpy.zeros((480, 640), dtype=numpy.uint8)
+    if values is None: 
+      values = numpy.zeros((480, 640), dtype=numpy.uint8)
     
     # Some shared setup stuff...
     stride = cairo.ImageSurface.format_stride_for_width(cairo.FORMAT_A8, values.shape[1])

@@ -59,10 +59,10 @@ class BinaryLabel:
       index = [slice(None)] * len(self.costFalse.shape)
       
       index[dim] = slice(-1)
-      start = node_indices[index].flatten()
+      start = node_indices[tuple(index)].flatten()
       
       index[dim] = slice(1,None)
-      end = node_indices[index].flatten()
+      end = node_indices[tuple(index)].flatten()
       
       self.mf.set_edges_range(eb, start, end)
       eb += start.shape[0]
@@ -121,10 +121,10 @@ class BinaryLabel:
       index = [slice(None)] * len(current.shape)
       
       index[dim] = slice(-1)
-      numpy.maximum(current[index], cost, current[index])
+      numpy.maximum(current[tuple(index)], cost, current[tuple(index)])
       
       index[dim] = slice(1, None)
-      numpy.maximum(current[index], cost, current[index])
+      numpy.maximum(current[tuple(index)], cost, current[tuple(index)])
     
     # Use that cost to calculate the change required...
     delta = numpy.clip(target_cost - current, 0.0, 1e32)
@@ -134,10 +134,10 @@ class BinaryLabel:
       index = [slice(None)] * len(current.shape)
       
       index[dim] = slice(-1)
-      cost += delta[index]
+      cost += delta[tuple(index)]
       
       index[dim] = slice(1, None)
-      cost += delta[index]
+      cost += delta[tuple(index)]
   
   
   def fix(self, fix, almost_inf = 1e32):
